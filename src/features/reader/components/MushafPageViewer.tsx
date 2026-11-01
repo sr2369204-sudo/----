@@ -363,7 +363,7 @@ body {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
-  unicode-bidi: plaintext;
+  unicode-bidi: normal;
 }
 .surah-title, .opening-basmala {
   display: flex;
