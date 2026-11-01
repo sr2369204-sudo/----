@@ -66,11 +66,11 @@ export default function ReaderScreen() {
 
   const errorMessage =
     contentQuery.error instanceof ContentUnavailableError
-      ? contentQuery.error.reason === 'not-configured'
-        ? 'لم يُربط القارئ بعد بخادم محتوى موثوق. أضف عنوان الخادم في إعدادات التطوير؛ لا تضع مفاتيح سرية في التطبيق.'
-        : contentQuery.error.reason === 'invalid-data'
+      ? contentQuery.error.reason === 'invalid-data'
           ? 'رفض التطبيق بيانات المصدر لأن بنيتها أو مرجعها غير صالح.'
-          : 'تعذر جلب المحتوى من الخادم. تحقق من الاتصال وإعدادات الخادم ثم أعد المحاولة.'
+          : contentQuery.error.reason === 'network'
+            ? 'تعذر الاتصال بـ Quran.com. تحقق من اتصال الإنترنت وحاول مجددًا.'
+            : 'خدمة Quran.com غير متاحة مؤقتًا. حاول مرة أخرى لاحقًا.'
       : 'تعذر فتح المحتوى القرآني.';
 
   return (
@@ -85,8 +85,8 @@ export default function ReaderScreen() {
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             {contentQuery.data
-              ? `المصدر ${contentQuery.data.sourceId} · الإصدار ${contentQuery.data.contentVersion}`
-              : 'المحتوى غير متاح حتى تهيئة المصدر'}
+              ? `المصدر ${contentQuery.data.sourceId} · واجهة API ${contentQuery.data.contentVersion}`
+              : 'يلزم اتصال بالإنترنت لتحميل السورة'}
           </Text>
         </View>
       </View>
@@ -101,7 +101,7 @@ export default function ReaderScreen() {
           <Text style={[styles.unavailableTitle, { color: colors.text }]}>لا يوجد نص للعرض</Text>
           <Text style={[styles.message, { color: colors.textSecondary }]}>{errorMessage}</Text>
           <Text style={[styles.setupHint, { color: colors.textSecondary }]}>
-            يلزم خادم وسيط يستعمل Quran Foundation Content API بمصادقة خادمية، ويتحقق من النص قبل إرساله.
+            يُحمّل التطبيق النص مباشرة من واجهة Quran.com العامة؛ لا يحتاج إلى خادم خاص.
           </Text>
           <Pressable
             accessibilityRole="button"

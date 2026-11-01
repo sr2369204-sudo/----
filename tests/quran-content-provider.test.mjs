@@ -2,102 +2,122 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  BackendQuranContentProvider,
   ContentUnavailableError,
+  QuranComContentProvider,
 } from '../src/features/quran/services/content-provider.ts';
 
-const syntheticSurah = {
-  sourceId: 'test-fixture-only',
-  contentVersion: 'synthetic-1',
-  textScript: 'uthmani',
-  narration: 'hafs-an-asim',
-  surahNumber: 1,
-  nameArabic: 'اسم اختباري اصطناعي',
-  ayahCount: 1,
-  ayahs: [
-    {
-      ayahNumber: 1,
-      words: [{ id: 'synthetic-word-1', position: 1, textUthmani: 'SYNTHETIC_TEST_TOKEN' }],
-    },
-  ],
+const syntheticChapter = {
+  chapter: {
+    id: 1,
+    name_arabic: 'اسم اختباري اصطناعي',
+    verses_count: 1,
+  },
 };
 
-test('accepts a source-attributed, versioned response with the required script and narration', async (t) => {
+const syntheticVerses = {
+  verses: [
+    {
+      verse_number: 1,
+      words: [
+        {
+          id: 1,
+          position: 1,
+          char_type_name: 'word',
+          text_uthmani: 'SYNTHETIC_TEST_TOKEN',
+        },
+        {
+          id: 2,
+          position: 2,
+          char_type_name: 'end',
+          text_uthmani: '١',
+        },
+      ],
+    },
+  ],
+  pagination: { total_records: 1 },
+};
+
+function mockFetch(t, handler) {
   const originalFetch = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
-  globalThis.fetch = async () =>
-    new Response(JSON.stringify(syntheticSurah), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
+  globalThis.fetch = handler;
+}
 
-  const provider = new BackendQuranContentProvider('https://backend.example.test');
-  const surah = await provider.getSurah(1);
-
-  assert.equal(surah.sourceId, 'test-fixture-only');
-  assert.equal(surah.contentVersion, 'synthetic-1');
-  assert.equal(surah.ayahs[0].words[0].id, 'synthetic-word-1');
-  assert.equal(surah.ayahs[0].words[0].textUthmani, 'SYNTHETIC_TEST_TOKEN');
-});
-
-test('rejects a response with an unverified script or narration', async (t) => {
-  const originalFetch = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-  });
-  globalThis.fetch = async () =>
-    new Response(JSON.stringify({ ...syntheticSurah, textScript: 'simplified' }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
-
-  const provider = new BackendQuranContentProvider('https://backend.example.test');
-
-  await assert.rejects(provider.getSurah(1), (error) => {
-    assert.ok(error instanceof ContentUnavailableError);
-    assert.equal(error.reason, 'invalid-data');
-    return true;
-  });
-});
-
-test('rejects incomplete ayah sequences instead of displaying partial content as complete', async (t) => {
-  const originalFetch = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-  });
-  globalThis.fetch = async () =>
-    new Response(
+test('loads and validates the complete Arabic surah directory without app credentials', async (t) => {
+  mockFetch(t, async (url) => {
+    assert.equal(String(url), 'https://api.quran.com/api/v4/chapters?language=ar');
+    return new Response(
       JSON.stringify({
-        ...syntheticSurah,
-        ayahCount: 2,
-        ayahs: [
-          syntheticSurah.ayahs[0],
-          {
-            ayahNumber: 3,
-            words: [{ id: 'synthetic-word-3', position: 1, textUthmani: 'ANOTHER_TEST_TOKEN' }],
-          },
-        ],
+        chapters: Array.from({ length: 114 }, (_, index) => ({
+          id: index + 1,
+          name_arabic: `سورة ${index + 1}`,
+          verses_count: 1,
+        })),
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );
+  });
 
-  const provider = new BackendQuranContentProvider('https://backend.example.test');
+  const directory = await new QuranComContentProvider().getSurahDirectory();
 
-  await assert.rejects(provider.getSurah(1), (error) => {
+  assert.equal(directory.sourceId, 'quran-com-api');
+  assert.equal(directory.contentVersion, 'api-v4');
+  assert.equal(directory.surahs.length, 114);
+  assert.equal(directory.surahs[0].surahNumber, 1);
+  assert.equal(directory.surahs[113].surahNumber, 114);
+});
+
+test('normalizes Uthmani words and excludes verse-end markers', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    const body = String(url).includes('/chapters/1?') ? syntheticChapter : syntheticVerses;
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const surah = await new QuranComContentProvider().getSurah(1);
+
+  assert.equal(requestedUrls.length, 2);
+  assert.ok(requestedUrls.some((url) => url.includes('/verses/by_chapter/1?')));
+  assert.equal(surah.sourceId, 'quran-com-api');
+  assert.equal(surah.contentVersion, 'api-v4');
+  assert.equal(surah.ayahs[0].words.length, 1);
+  assert.equal(surah.ayahs[0].words[0].id, '1');
+  assert.equal(surah.ayahs[0].words[0].textUthmani, 'SYNTHETIC_TEST_TOKEN');
+});
+
+test('rejects incomplete ayah responses instead of displaying partial content', async (t) => {
+  mockFetch(t, async (url) => {
+    const body = String(url).includes('/chapters/1?')
+      ? { chapter: { ...syntheticChapter.chapter, verses_count: 2 } }
+      : syntheticVerses;
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  await assert.rejects(new QuranComContentProvider().getSurah(1), (error) => {
     assert.ok(error instanceof ContentUnavailableError);
     assert.equal(error.reason, 'invalid-data');
     return true;
   });
 });
 
-test('does not request content when the backend URL is missing', async () => {
-  const provider = new BackendQuranContentProvider(undefined);
+test('reports network errors from the public content API', async (t) => {
+  mockFetch(t, async () => {
+    throw new Error('offline');
+  });
 
-  await assert.rejects(provider.getSurah(1), (error) => {
+  await assert.rejects(new QuranComContentProvider().getSurahDirectory(), (error) => {
     assert.ok(error instanceof ContentUnavailableError);
-    assert.equal(error.reason, 'not-configured');
+    assert.equal(error.reason, 'network');
+    assert.equal(error.message, 'offline');
     return true;
   });
 });

@@ -32,8 +32,8 @@ export default function HomeScreen() {
           <Text style={[styles.noticeTitle, { color: colors.text }]}>نبدأ بمصدر موثوق</Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>
             {surahDirectory.data
-              ? `قائمة السور متاحة من Quran Foundation · إصدار الواجهة ${surahDirectory.data.contentVersion}.`
-              : 'يعرض التطبيق السور من Quran Foundation بعد إعداد الخادم وإضافة بيانات الاعتماد فيه. لن نعرض نصًا تجريبيًا بدلًا من المصدر.'}
+              ? `قائمة السور متاحة مباشرة من Quran.com · إصدار الواجهة ${surahDirectory.data.contentVersion}.`
+              : 'يجلب التطبيق النص مباشرة من واجهة Quran.com العامة، من دون خادم خاص أو مفاتيح. يلزم اتصال بالإنترنت.'}
           </Text>
           {surahDirectory.data?.surahs[0] ? (
             <Link
@@ -51,7 +51,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>السور المتاحة من المصدر</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>سور القرآن</Text>
         {surahDirectory.isPending ? (
           <Text style={[styles.body, { color: colors.textSecondary }]}>جارٍ التحقق من مصدر المحتوى…</Text>
         ) : surahDirectory.data ? (
@@ -78,20 +78,17 @@ export default function HomeScreen() {
           <View style={[styles.unavailable, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.body, { color: colors.textSecondary }]}>
               {surahDirectory.error instanceof ContentUnavailableError &&
-              surahDirectory.error.reason === 'not-configured'
-                ? 'لم يُضبط عنوان خادم المحتوى بعد. اتبع خطوات الإعداد أدناه.'
-                : 'تعذر الاتصال بخادم المحتوى أو التحقق من استجابته. شغّل الخادم وتأكد من إعداد بيانات الوصول.'}
+              surahDirectory.error.reason === 'invalid-data'
+                ? 'رفض التطبيق استجابة Quran.com لأن بيانات السور غير مكتملة أو غير صالحة.'
+                : 'تعذر الاتصال بمصدر Quran.com. تحقق من اتصال الإنترنت وحاول مجددًا.'}
             </Text>
             <Text style={[styles.body, { color: colors.textSecondary }]}>
-              ١. أنشئ Backend/server app في Quran Foundation Developer Console.
-              {'\n'}٢. ضع Client ID والسر في backend/.env فقط.
-              {'\n'}٣. شغّل npm run backend وأعد تشغيل Expo.
-              {'\n'}بيئة pre-live تعرض الفاتحة والبقرة فقط.
+              لا يحتاج التطبيق إلى خادم تملكه أو بيانات اعتماد. المحتوى يُحمّل عند الطلب، لذلك يلزم الإنترنت لفتح السور.
             </Text>
             <ExternalLink
-              href="https://dev-console.quran.foundation/projects/new"
+              href="https://quran.com/"
               style={[styles.externalLink, { color: colors.primary }]}>
-              إنشاء تطبيق المصدر
+              مصدر البيانات: Quran.com
             </ExternalLink>
           </View>
         )}

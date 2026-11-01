@@ -29,16 +29,13 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>مصدر المحتوى</Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>
-            ١. أنشئ Backend/server app في Quran Foundation Developer Console.
-            {'\n'}٢. انسخ backend/.env.example إلى backend/.env وأضف QF_CLIENT_ID وQF_CLIENT_SECRET.
-            {'\n'}٣. شغّل npm run backend، ثم انسخ .env.example إلى .env وشغّل Expo من جديد.
-            {'\n'}لا تضع Client Secret في التطبيق أو في أي متغير EXPO_PUBLIC_*.
-            {'\n'}وصول pre-live محدود بالفاتحة والبقرة بحسب توثيق المصدر.
+            يجلب التطبيق نص القرآن مباشرة من واجهة Quran.com العامة، من دون خادم خاص أو مفاتيح.
+            {'\n'}يلزم اتصال بالإنترنت لتحميل السور؛ القراءة دون اتصال غير متاحة حاليًا.
           </Text>
           <ExternalLink
-            href="https://dev-console.quran.foundation/projects/new"
+            href="https://quran.com/"
             style={[styles.externalLink, { color: colors.primary }]}>
-            إنشاء تطبيق الخادم
+            Quran.com
           </ExternalLink>
         </View>
 
