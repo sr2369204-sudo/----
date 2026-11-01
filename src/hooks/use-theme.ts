@@ -5,10 +5,14 @@
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useReaderPreferencesStore } from '@/features/reader/state/reader-preferences-store';
 
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? 'dark' : 'light';
+  const systemScheme = useColorScheme();
+  const preference = useReaderPreferencesStore((state) => state.themePreference);
+  const theme = preference === 'system'
+    ? systemScheme === 'dark' ? 'dark' : 'light'
+    : preference;
 
   return Colors[theme];
 }

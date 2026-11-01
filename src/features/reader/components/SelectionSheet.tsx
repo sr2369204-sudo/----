@@ -24,9 +24,18 @@ const highlightColors = ['#F3D66B', '#80C99B', '#8BBCE8', '#E9A0B1'];
 type Props = {
   surahName: string;
   onHighlightsChanged: () => void;
+  onPlayAudio: (selection: ReaderSelection) => Promise<void>;
+  onStopAudio: () => void;
+  isAudioPlaying: boolean;
 };
 
-export function SelectionSheet({ surahName, onHighlightsChanged }: Props) {
+export function SelectionSheet({
+  surahName,
+  onHighlightsChanged,
+  onPlayAudio,
+  onStopAudio,
+  isAudioPlaying,
+}: Props) {
   const selection = useReaderSelectionStore((state) => state.selection);
   if (!selection) {
     return null;
@@ -43,6 +52,9 @@ export function SelectionSheet({ surahName, onHighlightsChanged }: Props) {
       selection={selection}
       surahName={surahName}
       onHighlightsChanged={onHighlightsChanged}
+      onPlayAudio={onPlayAudio}
+      onStopAudio={onStopAudio}
+      isAudioPlaying={isAudioPlaying}
     />
   );
 }
@@ -51,6 +63,9 @@ function SelectionSheetContent({
   selection,
   surahName,
   onHighlightsChanged,
+  onPlayAudio,
+  onStopAudio,
+  isAudioPlaying,
 }: Props & { selection: ReaderSelection }) {
   const database = useSQLiteContext();
   const clearSelection = useReaderSelectionStore((state) => state.clearSelection);
@@ -169,6 +184,20 @@ function SelectionSheetContent({
     }
   }
 
+  async function playAudio(): Promise<void> {
+    setBusy(true);
+    setErrorMessage(null);
+    try {
+      await onPlayAudio(selection);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? `تعذر تشغيل التلاوة: ${error.message}` : 'تعذر تشغيل التلاوة.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Modal
       visible
@@ -284,6 +313,19 @@ function SelectionSheetContent({
                 {selection.presentation === 'compact' ? (
                   <>
                     <ActionButton
+                      label={isAudioPlaying ? 'إيقاف التلاوة' : isWord ? 'استماع إلى الكلمة' : 'استماع إلى الآية'}
+                      backgroundColor={palette.primary}
+                      textColor={palette.background}
+                      disabled={busy}
+                      onPress={() => {
+                        if (isAudioPlaying) {
+                          onStopAudio();
+                        } else {
+                          void playAudio();
+                        }
+                      }}
+                    />
+                    <ActionButton
                       label="تمييز"
                       backgroundColor={palette.primary}
                       textColor={palette.background}
@@ -328,9 +370,18 @@ function SelectionSheetContent({
                       textColor={palette.text}
                       onPress={() => void shareSelection()}
                     />
-                    <UnavailableAction
-                      label={isWord ? 'الاستماع إلى الآية أو الكلمة' : 'استماع وتكرار الآية'}
-                      palette={palette}
+                    <ActionButton
+                      label={isAudioPlaying ? 'إيقاف التلاوة' : isWord ? 'استماع إلى الكلمة' : 'استماع إلى الآية'}
+                      backgroundColor={palette.primary}
+                      textColor={palette.background}
+                      disabled={busy}
+                      onPress={() => {
+                        if (isAudioPlaying) {
+                          onStopAudio();
+                        } else {
+                          void playAudio();
+                        }
+                      }}
                     />
                     <UnavailableAction label="التفسير المعتمد" palette={palette} />
                     {isWord && <UnavailableAction label="قاعدة التجويد ومعلومات الكلمة" palette={palette} />}

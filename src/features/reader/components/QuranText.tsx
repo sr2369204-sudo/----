@@ -1,222 +1,175 @@
-import { useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { StyleSheet, Text } from 'react-native';
 
 import type { Highlight } from '@/features/annotations/types';
 import type { QuranAyah, QuranWord } from '@/features/quran/types';
+import { getWordTajweedSegments, tajweedRuleColors } from '@/features/quran/services/tajweed';
 import { useTheme } from '@/hooks/use-theme';
 import { useReaderSelectionStore } from '@/features/reader/state/selection-store';
 
 type Props = {
   surahNumber: number;
-  ayah: QuranAyah;
+  ayahs: QuranAyah[];
   highlights: Highlight[];
+  showTajweed: boolean;
+  fontSize: number;
 };
 
-export function QuranText({ surahNumber, ayah, highlights }: Props) {
+export function QuranText({ surahNumber, ayahs, highlights, showTajweed, fontSize }: Props) {
   const colors = useTheme();
   const selection = useReaderSelectionStore((state) => state.selection);
   const selectAyah = useReaderSelectionStore((state) => state.selectAyah);
+  const selectWord = useReaderSelectionStore((state) => state.selectWord);
 
-  const ayahHighlights = highlights.filter(
-    (highlight) =>
-      highlight.target.type === 'ayah' &&
-      highlight.target.surahNumber === surahNumber &&
-      highlight.target.ayahNumber === ayah.ayahNumber,
-  );
+  const content: ReactNode[] = [];
+
+  for (const ayah of ayahs) {
+    const ayahHighlights = highlights.filter(
+      (highlight) =>
+        highlight.target.type === 'ayah' &&
+        highlight.target.surahNumber === surahNumber &&
+        highlight.target.ayahNumber === ayah.ayahNumber,
+    );
+    const ayahHighlight = ayahHighlights[0];
+    const wordSegments = getWordTajweedSegments(ayah);
+    const ayahContent: ReactNode[] = [];
+    if (ayah.tajweedText.replace(/<[^>]*>/g, '').trimStart().startsWith(String.fromCharCode(0x06de))) {
+      ayahContent.push(
+        <Text key={`rub-marker:${ayah.ayahNumber}`} style={[styles.ayahMarker, { color: colors.primary }]}>
+          {`${String.fromCharCode(0x06de)} `}
+        </Text>,
+      );
+    }
+
+    ayah.words.forEach((word, index) => {
+      if (index > 0) {
+        ayahContent.push(' ');
+      }
+
+      const wordHighlight = findWordHighlight(ayah, word, surahNumber, highlights);
+      const isSelected =
+        selection?.type === 'word' &&
+        selection.surahNumber === surahNumber &&
+        selection.ayah.ayahNumber === ayah.ayahNumber &&
+        selection.word.id === word.id;
+      const wordStyle = [
+        styles.word,
+        wordHighlight && { backgroundColor: withOpacity(wordHighlight.color, wordHighlight.opacity) },
+        isSelected && { backgroundColor: colors.backgroundSelected, borderBottomColor: colors.primary },
+      ];
+
+      ayahContent.push(
+        <Text
+          key={word.id}
+          accessibilityRole="button"
+          accessibilityLabel={`${word.textUthmani}، كلمة ${word.position} من الآية ${ayah.ayahNumber}`}
+          onPress={() => selectWord(surahNumber, ayah, word, 'compact')}
+          onLongPress={() => selectWord(surahNumber, ayah, word, 'full')}
+          style={wordStyle}>
+          {(wordSegments.get(word.id) ?? [{ text: word.textUthmani, rule: null }]).map(
+            (segment, segmentIndex) => (
+              <Text
+                key={`${word.id}:${segmentIndex}`}
+                style={{
+                  color: showTajweed && segment.rule
+                    ? tajweedRuleColors[segment.rule] ?? colors.text
+                    : colors.text,
+                }}>
+                {segment.text}
+              </Text>
+            ),
+          )}
+        </Text>,
+      );
+    });
+
+    ayahContent.push(
+      <Text
+        key={`marker:${ayah.ayahNumber}`}
+        accessibilityRole="button"
+        accessibilityLabel={`إجراءات الآية ${ayah.ayahNumber}`}
+        onPress={() => selectAyah(surahNumber, ayah, 'compact')}
+        onLongPress={() => selectAyah(surahNumber, ayah, 'full')}
+        style={[styles.ayahMarker, { color: colors.primary }]}>
+        {' ۝'}
+        {toArabicNumbers(ayah.ayahNumber)}
+        {'۝ '}
+      </Text>,
+    );
+
+    content.push(
+      <Text
+        key={`ayah:${ayah.ayahNumber}`}
+        style={[
+          ayahHighlight && {
+            backgroundColor: withOpacity(ayahHighlight.color, ayahHighlight.opacity),
+          },
+        ]}>
+        {ayahContent}
+      </Text>,
+    );
+  }
 
   return (
-    <View style={styles.ayah}>
-      {ayahHighlights.map((highlight) => (
-        <View
-          key={highlight.id}
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: highlight.color,
-              opacity: highlight.opacity,
-              borderRadius: 16,
-            },
-          ]}
-        />
-      ))}
-      <View style={styles.ayahContent}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`إجراءات الآية ${ayah.ayahNumber}`}
-          onPress={() => selectAyah(surahNumber, ayah, 'compact')}
-          onLongPress={() => selectAyah(surahNumber, ayah, 'full')}
-          delayLongPress={450}
-          style={({ pressed }) => [styles.ayahMarker, pressed && styles.pressed]}>
-          <Text style={[styles.ayahMarkerText, { color: colors.primary }]}>{ayah.ayahNumber}</Text>
-        </Pressable>
-        <View style={styles.words}>
-          {ayah.words.map((word) => (
-            <WordToken
-              key={word.id}
-              word={word}
-              ayah={ayah}
-              surahNumber={surahNumber}
-              highlights={highlights}
-              textColor={colors.text}
-              selectionColor={colors.primary}
-              selected={
-                selection?.type === 'word' &&
-                selection.surahNumber === surahNumber &&
-                selection.ayah.ayahNumber === ayah.ayahNumber &&
-                selection.word.id === word.id
-              }
-            />
-          ))}
-        </View>
-      </View>
-    </View>
+    <Text
+      style={[
+        styles.passage,
+        { color: colors.text, fontSize, lineHeight: Math.round(fontSize * 2.05) },
+      ]}>
+      {content}
+    </Text>
   );
 }
 
-type WordTokenProps = Props & {
-  word: QuranWord;
-  selected: boolean;
-  textColor: string;
-  selectionColor: string;
-};
+const styles = StyleSheet.create({
+  passage: {
+    textAlign: 'justify',
+    writingDirection: 'rtl',
+    includeFontPadding: false,
+  },
+  word: {
+    borderRadius: 5,
+  },
+  ayahMarker: {
+    fontSize: 19,
+    fontWeight: '700',
+  },
+});
 
-function WordToken({
-  word,
-  ayah,
-  surahNumber,
-  highlights,
-  selected,
-  textColor,
-  selectionColor,
-}: WordTokenProps) {
-  const selectWord = useReaderSelectionStore((state) => state.selectWord);
+function findWordHighlight(
+  ayah: QuranAyah,
+  word: QuranWord,
+  surahNumber: number,
+  highlights: Highlight[],
+): Highlight | null {
   const currentWordIndex = ayah.words.findIndex((ayahWord) => ayahWord.id === word.id);
-  const wordHighlights = highlights.filter((highlight) => {
+  return highlights.find((highlight) => {
     const target = highlight.target;
-    if (target.type === 'word') {
-      return (
-        target.surahNumber === surahNumber &&
-        target.ayahNumber === ayah.ayahNumber &&
-        target.wordId === word.id
-      );
-    }
     if (
-      target.type !== 'range' ||
       target.surahNumber !== surahNumber ||
       target.ayahNumber !== ayah.ayahNumber
     ) {
       return false;
     }
+    if (target.type === 'word') {
+      return target.wordId === word.id;
+    }
+    if (target.type !== 'range') {
+      return false;
+    }
     const start = ayah.words.findIndex((ayahWord) => ayahWord.id === target.startWordId);
     const end = ayah.words.findIndex((ayahWord) => ayahWord.id === target.endWordId);
     return start >= 0 && end >= start && currentWordIndex >= start && currentWordIndex <= end;
-  });
-  const longPressHandled = useRef(false);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`كلمة رقم ${word.position} من الآية ${ayah.ayahNumber}`}
-      delayLongPress={450}
-      onLongPress={() => {
-        longPressHandled.current = true;
-        selectWord(surahNumber, ayah, word, 'full');
-      }}
-      onPress={() => {
-        if (longPressHandled.current) {
-          longPressHandled.current = false;
-          return;
-        }
-        selectWord(surahNumber, ayah, word, 'compact');
-      }}
-      style={({ pressed }) => [
-        styles.word,
-        selected && [styles.selectedWord, { borderColor: selectionColor }],
-        pressed && styles.pressed,
-      ]}>
-      {wordHighlights.map((highlight) => (
-        <View
-          key={highlight.id}
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: highlight.color,
-              opacity: highlight.opacity,
-              borderRadius: 9,
-            },
-          ]}
-        />
-      ))}
-      {selected && (
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.selectionLayer, { borderColor: selectionColor }]}
-        />
-      )}
-      <Text style={[styles.wordText, { color: textColor }]}>{word.textUthmani}</Text>
-    </Pressable>
-  );
+  }) ?? null;
 }
 
-const styles = StyleSheet.create({
-  ayah: {
-    overflow: 'hidden',
-    borderRadius: 16,
-    marginBottom: 12,
-  },
-  ayahContent: {
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    padding: 8,
-    gap: 8,
-  },
-  ayahMarker: {
-    minWidth: 36,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: 'rgba(19, 104, 78, 0.10)',
-  },
-  ayahMarkerText: {
-    color: '#13684E',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  words: {
-    flex: 1,
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 7,
-  },
-  word: {
-    position: 'relative',
-    overflow: 'hidden',
-    paddingHorizontal: 3,
-    paddingVertical: 5,
-    borderRadius: 9,
-    minHeight: 42,
-    justifyContent: 'center',
-  },
-  wordText: {
-    color: '#18251F',
-    fontSize: 27,
-    lineHeight: 48,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  selectedWord: {
-    borderWidth: 1,
-  },
-  selectionLayer: {
-    borderWidth: 2,
-    borderRadius: 9,
-  },
-  pressed: {
-    opacity: 0.72,
-  },
-});
+function withOpacity(color: string, opacity: number): string {
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function toArabicNumbers(value: number): string {
+  return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
+}

@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export async function initializeDatabase(database: SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON;');
@@ -68,6 +68,23 @@ export async function initializeDatabase(database: SQLiteDatabase): Promise<void
         );
 
         PRAGMA user_version = 1;
+      `);
+    }
+
+    if (currentVersion < 2) {
+      await database.execAsync(`
+        CREATE TABLE mushaf_page_cache (
+          page_number INTEGER NOT NULL CHECK (page_number BETWEEN 1 AND 604),
+          mushaf_id INTEGER NOT NULL,
+          page_json TEXT NOT NULL,
+          page_sha256 TEXT NOT NULL CHECK (length(page_sha256) = 64),
+          font_data BLOB NOT NULL CHECK (length(font_data) > 4),
+          font_sha256 TEXT NOT NULL CHECK (length(font_sha256) = 64),
+          cached_at TEXT NOT NULL,
+          PRIMARY KEY (page_number, mushaf_id)
+        );
+
+        PRAGMA user_version = 2;
       `);
     }
   });

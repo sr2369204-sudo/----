@@ -1,227 +1,462 @@
 import { Link } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
 import { Spacing } from '@/constants/theme';
+import type { QuranSurahSummary } from '@/features/quran/types';
 import { ContentUnavailableError, quranContentProvider } from '@/features/quran/services/content-provider';
 import { useTheme } from '@/hooks/use-theme';
 
+type RevelationFilter = 'all' | 'makkah' | 'madinah';
+
+const filters: { key: RevelationFilter; label: string }[] = [
+  { key: 'all', label: 'الكل' },
+  { key: 'makkah', label: 'مكية' },
+  { key: 'madinah', label: 'مدنية' },
+];
+
 export default function HomeScreen() {
   const colors = useTheme();
+  const [search, setSearch] = useState('');
+  const [revelationFilter, setRevelationFilter] = useState<RevelationFilter>('all');
   const surahDirectory = useQuery({
     queryKey: ['quran', 'surah-directory'],
     queryFn: () => quranContentProvider.getSurahDirectory(),
   });
 
+  const visibleSurahs = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return (surahDirectory.data?.surahs ?? []).filter((surah) => {
+      const matchesSearch =
+        query.length === 0 ||
+        surah.nameArabic.includes(query) ||
+        String(surah.surahNumber).includes(query) ||
+        toArabicNumbers(surah.surahNumber).includes(query);
+      return matchesSearch &&
+        (revelationFilter === 'all' || surah.revelationPlace === revelationFilter);
+    });
+  }, [revelationFilter, search, surahDirectory.data]);
+
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>مصحف</Text>
-            <Text style={[styles.title, { color: colors.text }]}>قراءتك، بهدوء</Text>
-          </View>
-          <Link href="/settings" style={[styles.settingsLink, { color: colors.primary }]}>
-            الإعدادات
-          </Link>
-        </View>
-
-        <View style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.noticeTitle, { color: colors.text }]}>نبدأ بمصدر موثوق</Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>
-            {surahDirectory.data
-              ? `قائمة السور متاحة مباشرة من Quran.com · إصدار الواجهة ${surahDirectory.data.contentVersion}.`
-              : 'يجلب التطبيق النص مباشرة من واجهة Quran.com العامة، من دون خادم خاص أو مفاتيح. يلزم اتصال بالإنترنت.'}
-          </Text>
-          {surahDirectory.data?.surahs[0] ? (
-            <Link
-              href={{
-                pathname: '/reader',
-                params: { surahNumber: String(surahDirectory.data.surahs[0].surahNumber) },
-              }}
-              style={[styles.primaryButton, { backgroundColor: colors.primary }]}>
-              فتح القارئ
-            </Link>
-          ) : (
-            <Link href="/reader" style={[styles.primaryButton, { backgroundColor: colors.primary }]}>
-              فتح القارئ
-            </Link>
-          )}
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>سور القرآن</Text>
-        {surahDirectory.isPending ? (
-          <Text style={[styles.body, { color: colors.textSecondary }]}>جارٍ التحقق من مصدر المحتوى…</Text>
-        ) : surahDirectory.data ? (
-          <View style={styles.surahList}>
-            {surahDirectory.data.surahs.map((surah) => (
-              <Link
-                key={surah.surahNumber}
-                href={{ pathname: '/reader', params: { surahNumber: String(surah.surahNumber) } }}
-                asChild>
+    <SafeAreaView style={StyleSheet.flatten([styles.safeArea, { backgroundColor: colors.background }])}>
+      <FlatList
+        data={visibleSurahs}
+        keyExtractor={(item) => String(item.surahNumber)}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View style={styles.headerContent}>
+            <View style={styles.topBar}>
+              <View style={styles.brand}>
+                <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.brandMarkText}>م</Text>
+                </View>
+                <View>
+                  <Text style={[styles.brandName, { color: colors.text }]}>مصحف</Text>
+                  <Text style={[styles.brandCaption, { color: colors.textSecondary }]}>رفيق وردك اليومي</Text>
+                </View>
+              </View>
+              <Link href="/settings" asChild>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="الإعدادات"
                   style={StyleSheet.flatten([
-                    styles.surahCard,
+                    styles.settingsButton,
                     { backgroundColor: colors.surface, borderColor: colors.border },
                   ])}>
-                  <Text style={[styles.surahNumber, { color: colors.primary }]}>
-                    {surah.surahNumber}
-                  </Text>
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>{surah.nameArabic}</Text>
+                  <Text style={[styles.settingsGlyph, { color: colors.primary }]}>☼</Text>
                 </Pressable>
               </Link>
-            ))}
-          </View>
-        ) : (
-          <View style={[styles.unavailable, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.body, { color: colors.textSecondary }]}>
-              {surahDirectory.error instanceof ContentUnavailableError &&
-              surahDirectory.error.reason === 'invalid-data'
-                ? 'رفض التطبيق استجابة Quran.com لأن بيانات السور غير مكتملة أو غير صالحة.'
-                : 'تعذر الاتصال بمصدر Quran.com. تحقق من اتصال الإنترنت وحاول مجددًا.'}
-            </Text>
-            <Text style={[styles.body, { color: colors.textSecondary }]}>
-              لا يحتاج التطبيق إلى خادم تملكه أو بيانات اعتماد. المحتوى يُحمّل عند الطلب، لذلك يلزم الإنترنت لفتح السور.
-            </Text>
-            <ExternalLink
-              href="https://quran.com/"
-              style={[styles.externalLink, { color: colors.primary }]}>
-              مصدر البيانات: Quran.com
-            </ExternalLink>
-          </View>
-        )}
+            </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>مساحة قراءتك</Text>
-        <View style={styles.cardRow}>
-          <View style={[styles.featureCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>ملاحظاتي</Text>
-            <Text style={[styles.body, { color: colors.textSecondary }]}>
-              تحفظ الملاحظات والتمييزات محليًا عندما يتوفر محتوى موثوق.
-            </Text>
-          </View>
-        </View>
+            <View style={[styles.hero, { backgroundColor: colors.primary }]}>
+              <Text style={styles.heroEyebrow}>رحلتك مع القرآن</Text>
+              <Text style={styles.heroTitle}>مساحة هادئة لقراءتك</Text>
+              <Text style={styles.heroBody}>
+                افتح المصحف، وابحث عن السورة التي تريدها، وتابع آياتك بوضوح.
+              </Text>
+              <Link href={{ pathname: '/reader', params: { surahNumber: '1' } }} asChild>
+                <Pressable
+                  accessibilityRole="button"
+                  style={StyleSheet.flatten([styles.startButton])}>
+                  <Text style={[styles.startButtonText, { color: colors.primary }]}>ابدأ القراءة</Text>
+                  <Text style={[styles.startArrow, { color: colors.primary }]}>←</Text>
+                </Pressable>
+              </Link>
+              <View pointerEvents="none" style={styles.heroDecoration}>
+                <Text style={styles.heroDecorationText}>۞</Text>
+              </View>
+            </View>
 
-        <Text style={[styles.footer, { color: colors.textSecondary }]}>
-          القراءة دون حساب؛ المزامنة السحابية ستضاف لاحقًا باختيارك.
-        </Text>
-      </ScrollView>
+            <View style={styles.sectionHeading}>
+              <View>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>سور القرآن</Text>
+                <Text style={[styles.sectionCaption, { color: colors.textSecondary }]}>
+                  {surahDirectory.data
+                    ? `${toArabicNumbers(visibleSurahs.length)} سورة`
+                    : 'ابحث عن سورة أو رقمها'}
+                </Text>
+              </View>
+              <Text style={[styles.surahTotal, { color: colors.primary }]}>١١٤</Text>
+            </View>
+
+            <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.searchIcon, { color: colors.textSecondary }]}>⌕</Text>
+              <TextInput
+                accessibilityLabel="ابحث عن سورة"
+                placeholder="ابحث باسم السورة أو رقمها"
+                placeholderTextColor={colors.textSecondary}
+                value={search}
+                onChangeText={setSearch}
+                textAlign="right"
+                returnKeyType="search"
+                style={[styles.searchInput, { color: colors.text }]}
+              />
+            </View>
+
+            <View style={styles.filterRow}>
+              {filters.map((filter) => {
+                const active = revelationFilter === filter.key;
+                return (
+                  <Pressable
+                    key={filter.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setRevelationFilter(filter.key)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: active ? colors.backgroundSelected : colors.surface,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}>
+                    <Text style={[styles.filterText, { color: active ? colors.primary : colors.textSecondary }]}>
+                      {filter.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {surahDirectory.isPending && (
+              <View style={styles.statusRow}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.statusText, { color: colors.textSecondary }]}>جارٍ تحميل السور…</Text>
+              </View>
+            )}
+            {surahDirectory.error && (
+              <View style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
+                  {surahDirectory.error instanceof ContentUnavailableError &&
+                  surahDirectory.error.reason === 'invalid-data'
+                    ? 'تعذر التحقق من قائمة السور القادمة من المصدر.'
+                    : 'تعذر تحميل السور. تحقق من اتصال الإنترنت وحاول مجددًا.'}
+                </Text>
+                <Pressable accessibilityRole="button" onPress={() => void surahDirectory.refetch()}>
+                  <Text style={[styles.retryText, { color: colors.primary }]}>إعادة المحاولة</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        }
+        renderItem={({ item }) => <SurahRow surah={item} />}
+        ListEmptyComponent={
+          !surahDirectory.isPending && !surahDirectory.error ? (
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>لا توجد سورة بهذا الاسم.</Text>
+          ) : undefined
+        }
+        ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+      />
     </SafeAreaView>
   );
+}
+
+function SurahRow({ surah }: { surah: QuranSurahSummary }) {
+  const colors = useTheme();
+  return (
+    <Link
+      href={{ pathname: '/reader', params: { surahNumber: String(surah.surahNumber) } }}
+      asChild>
+      <Pressable
+        accessibilityRole="button"
+        style={StyleSheet.flatten([
+          styles.surahRow,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ])}>
+        <View style={[styles.surahNumberBadge, { backgroundColor: colors.backgroundSelected }]}>
+          <Text style={[styles.surahNumber, { color: colors.primary }]}>
+            {toArabicNumbers(surah.surahNumber)}
+          </Text>
+        </View>
+        <View style={styles.surahInfo}>
+          <Text style={[styles.surahName, { color: colors.text }]}>{surah.nameArabic}</Text>
+          <Text style={[styles.surahDetails, { color: colors.textSecondary }]}>
+            {surah.revelationPlace === 'makkah' ? 'مكية' : 'مدنية'} · {toArabicNumbers(surah.ayahCount)} آية
+          </Text>
+        </View>
+        <Text style={[styles.chevron, { color: colors.textSecondary }]}>‹</Text>
+      </Pressable>
+    </Link>
+  );
+}
+
+function toArabicNumbers(value: number): string {
+  return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  content: {
-    padding: Spacing.four,
-    gap: Spacing.four,
+  listContent: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.five,
   },
-  header: {
+  headerContent: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 720,
+    gap: Spacing.three,
+    paddingBottom: Spacing.three,
+  },
+  topBar: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: Spacing.two,
+  },
+  brand: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandMarkText: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  brandName: {
+    fontSize: 17,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  brandCaption: {
+    marginTop: 2,
+    fontSize: 12,
+    textAlign: 'right',
+  },
+  settingsButton: {
+    width: 44,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsGlyph: {
+    fontSize: 23,
+    fontWeight: '700',
+  },
+  hero: {
+    overflow: 'hidden',
+    minHeight: 224,
+    borderRadius: 28,
+    padding: Spacing.four,
+    justifyContent: 'center',
     gap: Spacing.two,
   },
-  eyebrow: {
-    fontSize: 14,
-    textAlign: 'right',
-  },
-  title: {
-    marginTop: 6,
-    fontSize: 28,
-    fontWeight: '700',
-    textAlign: 'right',
-  },
-  settingsLink: {
-    fontSize: 15,
+  heroEyebrow: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 13,
     fontWeight: '600',
-    padding: Spacing.two,
-  },
-  notice: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: Spacing.four,
-    gap: Spacing.three,
-  },
-  noticeTitle: {
-    fontSize: 20,
-    fontWeight: '700',
     textAlign: 'right',
   },
-  body: {
-    fontSize: 15,
-    lineHeight: 25,
-    textAlign: 'right',
-  },
-  primaryButton: {
+  heroTitle: {
+    maxWidth: '80%',
     color: '#FFFFFF',
-    overflow: 'hidden',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
+    fontSize: 25,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  heroBody: {
+    maxWidth: '82%',
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 14,
+    lineHeight: 23,
+    textAlign: 'right',
+  },
+  startButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     borderRadius: 14,
-    alignSelf: 'flex-end',
-    fontSize: 15,
+    backgroundColor: '#FFFFFF',
+  },
+  startButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  startArrow: {
+    fontSize: 18,
     fontWeight: '700',
+  },
+  heroDecoration: {
+    position: 'absolute',
+    left: -12,
+    bottom: -42,
+  },
+  heroDecorationText: {
+    color: 'rgba(255,255,255,0.08)',
+    fontSize: 170,
+  },
+  sectionHeading: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.one,
   },
   sectionTitle: {
-    fontSize: 19,
-    fontWeight: '700',
+    fontSize: 21,
+    fontWeight: '800',
     textAlign: 'right',
   },
-  cardRow: {
+  sectionCaption: {
+    marginTop: 3,
+    fontSize: 13,
+    textAlign: 'right',
+  },
+  surahTotal: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  searchBox: {
+    minHeight: 54,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 17,
+    paddingHorizontal: Spacing.three,
+  },
+  searchIcon: {
+    fontSize: 24,
+    paddingLeft: Spacing.two,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: Spacing.two,
+    fontSize: 15,
+  },
+  filterRow: {
     flexDirection: 'row-reverse',
     gap: Spacing.two,
   },
-  unavailable: {
+  filterChip: {
+    minWidth: 64,
+    alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 16,
-    padding: Spacing.three,
-    gap: Spacing.two,
+    borderRadius: 20,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 9,
   },
-  externalLink: {
-    fontSize: 14,
+  filterText: {
+    fontSize: 13,
     fontWeight: '700',
-    textAlign: 'right',
-    paddingVertical: Spacing.two,
   },
-  surahList: {
-    gap: Spacing.two,
-  },
-  surahCard: {
+  surahRow: {
+    minHeight: 72,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.three,
-    minHeight: 52,
     paddingHorizontal: Spacing.three,
-    borderRadius: 14,
-    borderWidth: 1,
-    textAlign: 'right',
-    textDecorationLine: 'none',
-  },
-  surahNumber: {
-    minWidth: 28,
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  featureCard: {
-    flex: 1,
+    paddingVertical: Spacing.two,
     borderWidth: 1,
     borderRadius: 18,
-    padding: Spacing.three,
-    gap: Spacing.two,
   },
-  cardTitle: {
-    fontSize: 16,
+  surahNumberBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  surahNumber: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  surahInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  surahName: {
+    fontSize: 17,
     fontWeight: '700',
     textAlign: 'right',
   },
-  footer: {
-    fontSize: 13,
-    lineHeight: 21,
+  surahDetails: {
+    fontSize: 12,
     textAlign: 'right',
+  },
+  chevron: {
+    fontSize: 26,
+    lineHeight: 30,
+  },
+  rowSeparator: {
+    height: Spacing.two,
+  },
+  statusRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  statusText: {
+    fontSize: 13,
+    textAlign: 'right',
+  },
+  notice: {
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  noticeText: {
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'right',
+  },
+  retryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  emptyText: {
+    paddingVertical: Spacing.four,
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
