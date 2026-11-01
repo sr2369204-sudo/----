@@ -257,10 +257,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 5px;
+  padding: 0;
   background: ${isDark ? '#111a16' : '#eee9dc'};
 }
 .page {
+  --quran-font-size: min(
+    ${fontSize}px,
+    7cqi,
+    calc((100vh - 90px) / ${sourceLineCount * 1.5})
+  );
   position: relative;
   display: flex;
   flex-direction: column;
@@ -268,7 +273,7 @@ body {
   max-height: 100%;
   aspect-ratio: 0.696;
   margin: auto;
-  padding: 13px 10px;
+  padding: 10px 12px;
   container-type: inline-size;
   border: 3px double #b89758;
   outline: 1px solid #e8d8ae;
@@ -321,34 +326,30 @@ body {
 }
 .page-header {
   display: flex;
-  flex: 0 0 42px;
+  flex: 0 0 30px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   position: relative;
   z-index: 1;
 }
 .header-label {
-  flex: 1;
   min-width: 0;
-  padding: 5px 8px;
-  border: 1px solid #c7a66a;
-  border-radius: 22px;
-  background: #fff7e8;
+  padding: 2px 6px;
   color: #354d37;
-  font: 600 12px sans-serif;
-  text-align: center;
+  font: 600 11px sans-serif;
+  text-align: right;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.header-label + .header-label { margin-inline-start: 5px; }
 .lines {
   display: grid;
-  flex: 1 1 0;
-  grid-template-rows: repeat(${sourceLineCount}, minmax(0, 1fr));
+  flex: 1 1 auto;
+  grid-template-rows: repeat(${sourceLineCount}, min-content);
+  align-content: start;
   width: 100%;
   min-height: 0;
-  padding: 1px 2px;
+  padding: 2px;
   border-inline: 1px solid rgba(169, 138, 82, 0.22);
   overflow: hidden;
 }
@@ -356,9 +357,9 @@ body {
   display: block;
   align-self: stretch;
   direction: rtl;
-  text-align: center;
-  text-align-last: center;
-  line-height: 1.65;
+  font-size: var(--quran-rendered-font-size, var(--quran-font-size));
+  text-align: right;
+  line-height: 1.5;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -372,32 +373,35 @@ body {
   text-align: center;
 }
 .surah-title {
-  margin: 0 9%;
-  border: 3px double #a8894f;
-  border-radius: 7px;
-  background:
-    linear-gradient(135deg, transparent 12px, #fff7e8 0) top left,
-    linear-gradient(225deg, transparent 12px, #fff7e8 0) top right,
-    linear-gradient(315deg, transparent 12px, #fff7e8 0) bottom right,
-    linear-gradient(45deg, transparent 12px, #fff7e8 0) bottom left;
-  background-size: 51% 51%;
-  background-repeat: no-repeat;
+  position: relative;
+  min-height: calc(var(--quran-font-size) * 1.5);
+  margin: 0 12%;
+  padding: 0 12px;
+  border-block: 1px solid #a8894f;
   color: #354d37;
-  font: 700 16px "Noto Naskh Arabic", "Noto Naskh Arabic UI", serif;
+  font-family: "Noto Naskh Arabic", "Noto Naskh Arabic UI", serif;
+  font-size: min(16px, 5.4cqi);
+  font-weight: 700;
+  font-feature-settings: "ccmp" 1, "rlig" 1, "calt" 1;
 }
+.surah-title:before, .surah-title:after {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border: 1px solid #a8894f;
+  background: #fffaf0;
+  content: "";
+  transform: translateY(-50%) rotate(45deg);
+}
+.surah-title:before { inset-inline-start: -3px; }
+.surah-title:after { inset-inline-end: -3px; }
 .opening-basmala {
   color: #263a30;
   font-family: "QcfTajweedPage";
   font-palette: --QcfLight;
-  font-size: min(
-    ${Math.max(fontSize - 5, 18)}px,
-    ${Math.max(fontSize - 5, 18) * 4.5 / 29}vw,
-    ${Math.max(fontSize - 5, 18) * 4.5 * 0.696 / 29}vh
-  );
-  font-size: min(
-    ${Math.max(fontSize - 5, 18)}px,
-    ${Math.max(fontSize - 5, 18) * 4.8 / 29}cqi
-  );
+  font-size: var(--quran-rendered-font-size, var(--quran-font-size));
+  min-height: calc(var(--quran-font-size) * 1.5);
   white-space: nowrap;
   ${showTajweed ? '' : 'filter: grayscale(1);'}
 }
@@ -412,15 +416,7 @@ body {
 .word {
   font-family: "QcfTajweedPage";
   font-palette: --QcfLight;
-  font-size: min(
-    ${fontSize}px,
-    ${fontSize * 4.5 / 29}vw,
-    ${fontSize * 4.5 * 0.696 / 29}vh
-  );
-  font-size: min(
-    ${fontSize}px,
-    ${fontSize * 4.8 / 29}cqi
-  );
+  font-size: var(--quran-rendered-font-size, var(--quran-font-size));
   line-height: 1.25;
   direction: rtl;
   ${showTajweed ? '' : 'filter: grayscale(1);'}
@@ -430,29 +426,15 @@ body {
   min-height: 1em;
   color: #514327;
   font-family: "QcfTajweedPage";
-  font-size: min(
-    ${Math.round(fontSize * 0.66)}px,
-    ${fontSize * 0.66 * 4.5 / 29}vw,
-    ${fontSize * 0.66 * 4.5 * 0.696 / 29}vh
-  );
-  font-size: min(
-    ${Math.round(fontSize * 0.66)}px,
-    ${fontSize * 0.66 * 4.8 / 29}cqi
-  );
-  line-height: 1.25;
+  font-palette: --QcfLight;
+  font-size: 0.88em;
+  line-height: inherit;
+  vertical-align: baseline;
 }
 .basmala-word {
   font-family: "QcfBasmala";
   font-palette: --QcfBasmalaLight;
-  font-size: min(
-    ${Math.max(fontSize - 5, 18)}px,
-    ${Math.max(fontSize - 5, 18) * 4.5 / 29}vw,
-    ${Math.max(fontSize - 5, 18) * 4.5 * 0.696 / 29}vh
-  );
-  font-size: min(
-    ${Math.max(fontSize - 5, 18)}px,
-    ${Math.max(fontSize - 5, 18) * 4.8 / 29}cqi
-  );
+  font-size: inherit;
   line-height: 1.25;
 }
 .selected {
@@ -462,7 +444,7 @@ body {
 }
 .page-footer {
   display: flex;
-  flex: 0 0 42px;
+  flex: 0 0 34px;
   align-items: center;
   justify-content: space-between;
   position: relative;
@@ -496,7 +478,6 @@ body {
 <div class="frame-ornament" aria-hidden="true"></div>
 <header class="page-header">
   <span class="header-label" id="juz-label"></span>
-  <span class="header-label" id="surah-label"></span>
 </header>
 <section class="lines" id="mushaf-lines"></section>
 <footer class="page-footer">
@@ -518,7 +499,6 @@ const highlightStyles = ${highlightsJson};
 const linesElement = document.getElementById("mushaf-lines");
 document.getElementById("juz-label").textContent =
   "الجزء " + toArabicNumber(page.juzNumber) + " · الحزب " + toArabicNumber(page.hizbNumber);
-document.getElementById("surah-label").textContent = "سورة " + page.surahs[0].nameArabic;
 document.getElementById("page-number").textContent = toArabicNumber(page.pageNumber);
 
 for (const line of page.lines) {
@@ -527,12 +507,12 @@ for (const line of page.lines) {
   lineElement.style.gridRow = String(line.lineNumber);
   lineElement.setAttribute("aria-label", "السطر " + line.lineNumber);
   for (const word of line.words) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = word.charType === "word" ? "word" : "ayah-marker";
-    button.dataset.surah = String(word.surahNumber);
-    button.dataset.ayah = String(word.ayahNumber);
     if (word.charType === "word") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "word";
+      button.dataset.surah = String(word.surahNumber);
+      button.dataset.ayah = String(word.ayahNumber);
       button.id = "word-" + word.surahNumber + "-" + word.ayahNumber + "-" + word.position;
       button.dataset.kind = "word";
       button.dataset.position = String(word.position);
@@ -540,19 +520,29 @@ for (const line of page.lines) {
       button.textContent = word.codeV2;
       button.setAttribute("aria-label", word.textUthmani + "، كلمة " + word.position + " من الآية " + word.ayahNumber);
       button.style.backgroundColor = highlightStyles[word.id] || "";
+      lineElement.appendChild(button);
     } else {
-      button.id = "ayah-" + word.surahNumber + "-" + word.ayahNumber;
-      button.dataset.kind = "ayah";
-      button.textContent = word.textUthmani;
-      button.setAttribute("aria-label", "إجراءات الآية " + word.ayahNumber);
-      button.style.backgroundColor = highlightStyles[button.id] || "";
+      lineElement.appendChild(VerseMarker(word));
     }
-    lineElement.appendChild(button);
     if (word !== line.words[line.words.length - 1]) {
       lineElement.appendChild(document.createTextNode(" "));
     }
   }
   linesElement.appendChild(lineElement);
+}
+
+function VerseMarker(word) {
+  const marker = document.createElement("button");
+  marker.type = "button";
+  marker.className = "ayah-marker";
+  marker.id = "ayah-" + word.surahNumber + "-" + word.ayahNumber;
+  marker.dataset.surah = String(word.surahNumber);
+  marker.dataset.ayah = String(word.ayahNumber);
+  marker.dataset.kind = "ayah";
+  marker.textContent = word.codeV2;
+  marker.setAttribute("aria-label", "إجراءات الآية " + word.ayahNumber);
+  marker.style.backgroundColor = highlightStyles[marker.id] || "";
+  return marker;
 }
 
 const sourceLineNumbers = new Set(page.lines.map((line) => line.lineNumber));
@@ -597,6 +587,40 @@ for (const ayah of page.ayahs) {
     }
     linesElement.appendChild(basmala);
   }
+}
+
+function fitMushafText() {
+  linesElement.style.removeProperty("--quran-rendered-font-size");
+  const lines = [...linesElement.querySelectorAll(".line")];
+  if (lines.length === 0) return;
+
+  const baseFontSize = Number.parseFloat(getComputedStyle(lines[0]).fontSize);
+  let scale = 1;
+  for (const line of lines) {
+    if (line.scrollWidth > line.clientWidth && line.scrollWidth > 0) {
+      scale = Math.min(scale, line.clientWidth / line.scrollWidth);
+    }
+  }
+  const basmala = linesElement.querySelector(".opening-basmala");
+  if (basmala && basmala.scrollWidth > basmala.clientWidth && basmala.scrollWidth > 0) {
+    scale = Math.min(scale, basmala.clientWidth / basmala.scrollWidth);
+  }
+  if (scale < 1) {
+    linesElement.style.setProperty(
+      "--quran-rendered-font-size",
+      Math.max(1, baseFontSize * scale) + "px",
+    );
+  }
+}
+
+if (document.fonts) {
+  document.fonts.ready.then(() => {
+    fitMushafText();
+    window.addEventListener("resize", fitMushafText);
+  });
+} else {
+  fitMushafText();
+  window.addEventListener("resize", fitMushafText);
 }
 
 function selectMushafElement(id) {

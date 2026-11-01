@@ -6,7 +6,7 @@
 | Tajweed | Quran.com API v4 `text_uthmani_tajweed` | Loaded with each surah | Render only the rule tags returned by the source; preserve script text and map tags to selectable word IDs by source order. |
 | Tafsir and word information | Quran Foundation content, subject to endpoint availability and each source's terms | Not integrated | Attribute each work; availability does not imply redistribution rights. |
 | Recitation audio | Quran.com API v4 reciter directory and verse-audio endpoint | Implemented for streaming; default reciter is Mishari Rashid al-`Afasy | Use source-listed reciters for ayah audio and source word clips for word playback. Confirm current audio rights before distribution or offline caching. |
-| Page and line metadata | Quran.com API v4 `verses/by_page/{page}?mushaf=19` | Integrated for pages 1–604; each response is validated for page number, verse sequence, word IDs, and line positions | Source records define the line layout; no arbitrary word-count divisions are created. |
+| Page and line metadata | Quran.com API v4 `verses/by_page/{page}?mushaf=19` | Integrated for pages 1–604; each response is validated for page number, verse sequence, word IDs, and line positions | Source records define line breaks and token order. They do not include printed x/y coordinates; horizontal placement is limited to source glyph advances and natural RTL text flow. |
 | Quran font | Quran Foundation QCF Tajweed V4 page fonts (`p{page}.woff2`) | Fetched and cached with each visited page | Font is required to render the source's `code_v2` glyphs and embedded Tajweed palette. Verify font use and local caching rights before distribution. |
 
 ## Source review checklist
@@ -29,7 +29,8 @@ Before importing or caching any source, record its canonical endpoint or dataset
 - Page font: `https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{page}.woff2`
 - A live request to the chapter 1 endpoint returned all seven verses without authentication; the API advertises permissive CORS for web clients.
 - The app requests data directly and validates chapter identity, verse count/order, word IDs/positions, and non-empty Uthmani text before display.
-- Mushaf pages use source page numbers, verse keys, word IDs, line numbers, and `code_v2` glyphs. The app validates the source sequence and retains line-number gaps for page openings and surah transitions.
+- Mushaf pages use source page numbers, verse keys, word IDs, line numbers, and `code_v2` glyphs. Source line numbers and their gaps control row placement; source order controls word flow within each row.
+- Quran.com page records do not supply printed horizontal coordinates or title-frame artwork. The app does not claim pixel-identical reproduction; it does not invent word coordinates or apply line justification to imitate them.
 - Page data and its page-specific font are stored in the local SQLite page cache after download. This is an on-demand cache, not a bundled 604-page offline corpus; only pages previously opened can be read offline.
 - In the verse reader, Tajweed tags are parsed as text, never rendered as HTML. In Mushaf page mode, Tajweed colors come from the source QCF COLRv1 font palette, with a grayscale toggle and explanatory legend.
 - Audio streams at playback time; no files are bundled or downloaded for offline use. The selected reciter applies to ayah audio; word-level clips use the source's provided word recording.

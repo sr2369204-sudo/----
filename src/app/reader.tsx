@@ -431,7 +431,7 @@ export default function ReaderScreen() {
         </Link>
         <View style={styles.headerTitle}>
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            {page?.surahs[0]?.nameArabic ?? 'المصحف'}
+            المصحف
           </Text>
           <Pressable
             accessibilityRole="button"
