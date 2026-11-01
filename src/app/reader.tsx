@@ -379,7 +379,10 @@ export default function ReaderScreen() {
         <Link href="/" replace asChild>
           <Pressable
             accessibilityRole="button"
-            style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            style={StyleSheet.flatten([
+              styles.backButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ])}>
             <Text style={[styles.backGlyph, { color: colors.primary }]}>→</Text>
           </Pressable>
         </Link>
