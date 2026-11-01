@@ -345,8 +345,8 @@ body {
 .lines {
   display: grid;
   flex: 1 1 auto;
-  grid-template-rows: repeat(${sourceLineCount}, min-content);
-  align-content: start;
+  grid-template-rows: repeat(${sourceLineCount}, minmax(0, 1fr));
+  align-content: stretch;
   width: 100%;
   min-height: 0;
   padding: 2px;

@@ -347,6 +347,8 @@ test('resolves Quran.com audio hosted on the verified QuranicAudio mirror', asyn
 });
 
 test('omits reciters whose source has no playable ayah audio', async (t) => {
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
   mockFetch(t, async (url) => {
     const path = String(url);
     if (path.endsWith('/resources/chapter_reciters?language=ar')) {
@@ -360,20 +362,24 @@ test('omits reciters whose source has no playable ayah audio', async (t) => {
         headers: { 'content-type': 'application/json' },
       });
     }
-    if (path.includes('/recitations/97/')) {
-      return new Response('Not found', { status: 404 });
-    }
-    return new Response(JSON.stringify({
-      audio_files: [{ verse_key: '1:1', url: 'Alafasy/mp3/001001.mp3' }],
-    }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
+    activeRequests += 1;
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    activeRequests -= 1;
+    return path.includes('/recitations/97/')
+      ? new Response('Not found', { status: 404 })
+      : new Response(JSON.stringify({
+          audio_files: [{ verse_key: '1:1', url: 'Alafasy/mp3/001001.mp3' }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
   });
 
   const reciters = await new QuranComContentProvider().getReciters();
 
   assert.deepEqual(reciters, [{ id: 7, name: 'Playable reciter', style: 'Murattal' }]);
+  assert.equal(maxActiveRequests, 1);
 });
 
 test('rejects incomplete ayah responses instead of displaying partial content', async (t) => {

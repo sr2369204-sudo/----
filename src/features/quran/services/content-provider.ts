@@ -265,24 +265,23 @@ export class QuranComContentProvider implements QuranContentProvider {
       return { id: item.id, name: item.name, style: item.style.name };
     });
 
-    const verifiedReciters = await Promise.all(reciters.map(async (reciter) => {
+    const playableReciters: QuranReciter[] = [];
+    for (const reciter of reciters) {
       try {
         await this.getAyahAudioUrl(reciter.id, 1, 1);
-        return reciter;
+        playableReciters.push(reciter);
       } catch (error) {
         if (
           error instanceof ContentUnavailableError &&
           error.reason === 'server' &&
           error.message === 'Quran.com API returned HTTP 404.'
         ) {
-          return null;
+          continue;
         }
         throw error;
       }
-    }));
-    const playableReciters = verifiedReciters.filter(
-      (reciter): reciter is QuranReciter => reciter !== null,
-    );
+    }
+
     if (playableReciters.length === 0) {
       throw new ContentUnavailableError(
         'invalid-data',
@@ -603,7 +602,7 @@ function isSafeWordAudioPath(value: string): boolean {
 }
 
 function isSafeAudioPath(value: string): boolean {
-  if (/^[A-Za-z0-9_-]+\/mp3\/\d{6}\.mp3$/.test(value)) {
+  if (/^(?:[A-Za-z0-9_-]+\/){2,3}\d{6}\.mp3$/.test(value)) {
     return true;
   }
   return /^\/\/mirrors\.quranicaudio\.com\/everyayah\/Husary_(?:64kbps|Muallim_128kbps)\/\d{6}\.mp3$/.test(
