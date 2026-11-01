@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "مصحف",
@@ -44,6 +45,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_REAL_PROJECT_ID"
+      }
     }
   }
 }
