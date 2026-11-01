@@ -11,22 +11,26 @@ Base URL: `https://api.quran.com/api/v4`
 | Arabic surah directory | `GET /chapters?language=ar` |
 | Surah metadata | `GET /chapters/{id}?language=ar` |
 | Uthmani words and Tajweed | `GET /verses/by_chapter/{id}?language=ar&words=true&word_fields=text_uthmani&fields=text_uthmani_tajweed&per_page=300` |
+| Mushaf page/line/word metadata | `GET /verses/by_page/{1..604}?language=ar&mushaf=19&words=true&word_fields=code_v2,text_uthmani,audio_url&fields=text_uthmani_tajweed&per_page=300` |
+| First page of a surah or juz | `GET /verses/by_chapter/{id}?fields=page_number&per_page=1`; `GET /verses/by_juz/{id}?fields=page_number&per_page=1` |
 | Reciter list | `GET /resources/chapter_reciters?language=ar` |
 | Ayah audio URL | `GET /recitations/{reciter_id}/by_ayah/{surah}:{ayah}` |
 
-The provider fetches surah metadata and verses together, then validates the requested chapter, Arabic name, verse count and order, word IDs and positions, Uthmani text, and well-formed source Tajweed markup. Verse-end markers are excluded from selectable words. Invalid or incomplete responses are rejected instead of displayed as complete content.
+The reader uses the Quran.com API's 604-page Mushaf 19 dataset. Page responses supply the page number, verse keys, Uthmani text, Tajweed markup, word IDs, line numbers, and `code_v2` glyphs. The provider checks page/verse/word sequence and rejects malformed or incomplete responses. Verse-end markers remain on their source line but are not treated as selectable words.
 
-Audio streams directly from Quran.com audio hosts through Expo Audio. The selected reciter is used for ayah recordings; source word clips are used when a word is selected. Audio is not bundled or cached offline.
+Each page is rendered with its corresponding Quran Foundation QCF Tajweed V4 COLRv1 font at `https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{page}.woff2`. Source line numbers control placement; page text is not reflowed using ordinary Flexbox wrapping. Surah names come from the API directory; when a page opens a surah that uses the Basmala, its text and Tajweed segments are sourced from Al-Fatiha 1:1 and cached with that page. This is a data-driven rendering, not a scanned or pixel-certified reproduction of the printed Mushaf.
+
+Page data and the matching font are cached in SQLite when a page is first opened. Previously opened pages can be reopened offline; uncached pages and surah-directory lookups still need a connection. The app does not bundle or predownload all 604 pages. Audio streams directly from Quran.com audio hosts through Expo Audio. The selected reciter is used for ayah recordings; source word clips are used when a word is selected. Audio is not bundled or cached offline.
 
 The live chapter 1 endpoint was verified without authentication and returned all seven verses. `api-v4` identifies the API schema, not a separately versioned Quran text dataset.
 
 ### Limitations and terms
 
-- An internet connection and availability of Quran.com are required to load content. No Quran content is cached for offline use yet.
+- An internet connection and availability of Quran.com are required for first-time page loads. Only pages already opened are cached for offline use.
 - Quran.com terms describe content as for personal, non-commercial use. Public API access does not itself grant rights to redistribute, cache, or commercially publish the text. Review current API and content terms for the intended distribution; see [licensing](./licensing.md).
 - Reciter recordings may have separate rights and attribution requirements; verify before publishing, redistributing, or caching audio.
 - Quran Foundation Content APIs use a separate credentialed flow. This app does not call those APIs directly and does not bundle their client secrets.
-- Tajweed tags are provided alongside the text. Tafsir and printed page metadata are not provided by this integration and need separate source and rights review.
+- Tajweed tags and page/line metadata are provided by the API. Tafsir and printed page images are not integrated; the app does not bundle page scans.
 
 ## Optional future services
 

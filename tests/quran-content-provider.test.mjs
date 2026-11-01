@@ -41,13 +41,6 @@ const syntheticVerses = {
   pagination: { total_records: 1 },
 };
 
-const syntheticPageChapter = {
-  chapter: {
-    ...syntheticChapter.chapter,
-    verses_count: 7,
-  },
-};
-
 const syntheticPageVerses = {
   verses: Array.from({ length: 7 }, (_, index) => {
     const ayahNumber = index + 1;
@@ -56,6 +49,8 @@ const syntheticPageVerses = {
       verse_number: ayahNumber,
       verse_key: `1:${ayahNumber}`,
       page_number: 1,
+      juz_number: 1,
+      hizb_number: 1,
       text_uthmani_tajweed:
         `SYNTHETIC_TEST_TOKEN_${ayahNumber} <span class=end>${String.fromCharCode(0x0660 + ayahNumber)}</span>`,
       words: [
@@ -83,6 +78,15 @@ const syntheticPageVerses = {
     };
   }),
   pagination: { total_records: 7 },
+};
+
+const syntheticSurahDirectory = {
+  chapters: Array.from({ length: 114 }, (_, index) => ({
+    id: index + 1,
+    name_arabic: `سورة ${index + 1}`,
+    verses_count: index === 0 ? 7 : 1,
+    revelation_place: index % 2 === 0 ? 'makkah' : 'madinah',
+  })),
 };
 
 function mockFetch(t, handler) {
@@ -148,8 +152,8 @@ test('loads QCF Tajweed page one as source-ordered lines and words', async (t) =
   const requestedUrls = [];
   mockFetch(t, async (url) => {
     requestedUrls.push(String(url));
-    const body = String(url).includes('/chapters/1?')
-      ? syntheticPageChapter
+    const body = String(url).includes('/chapters?')
+      ? syntheticSurahDirectory
       : syntheticPageVerses;
     return new Response(JSON.stringify(body), {
       status: 200,
@@ -161,16 +165,126 @@ test('loads QCF Tajweed page one as source-ordered lines and words', async (t) =
 
   assert.equal(requestedUrls.length, 2);
   assert.ok(requestedUrls.some((url) => url.includes('/verses/by_page/1?language=ar&mushaf=19')));
+  assert.ok(requestedUrls.some((url) => url.endsWith('/chapters?language=ar')));
   assert.equal(page.mushafId, 19);
   assert.equal(page.pageNumber, 1);
-  assert.equal(page.surah.ayahs.length, 7);
+  assert.deepEqual(page.surahs.map((surah) => surah.surahNumber), [1]);
+  assert.equal(page.ayahs.length, 7);
   assert.deepEqual(page.lines.map((line) => line.lineNumber), [2, 3, 4, 5, 6, 7, 8]);
   assert.deepEqual(
     page.lines.map((line) => line.words.map((word) => word.ayahNumber)),
     [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]],
   );
   assert.equal(page.lines[0].words[0].codeV2, 'SYNTHETIC_GLYPH_1');
-  assert.equal(page.surah.ayahs[0].words[0].audioUrl, 'wbw/001_001_001.mp3');
+  assert.equal(page.ayahs[0].words[0].audioUrl, 'wbw/001_001_001.mp3');
+  assert.equal(page.juzNumber, 1);
+  assert.equal(page.hizbNumber, 1);
+});
+
+test('loads page metadata for all 604 pages and rejects invalid page numbers', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    const body = String(url).includes('/chapters?')
+      ? syntheticSurahDirectory
+      : { ...syntheticPageVerses, verses: syntheticPageVerses.verses.map((verse) => ({
+          ...verse,
+          page_number: 604,
+          words: verse.words.map((word) => ({ ...word, page_number: 604 })),
+        })) };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const provider = new QuranComContentProvider();
+  await assert.rejects(provider.getMushafPage(605), RangeError);
+  const page = await provider.getMushafPage(604);
+
+  assert.equal(page.pageNumber, 604);
+  assert.ok(requestedUrls.some((url) => url.includes('/verses/by_page/604?')));
+  assert.ok(requestedUrls.some((url) => url.includes('word_fields=code_v2%2Ctext_uthmani%2Caudio_url')));
+});
+
+test('preserves source line gaps and Surah transitions on a page', async (t) => {
+  const transitionVerses = {
+    verses: [112, 113, 114].map((surahNumber, index) => {
+      const ayahNumber = 1;
+      const lineNumber = [3, 7, 12][index];
+      return {
+        verse_number: ayahNumber,
+        verse_key: `${surahNumber}:${ayahNumber}`,
+        page_number: 604,
+        juz_number: 30,
+        hizb_number: 60,
+        text_uthmani_tajweed: `SYNTHETIC_TEST_TOKEN <span class=end>١</span>`,
+        words: [
+          {
+            id: 900 + index * 2,
+            position: 1,
+            char_type_name: 'word',
+            page_number: 604,
+            line_number: lineNumber,
+            code_v2: `SYNTHETIC_GLYPH_${surahNumber}`,
+            text_uthmani: 'SYNTHETIC_TEST_TOKEN',
+            audio_url: null,
+          },
+          {
+            id: 901 + index * 2,
+            position: 2,
+            char_type_name: 'end',
+            page_number: 604,
+            line_number: lineNumber,
+            code_v2: `SYNTHETIC_END_${surahNumber}`,
+            text_uthmani: '١',
+            audio_url: null,
+          },
+        ],
+      };
+    }),
+    pagination: { total_records: 3 },
+  };
+  mockFetch(t, async (url) => {
+    const path = String(url);
+    const body = path.endsWith('/chapters?language=ar')
+      ? syntheticSurahDirectory
+      : path.includes('/chapters/1?')
+        ? syntheticChapter
+        : path.includes('/verses/by_chapter/1?')
+          ? syntheticVerses
+          : transitionVerses;
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const page = await new QuranComContentProvider().getMushafPage(604);
+
+  assert.deepEqual(page.surahs.map((surah) => surah.surahNumber), [112, 113, 114]);
+  assert.deepEqual(page.lines.map((line) => line.lineNumber), [3, 7, 12]);
+  assert.deepEqual(page.ayahs.map((ayah) => ayah.surahNumber), [112, 113, 114]);
+  assert.equal(page.basmalaTajweed, syntheticVerses.verses[0].text_uthmani_tajweed);
+});
+
+test('resolves source-backed first pages for surahs and juzs', async (t) => {
+  mockFetch(t, async (url) => {
+    const isJuzLookup = String(url).includes('/by_juz/');
+    const verseKey = isJuzLookup ? '8:41' : '9:1';
+    const pageNumber = isJuzLookup ? 182 : 187;
+    return new Response(JSON.stringify({
+      verses: [{ verse_key: verseKey, page_number: pageNumber }],
+      pagination: { total_records: 1 },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const provider = new QuranComContentProvider();
+  assert.equal(await provider.getPageNumberForSurah(9), 187);
+  assert.equal(await provider.getPageNumberForJuz(10), 182);
 });
 
 test('resolves source-backed ayah audio URLs and reciter metadata', async (t) => {

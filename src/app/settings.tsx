@@ -171,7 +171,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>مصدر المحتوى</Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>
-            السور والتلاوات تُحمّل مباشرة من Quran.com دون خادم خاص. يحتاج تشغيل المحتوى إلى الإنترنت.
+            صفحات المصحف وخطوطها تُحمّل عند فتحها من Quran.com وتُحفظ على الجهاز. الصفحات غير المفتوحة والتلاوات تحتاج إلى الإنترنت.
           </Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>
             الألوان مستمدة من علامات التجويد التي يرفقها مصدر النص.

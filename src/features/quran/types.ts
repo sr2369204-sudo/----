@@ -44,6 +44,7 @@ export type MushafPageWord = {
   charType: 'word' | 'end';
   codeV2: string;
   textUthmani: string;
+  audioUrl: string | null;
 };
 
 export type MushafPageLine = {
@@ -54,6 +55,10 @@ export type MushafPageLine = {
 export type MushafPage = {
   pageNumber: number;
   mushafId: 19;
-  surah: QuranSurah;
+  juzNumber: number;
+  hizbNumber: number;
+  basmalaTajweed: string | null;
+  surahs: QuranSurahSummary[];
+  ayahs: (QuranAyah & { surahNumber: number })[];
   lines: MushafPageLine[];
 };

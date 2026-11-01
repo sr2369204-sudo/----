@@ -1,9 +1,15 @@
 import { createElement, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View, type HostInstance } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import type { Highlight } from '@/features/annotations/types';
 import type { MushafPage } from '@/features/quran/types';
+import {
+  parseTajweedMarkup,
+  tajweedRuleColors,
+} from '@/features/quran/services/tajweed';
+
+export type SelectionAnchor = { x: number; y: number; width: number; height: number };
 
 type Props = {
   page: MushafPage;
@@ -13,14 +19,23 @@ type Props = {
   isDark: boolean;
   highlights: Highlight[];
   selectedElementId: string | null;
-  onWordPress: (ayahNumber: number, position: number) => void;
-  onAyahPress: (ayahNumber: number) => void;
+  onWordPress: (
+    surahNumber: number,
+    ayahNumber: number,
+    position: number,
+    anchor: SelectionAnchor,
+  ) => void;
+  onAyahPress: (surahNumber: number, ayahNumber: number, anchor: SelectionAnchor) => void;
   onInteractionError: (message: string) => void;
 };
 
-type PageMessage =
-  | { type: 'word'; ayahNumber: number; position: number }
-  | { type: 'ayah'; ayahNumber: number };
+type PageMessage = {
+  type: 'word' | 'ayah';
+  surahNumber: number;
+  ayahNumber: number;
+  position?: number;
+  anchor: SelectionAnchor;
+};
 
 export function MushafPageViewer({
   page,
@@ -36,33 +51,50 @@ export function MushafPageViewer({
 }: Props) {
   const webViewRef = useRef<WebView<unknown>>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HostInstance | null>(null);
   const html = useMemo(
     () => createMushafHtml(page, fontBase64, fontSize, showTajweed, isDark, highlights),
     [fontBase64, fontSize, highlights, isDark, page, showTajweed],
   );
 
-  const handleMessage = useCallback((message: PageMessage): void => {
-    if (message.type === 'word') {
-      if (
-        Number.isInteger(message.ayahNumber) &&
-        message.ayahNumber >= 1 &&
-        message.ayahNumber <= page.surah.ayahCount &&
-        Number.isInteger(message.position) &&
-        message.position >= 1
-      ) {
-        onWordPress(message.ayahNumber, message.position);
-      }
+  const handleMessage = useCallback((
+    message: PageMessage,
+    origin: { x: number; y: number },
+  ): void => {
+    const anchor = {
+      ...message.anchor,
+      x: origin.x + message.anchor.x,
+      y: origin.y + message.anchor.y,
+    };
+    const ayahExists = page.ayahs.some(
+      (ayah) =>
+        ayah.surahNumber === message.surahNumber &&
+        ayah.ayahNumber === message.ayahNumber,
+    );
+    if (!ayahExists) {
+      onInteractionError('تعذر مطابقة التحديد مع بيانات صفحة المصحف.');
       return;
     }
 
-    if (
-      Number.isInteger(message.ayahNumber) &&
-      message.ayahNumber >= 1 &&
-      message.ayahNumber <= page.surah.ayahCount
-    ) {
-      onAyahPress(message.ayahNumber);
+    if (message.type === 'word') {
+      const wordExists = page.ayahs.some(
+        (ayah) =>
+          ayah.surahNumber === message.surahNumber &&
+          ayah.ayahNumber === message.ayahNumber &&
+          ayah.words.some(
+            (word) => word.position === message.position,
+          ),
+      );
+      if (!wordExists || message.position === undefined) {
+        onInteractionError('تعذر مطابقة الكلمة مع بيانات صفحة المصحف.');
+        return;
+      }
+      onWordPress(message.surahNumber, message.ayahNumber, message.position, anchor);
+      return;
     }
-  }, [onAyahPress, onWordPress, page.surah.ayahCount]);
+
+    onAyahPress(message.surahNumber, message.ayahNumber, anchor);
+  }, [onAyahPress, onInteractionError, onWordPress, page.ayahs]);
 
   const syncSelectedElement = useCallback(() => {
     if (Platform.OS === 'web') {
@@ -84,7 +116,7 @@ export function MushafPageViewer({
         onInteractionError('وصل تحديد غير صالح من صفحة المصحف.');
         return;
       }
-      handleMessage(message);
+      containerRef.current?.measureInWindow((x, y) => handleMessage(message, { x, y }));
     } catch (error) {
       onInteractionError(
         error instanceof Error ? `تعذر قراءة التحديد: ${error.message}` : 'تعذر قراءة التحديد.',
@@ -108,7 +140,8 @@ export function MushafPageViewer({
       ) {
         return;
       }
-      handleMessage(event.data.message);
+      const bounds = iframeRef.current?.getBoundingClientRect();
+      handleMessage(event.data.message, { x: bounds?.left ?? 0, y: bounds?.top ?? 0 });
     }
 
     window.addEventListener('message', onWindowMessage);
@@ -117,7 +150,7 @@ export function MushafPageViewer({
 
   if (Platform.OS === 'web') {
     return (
-      <View style={styles.container}>
+      <View ref={containerRef} style={styles.container}>
         {createElement('iframe', {
           ref: iframeRef,
           title: `صفحة ${page.pageNumber} من المصحف`,
@@ -135,7 +168,7 @@ export function MushafPageViewer({
   }
 
   return (
-    <View style={styles.container}>
+    <View ref={containerRef} style={styles.container}>
       <WebView<unknown>
         ref={webViewRef}
         accessibilityLabel={`صفحة ${page.pageNumber} من المصحف`}
@@ -160,6 +193,12 @@ function createMushafHtml(
   highlights: Highlight[],
 ): string {
   const pageJson = JSON.stringify(page).replace(/</g, '\\u003c');
+  const basmalaSegments = page.basmalaTajweed
+    ? parseTajweedMarkup(page.basmalaTajweed.replace(/<span class=end>[^<>]*<\/span>/g, ''))
+    : [];
+  const basmalaJson = JSON.stringify(basmalaSegments).replace(/</g, '\\u003c');
+  const tajweedColorsJson = JSON.stringify(tajweedRuleColors).replace(/</g, '\\u003c');
+  const sourceLineCount = Math.max(...page.lines.map((line) => line.lineNumber));
   const highlightsJson = JSON.stringify(buildHighlightStyles(page, highlights)).replace(
     /</g,
     '\\u003c',
@@ -179,41 +218,70 @@ function createMushafHtml(
   font-family: "QcfTajweedPage";
   base-palette: 0;
 }
-@font-palette-values --QcfDark {
-  font-family: "QcfTajweedPage";
-  base-palette: 1;
-}
 * { box-sizing: border-box; }
-html, body { width: 100%; height: 100%; margin: 0; }
-body { padding: 8px; background: ${isDark ? '#111a16' : '#f1eee4'}; }
-.page {
-  width: 100%;
-  max-width: 720px;
-  min-height: 100%;
-  margin: 0 auto;
-  padding: 12px 10px;
-  border: 2px solid #c7a66a;
-  outline: 1px solid #e6d4a9;
-  outline-offset: -6px;
-  background: #fffef9;
-  display: grid;
-  grid-template-rows: minmax(42px, 0.8fr) repeat(7, minmax(0, 1fr)) minmax(38px, 0.7fr);
-  gap: 2px;
-  color: ${isDark ? '#f1f4f0' : '#263a30'};
-  background: ${isDark ? '#1a2620' : '#fffef9'};
-  border-color: ${isDark ? '#64715d' : '#c7a66a'};
-  outline-color: ${isDark ? '#314138' : '#e6d4a9'};
-}
-.surah-heading {
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid ${isDark ? '#64715d' : '#c7a66a'};
-  border-radius: 8px;
-  color: ${isDark ? '#f1f4f0' : '#263a30'};
-  font-family: serif;
-  font-size: 19px;
-  font-weight: 700;
+  padding: 5px;
+  background: ${isDark ? '#111a16' : '#eee9dc'};
+}
+.page {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(34px, 0.7fr) minmax(0, 1fr) minmax(34px, 0.65fr);
+  gap: 5px;
+  width: min(100%, calc(100vh * 0.696));
+  max-height: 100%;
+  aspect-ratio: 0.696;
+  margin: auto;
+  padding: 13px 10px;
+  border: 3px double #b89758;
+  outline: 1px solid #e8d8ae;
+  outline-offset: -7px;
+  color: #263a30;
+  background:
+    radial-gradient(ellipse at 10% 12%, rgba(216, 198, 155, 0.12), transparent 38%),
+    radial-gradient(ellipse at 92% 85%, rgba(216, 198, 155, 0.1), transparent 42%),
+    #fffaf0;
+  box-shadow: 0 3px 14px rgba(37, 31, 20, 0.18);
+}
+.page:before {
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(88, 112, 78, 0.52);
+  content: "";
+  pointer-events: none;
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+.header-label {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid #c7a66a;
+  border-radius: 22px;
+  background: #fff7e8;
+  color: #354d37;
+  font: 600 12px sans-serif;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.header-label + .header-label { margin-inline-start: 5px; }
+.lines {
+  display: grid;
+  grid-template-rows: repeat(${sourceLineCount}, minmax(0, 1fr));
+  min-height: 0;
+  padding: 1px 5px;
+  border-inline: 1px solid rgba(169, 138, 82, 0.22);
 }
 .line {
   display: flex;
@@ -222,6 +290,27 @@ body { padding: 8px; background: ${isDark ? '#111a16' : '#f1eee4'}; }
   justify-content: space-between;
   gap: 0;
   min-width: 0;
+  white-space: nowrap;
+}
+.surah-title, .opening-basmala {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-column: 1;
+  text-align: center;
+}
+.surah-title {
+  margin: 0 12%;
+  border: 1px solid #c7a66a;
+  border-radius: 20px;
+  background: #fff7e8;
+  color: #354d37;
+  font: 700 15px serif;
+}
+.opening-basmala {
+  color: #263a30;
+  font-family: "QcfTajweedPage", serif;
+  font-size: min(${Math.max(fontSize - 7, 18)}px, 6vw);
   white-space: nowrap;
 }
 .word, .ayah-marker {
@@ -233,89 +322,151 @@ body { padding: 8px; background: ${isDark ? '#111a16' : '#f1eee4'}; }
 }
 .word {
   font-family: "QcfTajweedPage";
-  font-palette: ${isDark ? '--QcfDark' : '--QcfLight'};
-  font-size: min(${fontSize}px, 6.2vw);
+  font-palette: --QcfLight;
+  font-size: min(${fontSize}px, 8vw);
   line-height: 1;
   ${showTajweed ? '' : 'filter: grayscale(1);'}
 }
 .ayah-marker {
-  min-width: 30px;
-  height: 30px;
-  border: 1px solid ${isDark ? '#a8b5ac' : '#7d765d'};
+  min-width: 24px;
+  min-height: 24px;
+  border: 1px solid #b99b63;
   border-radius: 45% 45% 50% 50%;
-  color: ${isDark ? '#f1f4f0' : '#202820'};
-  font-family: serif;
-  font-size: 15px;
+  color: #514327;
+  font: 600 12px serif;
 }
 .selected {
-  border-radius: 7px;
-  background: rgba(199, 166, 106, 0.3);
-  box-shadow: 0 0 0 1px rgba(153, 117, 49, 0.55);
+  border-radius: 5px;
+  background: rgba(86, 125, 78, 0.24);
+  box-shadow: 0 0 0 1px rgba(75, 110, 67, 0.55);
 }
-.legend {
-  width: 100%;
-  max-width: 720px;
-  display: ${showTajweed ? 'block' : 'none'};
-  margin: 0 auto;
-  padding: 4px;
-  border: 1px solid ${isDark ? '#64715d' : 'rgba(199, 166, 106, 0.7)'};
-  border-radius: 10px;
-  background: ${isDark ? '#1a2620' : '#fffef9'};
-  color: ${isDark ? '#f1f4f0' : '#263a30'};
-  font: 12px sans-serif;
+.page-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  z-index: 1;
+  color: #596747;
+  font: 10px sans-serif;
+}
+.page-number {
+  min-width: 40px;
+  padding: 4px 9px;
+  border: 1px solid #b9985d;
+  border-radius: 50%;
+  background: #fff7e8;
+  color: #344a34;
+  font: 700 14px serif;
   text-align: center;
 }
-.legend-colors { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 3px; }
-.legend-item { display: inline-flex; align-items: center; gap: 4px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; }
+.legend { display: flex; flex-wrap: wrap; gap: 3px 6px; justify-content: flex-end; }
+.legend-item { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.dot { width: 6px; height: 6px; border-radius: 50%; }
+.dot.madd { background: #a33db5; }
+.dot.ghunnah { background: #18864b; }
+.dot.ikhfa { background: #1684b8; }
+.dot.iqlab { background: #c54135; }
+.dot.qalqalah { background: #d87a19; }
+.dot.silent { background: #8c9298; }
 </style>
 </head>
 <body>
 <main class="page" aria-label="صفحة المصحف">
-<div class="surah-heading" id="surah-heading"></div>
-<div id="mushaf-lines" style="display:contents"></div>
-<aside class="legend">
-  ألوان التجويد من خط QCF Tajweed V4
-  <div class="legend-colors">
-    <span class="legend-item"><i class="dot" style="background:#a33db5"></i>مد</span>
-    <span class="legend-item"><i class="dot" style="background:#18864b"></i>غنة وإدغام</span>
-    <span class="legend-item"><i class="dot" style="background:#1684b8"></i>إخفاء</span>
-    <span class="legend-item"><i class="dot" style="background:#d87a19"></i>قلقلة</span>
-  </div>
-</aside>
+<header class="page-header">
+  <span class="header-label" id="juz-label"></span>
+  <span class="header-label" id="surah-label"></span>
+</header>
+<section class="lines" id="mushaf-lines"></section>
+<footer class="page-footer">
+  <span>مصحف المدينة · رواية حفص</span>
+  <span class="page-number" id="page-number"></span>
+  <aside class="legend" style="display:${showTajweed ? 'flex' : 'none'}">
+    <span class="legend-item"><i class="dot madd"></i>مد</span>
+    <span class="legend-item"><i class="dot ghunnah"></i>غنة</span>
+    <span class="legend-item"><i class="dot ikhfa"></i>إخفاء</span>
+    <span class="legend-item"><i class="dot iqlab"></i>إقلاب</span>
+    <span class="legend-item"><i class="dot qalqalah"></i>قلقلة</span>
+    <span class="legend-item"><i class="dot silent"></i>صامت</span>
+  </aside>
+</footer>
 </main>
 <script>
 const page = ${pageJson};
 const highlightStyles = ${highlightsJson};
+const basmalaSegments = ${basmalaJson};
+const tajweedColors = ${tajweedColorsJson};
 const linesElement = document.getElementById("mushaf-lines");
-document.getElementById("surah-heading").textContent = "سورة " + page.surah.nameArabic;
+document.getElementById("juz-label").textContent = "الجزء " + toArabicNumber(page.juzNumber);
+document.getElementById("surah-label").textContent = "سورة " + page.surahs[0].nameArabic;
+document.getElementById("page-number").textContent = toArabicNumber(page.pageNumber);
 
 for (const line of page.lines) {
   const lineElement = document.createElement("div");
   lineElement.className = "line";
+  lineElement.style.gridRow = String(line.lineNumber);
   lineElement.setAttribute("aria-label", "السطر " + line.lineNumber);
   for (const word of line.words) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = word.charType === "word" ? "word" : "ayah-marker";
+    button.dataset.surah = String(word.surahNumber);
     button.dataset.ayah = String(word.ayahNumber);
     if (word.charType === "word") {
-      button.id = "word-" + word.ayahNumber + "-" + word.position;
+      button.id = "word-" + word.surahNumber + "-" + word.ayahNumber + "-" + word.position;
       button.dataset.kind = "word";
       button.dataset.position = String(word.position);
+      button.dataset.wordId = word.id;
       button.textContent = word.codeV2;
       button.setAttribute("aria-label", word.textUthmani + "، كلمة " + word.position + " من الآية " + word.ayahNumber);
       button.style.backgroundColor = highlightStyles[word.id] || "";
     } else {
-      button.id = "ayah-" + word.ayahNumber;
+      button.id = "ayah-" + word.surahNumber + "-" + word.ayahNumber;
       button.dataset.kind = "ayah";
       button.textContent = word.textUthmani;
       button.setAttribute("aria-label", "إجراءات الآية " + word.ayahNumber);
-      button.style.backgroundColor = highlightStyles["ayah-" + word.ayahNumber] || "";
+      button.style.backgroundColor = highlightStyles[button.id] || "";
     }
     lineElement.appendChild(button);
   }
   linesElement.appendChild(lineElement);
+}
+
+const sourceLineNumbers = new Set(page.lines.map((line) => line.lineNumber));
+for (const ayah of page.ayahs) {
+  if (ayah.ayahNumber !== 1 || ayah.surahNumber === 1) continue;
+  const firstWord = page.lines
+    .flatMap((line) => line.words)
+    .find((word) => word.surahNumber === ayah.surahNumber && word.ayahNumber === 1 && word.charType === "word");
+  if (!firstWord) continue;
+  const surah = page.surahs.find((item) => item.surahNumber === ayah.surahNumber);
+  const titleRow = firstWord.surahNumber === 9 ? firstWord.lineNumber - 1 : firstWord.lineNumber - 2;
+  const basmalaRow = firstWord.lineNumber - 1;
+  if (titleRow >= 1 && !sourceLineNumbers.has(titleRow)) {
+    const title = document.createElement("div");
+    title.className = "surah-title";
+    title.style.gridRow = String(titleRow);
+    title.textContent = "سورة " + (surah ? surah.nameArabic : "");
+    linesElement.appendChild(title);
+  }
+  if (
+    firstWord.surahNumber !== 9 &&
+    basmalaRow >= 1 &&
+    !sourceLineNumbers.has(basmalaRow) &&
+    basmalaSegments.length > 0
+  ) {
+    const basmala = document.createElement("div");
+    basmala.className = "opening-basmala";
+    basmala.style.gridRow = String(basmalaRow);
+    for (const segment of basmalaSegments) {
+      const span = document.createElement("span");
+      span.textContent = segment.text;
+      if (${showTajweed} && segment.rule && tajweedColors[segment.rule]) {
+        span.style.color = tajweedColors[segment.rule];
+      }
+      basmala.appendChild(span);
+    }
+    linesElement.appendChild(basmala);
+  }
 }
 
 function selectMushafElement(id) {
@@ -324,15 +475,22 @@ function selectMushafElement(id) {
   const element = document.getElementById(id);
   if (element) element.classList.add("selected");
 }
+function toArabicNumber(value) {
+  return String(value).replace(/[0-9]/g, (digit) => "٠١٢٣٤٥٦٧٨٩"[Number(digit)]);
+}
 window.selectMushafElement = selectMushafElement;
 
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-kind]");
   if (!button) return;
-  const ayahNumber = Number(button.dataset.ayah);
-  const message = button.dataset.kind === "word"
-    ? { type: "word", ayahNumber, position: Number(button.dataset.position) }
-    : { type: "ayah", ayahNumber };
+  const rect = button.getBoundingClientRect();
+  const message = {
+    type: button.dataset.kind,
+    surahNumber: Number(button.dataset.surah),
+    ayahNumber: Number(button.dataset.ayah),
+    position: Number(button.dataset.position),
+    anchor: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+  };
   selectMushafElement(button.id);
   if (window.ReactNativeWebView) {
     window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -352,32 +510,46 @@ window.addEventListener("message", (event) => {
 }
 
 function isPageMessage(value: unknown): value is PageMessage {
-  if (!isRecord(value) || typeof value.type !== 'string') {
+  if (
+    !isRecord(value) ||
+    (value.type !== 'word' && value.type !== 'ayah') ||
+    typeof value.surahNumber !== 'number' ||
+    !Number.isInteger(value.surahNumber) ||
+    typeof value.ayahNumber !== 'number' ||
+    !Number.isInteger(value.ayahNumber) ||
+    !isRecord(value.anchor) ||
+    typeof value.anchor.x !== 'number' ||
+    !Number.isFinite(value.anchor.x) ||
+    typeof value.anchor.y !== 'number' ||
+    !Number.isFinite(value.anchor.y) ||
+    typeof value.anchor.width !== 'number' ||
+    !Number.isFinite(value.anchor.width) ||
+    typeof value.anchor.height !== 'number' ||
+    !Number.isFinite(value.anchor.height)
+  ) {
     return false;
   }
-  return value.type === 'word'
-    ? typeof value.ayahNumber === 'number' &&
-      Number.isInteger(value.ayahNumber) &&
-      value.ayahNumber > 0 &&
+  return value.surahNumber > 0 &&
+    value.ayahNumber > 0 &&
+    value.anchor.width >= 0 &&
+    value.anchor.height >= 0 &&
+    (value.type === 'ayah' ||
       typeof value.position === 'number' &&
       Number.isInteger(value.position) &&
-      value.position > 0
-    : value.type === 'ayah' &&
-      typeof value.ayahNumber === 'number' &&
-      Number.isInteger(value.ayahNumber) &&
-      value.ayahNumber > 0;
+      value.position > 0);
 }
 
 function buildHighlightStyles(page: MushafPage, highlights: Highlight[]): Record<string, string> {
   const styles: Record<string, string> = {};
-  for (const ayah of page.surah.ayahs) {
+  for (const ayah of page.ayahs) {
     const ayahHighlight = highlights.find((highlight) =>
       highlight.target.type === 'ayah' &&
-      highlight.target.surahNumber === page.surah.surahNumber &&
+      highlight.target.surahNumber === ayah.surahNumber &&
       highlight.target.ayahNumber === ayah.ayahNumber,
     );
     if (ayahHighlight) {
-      styles[`ayah-${ayah.ayahNumber}`] = toRgba(ayahHighlight.color, ayahHighlight.opacity);
+      styles[`ayah-${ayah.surahNumber}-${ayah.ayahNumber}`] =
+        toRgba(ayahHighlight.color, ayahHighlight.opacity);
     }
 
     for (const word of ayah.words) {
@@ -385,7 +557,7 @@ function buildHighlightStyles(page: MushafPage, highlights: Highlight[]): Record
       const highlight = highlights.find((item) => {
         const target = item.target;
         if (
-          target.surahNumber !== page.surah.surahNumber ||
+          target.surahNumber !== ayah.surahNumber ||
           target.ayahNumber !== ayah.ayahNumber
         ) {
           return false;
@@ -415,7 +587,7 @@ function toRgba(color: string, opacity: number): string {
   const red = Number.parseInt(color.slice(1, 3), 16);
   const green = Number.parseInt(color.slice(3, 5), 16);
   const blue = Number.parseInt(color.slice(5, 7), 16);
-  return "rgba(" + red + ", " + green + ", " + blue + ", " + Math.max(0, Math.min(1, opacity)) + ")";
+  return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, opacity))})`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -426,7 +598,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: 760,
+    minHeight: 0,
     alignSelf: 'center',
   },
   webView: {

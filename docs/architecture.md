@@ -32,7 +32,11 @@ Annotations are separate records with stable target references (`word`, `ayah`, 
 
 ## Reading modes
 
-Interactive verse mode uses stable word identifiers and RTL layout. Traditional page mode is deferred until a verified page/line dataset and compatible rendering strategy are available; arbitrary text wrapping is not an acceptable substitute for a printed Mushaf layout.
+The reader requests one page at a time from Quran.com API v4 using Mushaf 19. Source verse, word, page, and line metadata drive the layout; each page uses its matching QCF Tajweed V4 font. It does not infer page divisions by wrapping surah text. The page renderer is an interactive recreation, not a scan or a pixel-certified copy of a printed edition.
+
+Word and verse selection is bridged from the page renderer with source identifiers and measured screen coordinates. User annotations remain separate SQLite records. The selection menu is positioned around the selected glyph and does not change the page's text layout.
+
+Page text and its page-specific font are cached in SQLite when opened. Only already-opened pages are available offline; the surah directory, uncached pages, and audio still require network access. The app does not download all 604 pages in advance.
 
 ## Optional future backend
 
@@ -41,5 +45,6 @@ Supabase/PostgreSQL is reserved for opt-in account and synchronization features.
 ## Decisions and constraints
 
 - Expo SDK and dependencies are selected through Expo's official project template and `npx expo install`.
-- The app uses Quran.com API v4 endpoints directly for chapter metadata and Uthmani word text; no app credentials are embedded.
+- The app uses Quran.com API v4 endpoints directly for chapter metadata, page/line/word positions, Uthmani text, Tajweed markup, and audio; no app credentials are embedded.
+- The reader uses Quran.com Mushaf 19 and downloads the matching page-specific QCF Tajweed V4 font on demand. Source licensing and offline-cache rights remain subject to review.
 - Quran.com API availability does not establish redistribution or commercial-use rights; review current terms before publishing.

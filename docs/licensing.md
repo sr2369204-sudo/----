@@ -1,6 +1,6 @@
 # Licensing and Attribution
 
-No Quran text, Tajweed, tafsir, audio, or page-layout dataset is bundled in the project. The Al-Fatihah proof of concept downloads page-one QCF Tajweed V4 data from the Quran.com public API and its page-specific font from Quran Foundation, then stores both in the on-device SQLite database so that page can be reopened offline after a successful download. Other surahs and audio remain runtime requests.
+No Quran text, Tajweed, tafsir, audio, or page image is bundled in the project. The reader downloads Quran.com API v4 Mushaf 19 page data and the corresponding QCF Tajweed V4 page font from Quran Foundation, then caches pages opened by the user in on-device SQLite. Cached pages can be reopened offline; unvisited pages and audio remain runtime requests. This on-device cache does not grant redistribution rights.
 
 Before a source is imported, cached offline, redistributed, or shown in production:
 
@@ -12,7 +12,7 @@ Before a source is imported, cached offline, redistributed, or shown in producti
 
 Quran.com API availability is not by itself confirmation that content can be redistributed, cached offline, or used commercially. The published terms limit service content to personal, non-commercial use; confirm the applicable rights before distributing this app. Reciter recordings may have separate rights and attribution requirements and must be reviewed individually.
 
-The page-one endpoint currently uses the public Quran.com API v4 response tested by this proof of concept; it is not the OAuth-protected Quran Foundation Content API and is not guaranteed to remain anonymously available. The QCF page font is fetched from `verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p1.woff2`. Local caching is for the user's own device only; it does not grant redistribution rights or permit bundling the page data or font.
+The page endpoint uses the public Quran.com API v4 and is not the OAuth-protected Quran Foundation Content API; anonymous availability is not guaranteed. Each QCF page font is fetched from `verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{page}.woff2`. Local caching is for pages the user has opened; it does not grant redistribution rights or permit bundling the page data or font.
 
 ## Release gate
 

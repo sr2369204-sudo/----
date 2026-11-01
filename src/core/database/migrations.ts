@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export async function initializeDatabase(database: SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON;');
@@ -85,6 +85,13 @@ export async function initializeDatabase(database: SQLiteDatabase): Promise<void
         );
 
         PRAGMA user_version = 2;
+      `);
+    }
+
+    if (currentVersion < 3) {
+      await database.execAsync(`
+        DELETE FROM mushaf_page_cache;
+        PRAGMA user_version = 3;
       `);
     }
   });

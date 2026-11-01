@@ -30,6 +30,8 @@ test('creates the initial schema and Mushaf page cache on a fresh database', asy
   assert.match(schema, /CREATE TABLE mushaf_page_cache/);
   assert.match(schema, /PRAGMA user_version = 1/);
   assert.match(schema, /PRAGMA user_version = 2/);
+  assert.match(schema, /DELETE FROM mushaf_page_cache/);
+  assert.match(schema, /PRAGMA user_version = 3/);
 });
 
 test('adds the Mushaf page cache to a version-one database', async () => {
@@ -40,11 +42,12 @@ test('adds the Mushaf page cache to a version-one database', async () => {
   const schema = database.statements.join('\n');
   assert.doesNotMatch(schema, /CREATE TABLE highlights/);
   assert.match(schema, /CREATE TABLE mushaf_page_cache/);
-  assert.match(schema, /PRAGMA user_version = 2/);
+  assert.match(schema, /DELETE FROM mushaf_page_cache/);
+  assert.match(schema, /PRAGMA user_version = 3/);
 });
 
 test('rejects databases newer than the app schema', async () => {
-  const database = createDatabase(3);
+  const database = createDatabase(4);
 
   await assert.rejects(initializeDatabase(database), /newer than supported/);
 });

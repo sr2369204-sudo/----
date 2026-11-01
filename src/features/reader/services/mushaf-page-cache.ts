@@ -5,7 +5,7 @@ import type { MushafPage } from '@/features/quran/types';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
 
 const QCF_TAJWEED_FONT_URL =
-  'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p1.woff2';
+  'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p';
 
 export type CachedMushafPage = {
   page: MushafPage;
@@ -22,15 +22,19 @@ type MushafCacheRow = {
 export class MushafPageCache {
   constructor(private readonly database: SQLiteDatabase) {}
 
-  async getPageOne(): Promise<CachedMushafPage> {
-    const cached = await this.readCachedPage();
+  async getPage(pageNumber: number): Promise<CachedMushafPage> {
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
+      throw new RangeError('Mushaf page number must be between 1 and 604.');
+    }
+
+    const cached = await this.readCachedPage(pageNumber);
     if (cached) {
       return cached;
     }
 
     const [page, fontBytes] = await Promise.all([
-      quranContentProvider.getMushafPage(1),
-      this.downloadPageFont(),
+      quranContentProvider.getMushafPage(pageNumber),
+      this.downloadPageFont(pageNumber),
     ]);
     const pageJson = JSON.stringify(page);
     const pageHash = await hashText(pageJson);
@@ -52,11 +56,12 @@ export class MushafPageCache {
     return { page, fontBase64: bytesToBase64(fontBytes) };
   }
 
-  private async readCachedPage(): Promise<CachedMushafPage | null> {
+  private async readCachedPage(pageNumber: number): Promise<CachedMushafPage | null> {
     const row = await this.database.getFirstAsync<MushafCacheRow>(
       `SELECT page_json, page_sha256, font_data, font_sha256
        FROM mushaf_page_cache
-       WHERE page_number = 1 AND mushaf_id = 19`,
+       WHERE page_number = ? AND mushaf_id = 19`,
+      pageNumber,
     );
     if (!row) {
       return null;
@@ -80,17 +85,17 @@ export class MushafPageCache {
       );
     }
 
-    if (!isCachedPage(page)) {
+    if (!isCachedPage(page, pageNumber)) {
       throw new Error('النسخة المحلية من صفحة المصحف لا تطابق بيانات المصدر.');
     }
 
     return { page, fontBase64: bytesToBase64(row.font_data) };
   }
 
-  private async downloadPageFont(): Promise<Uint8Array> {
+  private async downloadPageFont(pageNumber: number): Promise<Uint8Array> {
     let response: Response;
     try {
-      response = await fetch(QCF_TAJWEED_FONT_URL);
+      response = await fetch(`${QCF_TAJWEED_FONT_URL}${pageNumber}.woff2`);
     } catch (error) {
       throw new Error('تعذر الاتصال بمصدر خط المصحف.', { cause: error });
     }
@@ -145,34 +150,43 @@ function bytesToBase64(bytes: Uint8Array): string {
   return base64;
 }
 
-function isCachedPage(page: unknown): page is MushafPage {
+function isCachedPage(page: unknown, pageNumber: number): page is MushafPage {
   if (
     typeof page !== 'object' ||
     page === null ||
     !('pageNumber' in page) ||
     !('mushafId' in page) ||
-    !('surah' in page) ||
+    !('juzNumber' in page) ||
+    !('hizbNumber' in page) ||
+    !('basmalaTajweed' in page) ||
+    !('surahs' in page) ||
+    !('ayahs' in page) ||
     !('lines' in page) ||
-    typeof page.surah !== 'object' ||
-    page.surah === null ||
-    !('surahNumber' in page.surah)
+    !Array.isArray(page.surahs) ||
+    !Array.isArray(page.ayahs)
   ) {
     return false;
   }
 
-  return page.pageNumber === 1 &&
+  return page.pageNumber === pageNumber &&
     page.mushafId === 19 &&
-    page.surah.surahNumber === 1 &&
+    (page.basmalaTajweed === null || typeof page.basmalaTajweed === 'string') &&
     Array.isArray(page.lines) &&
-    page.lines.length === 7 &&
-    page.lines.every((line, index) =>
+    page.lines.length > 0 &&
+    page.surahs.length > 0 &&
+    page.ayahs.length > 0 &&
+    page.lines.every((line) =>
       isRecord(line) &&
-      line.lineNumber === index + 2 &&
+      Number.isInteger(line.lineNumber) &&
       Array.isArray(line.words) &&
       line.words.length > 0 &&
       line.words.every((word) =>
         isRecord(word) &&
-        word.pageNumber === 1 &&
+        typeof word.id === 'string' &&
+        Number.isInteger(word.surahNumber) &&
+        Number.isInteger(word.ayahNumber) &&
+        Number.isInteger(word.position) &&
+        word.pageNumber === pageNumber &&
         word.lineNumber === line.lineNumber &&
         (word.charType === 'word' || word.charType === 'end') &&
         typeof word.textUthmani === 'string' &&

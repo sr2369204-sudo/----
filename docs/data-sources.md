@@ -6,7 +6,8 @@
 | Tajweed | Quran.com API v4 `text_uthmani_tajweed` | Loaded with each surah | Render only the rule tags returned by the source; preserve script text and map tags to selectable word IDs by source order. |
 | Tafsir and word information | Quran Foundation content, subject to endpoint availability and each source's terms | Not integrated | Attribute each work; availability does not imply redistribution rights. |
 | Recitation audio | Quran.com API v4 reciter directory and verse-audio endpoint | Implemented for streaming; default reciter is Mishari Rashid al-`Afasy | Use source-listed reciters for ayah audio and source word clips for word playback. Confirm current audio rights before distribution or offline caching. |
-| Page and line metadata | Verified Mushaf metadata associated with the selected script | Not integrated | Required for traditional page mode; do not simulate page layout with arbitrary wrapping. |
+| Page and line metadata | Quran.com API v4 `verses/by_page/{page}?mushaf=19` | Integrated for pages 1–604; each response is validated for page number, verse sequence, word IDs, and line positions | Source records define the line layout; no arbitrary word-count divisions are created. |
+| Quran font | Quran Foundation QCF Tajweed V4 page fonts (`p{page}.woff2`) | Fetched and cached with each visited page | Font is required to render the source's `code_v2` glyphs and embedded Tajweed palette. Verify font use and local caching rights before distribution. |
 
 ## Source review checklist
 
@@ -22,9 +23,15 @@ Before importing or caching any source, record its canonical endpoint or dataset
 - Reciter directory: `GET /resources/chapter_reciters?language=ar`
 - Ayah audio: `GET /recitations/{reciter_id}/by_ayah/{surah}:{ayah}`
 - Word audio: source word `audio_url` paths are streamed from the Quran.com audio CDN.
+- Mushaf page: `GET /verses/by_page/{1..604}?language=ar&mushaf=19&words=true&word_fields=code_v2%2Ctext_uthmani%2Caudio_url&fields=text_uthmani_tajweed&per_page=300`
+- Surah start location: `GET /verses/by_chapter/{id}?fields=page_number&per_page=1`
+- Juz start location: `GET /verses/by_juz/{id}?fields=page_number&per_page=1`
+- Page font: `https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{page}.woff2`
 - A live request to the chapter 1 endpoint returned all seven verses without authentication; the API advertises permissive CORS for web clients.
 - The app requests data directly and validates chapter identity, verse count/order, word IDs/positions, and non-empty Uthmani text before display.
-- Tajweed tags are parsed as text, never rendered as HTML. Nested rule tags and standalone hizb markers are handled while matching color spans back to the source word sequence.
+- Mushaf pages use source page numbers, verse keys, word IDs, line numbers, and `code_v2` glyphs. The app validates the source sequence and retains line-number gaps for page openings and surah transitions.
+- Page data and its page-specific font are stored in the local SQLite page cache after download. This is an on-demand cache, not a bundled 604-page offline corpus; only pages previously opened can be read offline.
+- In the verse reader, Tajweed tags are parsed as text, never rendered as HTML. In Mushaf page mode, Tajweed colors come from the source QCF COLRv1 font palette, with a grayscale toggle and explanatory legend.
 - Audio streams at playback time; no files are bundled or downloaded for offline use. The selected reciter applies to ayah audio; word-level clips use the source's provided word recording.
-- Quran.com's terms state that service content is for personal, non-commercial use. Confirm the current API and content rights for the intended distribution; public availability alone does not grant redistribution rights.
+- Quran.com's terms state that service content is for personal, non-commercial use. Confirm the current API, local-cache, font, and content rights for the intended distribution; public availability alone does not grant redistribution rights.
 - `api-v4` identifies the API schema, not a Quran corpus release or checksum.
