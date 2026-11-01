@@ -327,6 +327,55 @@ test('resolves source-backed ayah audio URLs and reciter metadata', async (t) =>
   assert.ok(requestedUrls.some((url) => url.endsWith('/recitations/7/by_ayah/1:1')));
 });
 
+test('resolves Quran.com audio hosted on the verified QuranicAudio mirror', async (t) => {
+  mockFetch(t, async () => new Response(JSON.stringify({
+    audio_files: [{
+      verse_key: '1:1',
+      url: '//mirrors.quranicaudio.com/everyayah/Husary_64kbps/001001.mp3',
+    }],
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  }));
+
+  const audioUrl = await new QuranComContentProvider().getAyahAudioUrl(6, 1, 1);
+
+  assert.equal(
+    audioUrl,
+    'https://mirrors.quranicaudio.com/everyayah/Husary_64kbps/001001.mp3',
+  );
+});
+
+test('omits reciters whose source has no playable ayah audio', async (t) => {
+  mockFetch(t, async (url) => {
+    const path = String(url);
+    if (path.endsWith('/resources/chapter_reciters?language=ar')) {
+      return new Response(JSON.stringify({
+        reciters: [
+          { id: 7, name: 'Playable reciter', style: { name: 'Murattal' } },
+          { id: 97, name: 'Unavailable reciter', style: { name: 'Murattal' } },
+        ],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (path.includes('/recitations/97/')) {
+      return new Response('Not found', { status: 404 });
+    }
+    return new Response(JSON.stringify({
+      audio_files: [{ verse_key: '1:1', url: 'Alafasy/mp3/001001.mp3' }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const reciters = await new QuranComContentProvider().getReciters();
+
+  assert.deepEqual(reciters, [{ id: 7, name: 'Playable reciter', style: 'Murattal' }]);
+});
+
 test('rejects incomplete ayah responses instead of displaying partial content', async (t) => {
   mockFetch(t, async (url) => {
     const body = String(url).includes('/chapters/1?')

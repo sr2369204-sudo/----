@@ -358,7 +358,7 @@ body {
   align-self: stretch;
   direction: rtl;
   font-size: var(--quran-rendered-font-size, var(--quran-font-size));
-  text-align: right;
+  text-align: center;
   line-height: 1.5;
   min-width: 0;
   white-space: nowrap;
@@ -374,10 +374,14 @@ body {
 }
 .surah-title {
   position: relative;
-  min-height: calc(var(--quran-font-size) * 1.5);
-  margin: 0 12%;
-  padding: 0 12px;
-  border-block: 1px solid #a8894f;
+  min-height: calc(var(--quran-rendered-font-size, var(--quran-font-size)) * 1.5);
+  margin: 4px 12%;
+  padding: 4px 14px;
+  border: 1px solid #a8894f;
+  border-radius: 6px;
+  outline: 1px solid rgba(168, 137, 79, 0.42);
+  outline-offset: -4px;
+  background: #fff7e8;
   color: #354d37;
   font-family: "Noto Naskh Arabic", "Noto Naskh Arabic UI", serif;
   font-size: min(16px, 5.4cqi);
@@ -401,7 +405,7 @@ body {
   font-family: "QcfTajweedPage";
   font-palette: --QcfLight;
   font-size: var(--quran-rendered-font-size, var(--quran-font-size));
-  min-height: calc(var(--quran-font-size) * 1.5);
+  min-height: calc(var(--quran-rendered-font-size, var(--quran-font-size)) * 1.5);
   white-space: nowrap;
   ${showTajweed ? '' : 'filter: grayscale(1);'}
 }

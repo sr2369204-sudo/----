@@ -30,7 +30,10 @@ import {
 } from '@/features/reader/components/MushafPageViewer';
 import { SelectionSheet } from '@/features/reader/components/SelectionSheet';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
-import { useReaderPreferencesStore } from '@/features/reader/state/reader-preferences-store';
+import {
+  DEFAULT_RECITER_ID,
+  useReaderPreferencesStore,
+} from '@/features/reader/state/reader-preferences-store';
 import {
   useReaderSelectionStore,
   type ReaderSelection,
@@ -302,16 +305,49 @@ export default function ReaderScreen() {
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
     const requestId = ++audioRequest.current;
     setAudioError(null);
-    const audioUrl =
-      currentSelection.type === 'word'
-        ? currentSelection.word.audioUrl
-          ? quranContentProvider.getWordAudioUrl(currentSelection.word.audioUrl)
-          : null
-        : await quranContentProvider.getAyahAudioUrl(
-            reciterId,
-            currentSelection.surahNumber,
-            currentSelection.ayah.ayahNumber,
-          );
+    let audioUrl: string | null;
+    if (currentSelection.type === 'word') {
+      audioUrl = currentSelection.word.audioUrl
+        ? quranContentProvider.getWordAudioUrl(currentSelection.word.audioUrl)
+        : null;
+    } else {
+      try {
+        audioUrl = await quranContentProvider.getAyahAudioUrl(
+          reciterId,
+          currentSelection.surahNumber,
+          currentSelection.ayah.ayahNumber,
+        );
+      } catch (error) {
+        if (
+          !(error instanceof ContentUnavailableError) ||
+          error.reason !== 'server' ||
+          error.message !== 'Quran.com API returned HTTP 404.'
+        ) {
+          throw error;
+        }
+
+        const reciters = await quranContentProvider.getReciters();
+        if (reciters.some((reciter) => reciter.id === reciterId)) {
+          throw error;
+        }
+        const fallbackReciter =
+          reciters.find((reciter) => reciter.id === DEFAULT_RECITER_ID) ?? reciters[0];
+        if (!fallbackReciter) {
+          throw error;
+        }
+        if (requestId !== audioRequest.current) {
+          return;
+        }
+        await saveSetting(database, 'reciterId', String(fallbackReciter.id));
+        const preferences = useReaderPreferencesStore.getState();
+        preferences.setPreferences(preferences.themePreference, fallbackReciter.id);
+        audioUrl = await quranContentProvider.getAyahAudioUrl(
+          fallbackReciter.id,
+          currentSelection.surahNumber,
+          currentSelection.ayah.ayahNumber,
+        );
+      }
+    }
     if (requestId !== audioRequest.current) {
       return;
     }
@@ -320,7 +356,7 @@ export default function ReaderScreen() {
     }
     player.replace(audioUrl);
     player.play();
-  }, [player, reciterId]);
+  }, [database, player, reciterId]);
 
   const stopAudio = useCallback(() => {
     audioRequest.current += 1;
@@ -415,6 +451,9 @@ export default function ReaderScreen() {
   const pageLoading = startLocationQuery.isPending || activePageNumber === null || pageQuery.isPending;
   const noInitialPage = initialError || pageError;
   const directory = directoryQuery.data;
+  const visibleAudioError =
+    audioError ??
+    (playerStatus.error ? `تعذر تشغيل التلاوة: ${playerStatus.error}` : null);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -545,7 +584,9 @@ export default function ReaderScreen() {
         <Text accessibilityRole="alert" style={styles.error}>{displayPreferencesError}</Text>
       )}
       {highlightError && <Text accessibilityRole="alert" style={styles.error}>{highlightError}</Text>}
-      {audioError && <Text accessibilityRole="alert" style={styles.error}>{audioError}</Text>}
+      {visibleAudioError && (
+        <Text accessibilityRole="alert" style={styles.error}>{visibleAudioError}</Text>
+      )}
       {interactionError && <Text accessibilityRole="alert" style={styles.error}>{interactionError}</Text>}
       {navigationError && !navigationOpen && (
         <Text accessibilityRole="alert" style={styles.error}>{navigationError}</Text>

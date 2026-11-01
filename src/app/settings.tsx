@@ -7,7 +7,10 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { Spacing } from '@/constants/theme';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
-import { useReaderPreferencesStore, type ThemePreference } from '@/features/reader/state/reader-preferences-store';
+import {
+  useReaderPreferencesStore,
+  type ThemePreference,
+} from '@/features/reader/state/reader-preferences-store';
 import { useTheme } from '@/hooks/use-theme';
 
 const themeOptions: { value: ThemePreference; label: string }[] = [
@@ -122,7 +125,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>القارئ المفضّل</Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>
-            يُستخدم هذا القارئ لتشغيل الآيات. تسجيل الكلمة متاح من المقاطع التي يوفرها المصدر.
+            تظهر هنا أسماء القرّاء الذين تتوفر لهم تسجيلات آيات من المصدر. تسجيل الكلمة متاح من المقاطع التي يوفرها المصدر.
           </Text>
           {recitersQuery.isPending ? (
             <Text style={[styles.body, { color: colors.textSecondary }]}>جارٍ تحميل القرّاء…</Text>

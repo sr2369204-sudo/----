@@ -246,7 +246,7 @@ export class QuranComContentProvider implements QuranContentProvider {
     }
 
     const seen = new Set<number>();
-    return payload.reciters.map((item: unknown) => {
+    const reciters = payload.reciters.map((item: unknown) => {
       if (
         !isRecord(item) ||
         typeof item.id !== 'number' ||
@@ -264,6 +264,32 @@ export class QuranComContentProvider implements QuranContentProvider {
       seen.add(item.id);
       return { id: item.id, name: item.name, style: item.style.name };
     });
+
+    const verifiedReciters = await Promise.all(reciters.map(async (reciter) => {
+      try {
+        await this.getAyahAudioUrl(reciter.id, 1, 1);
+        return reciter;
+      } catch (error) {
+        if (
+          error instanceof ContentUnavailableError &&
+          error.reason === 'server' &&
+          error.message === 'Quran.com API returned HTTP 404.'
+        ) {
+          return null;
+        }
+        throw error;
+      }
+    }));
+    const playableReciters = verifiedReciters.filter(
+      (reciter): reciter is QuranReciter => reciter !== null,
+    );
+    if (playableReciters.length === 0) {
+      throw new ContentUnavailableError(
+        'invalid-data',
+        'Quran.com did not provide a playable reciter.',
+      );
+    }
+    return playableReciters;
   }
 
   getWordAudioUrl(audioPath: string): string {
@@ -577,7 +603,12 @@ function isSafeWordAudioPath(value: string): boolean {
 }
 
 function isSafeAudioPath(value: string): boolean {
-  return /^[A-Za-z0-9_-]+\/mp3\/\d{6}\.mp3$/.test(value);
+  if (/^[A-Za-z0-9_-]+\/mp3\/\d{6}\.mp3$/.test(value)) {
+    return true;
+  }
+  return /^\/\/mirrors\.quranicaudio\.com\/everyayah\/Husary_(?:64kbps|Muallim_128kbps)\/\d{6}\.mp3$/.test(
+    value,
+  );
 }
 
 function isValidTajweedText(

@@ -22,7 +22,7 @@ Each page is rendered with its corresponding Quran Foundation QCF Tajweed V4 COL
 
 The API provides line numbers and word order, but no printed horizontal word coordinates or official surah-title frame artwork. The renderer therefore preserves the verified page/line structure and source glyphs without claiming pixel-identical reproduction of the physical Mushaf. Exact x/y placement and title ornamentation require a licensed page-layout dataset or original page assets that are not currently available in the project.
 
-Page data and the matching font are cached in SQLite when a page is first opened. Previously opened pages can be reopened offline; uncached pages and surah-directory lookups still need a connection. The app does not bundle or predownload all 604 pages. Audio streams directly from Quran.com audio hosts through Expo Audio. The selected reciter is used for ayah recordings; source word clips are used when a word is selected. Audio is not bundled or cached offline.
+Page data and the matching font are cached in SQLite when a page is first opened. Previously opened pages can be reopened offline; uncached pages and surah-directory lookups still need a connection. The app does not bundle or predownload all 604 pages. Audio streams through Expo Audio. The settings list is checked against the verse-audio endpoint and omits reciters whose endpoint returns HTTP 404. Quran.com audio may be hosted on `verses.quran.com` or the verified Husary paths on `mirrors.quranicaudio.com`; source word clips are used when a word is selected. Audio is not bundled or cached offline.
 
 The live chapter 1 endpoint was verified without authentication and returned all seven verses. `api-v4` identifies the API schema, not a separately versioned Quran text dataset.
 
