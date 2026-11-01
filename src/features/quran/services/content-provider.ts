@@ -45,7 +45,7 @@ export type QuranReciter = {
 
 export class QuranComContentProvider implements QuranContentProvider {
   private surahDirectoryPromise: Promise<QuranSurahDirectory> | null = null;
-  private basmalaPromise: Promise<string> | null = null;
+  private basmalaWordsPromise: Promise<{ codeV2: string; textUthmani: string }[]> | null = null;
 
   async getSurahDirectory(): Promise<QuranSurahDirectory> {
     if (!this.surahDirectoryPromise) {
@@ -141,19 +141,35 @@ export class QuranComContentProvider implements QuranContentProvider {
     if (!hasBasmalaOpening) {
       return page;
     }
-    return { ...page, basmalaTajweed: await this.getBasmalaTajweed() };
+    return { ...page, basmalaWords: await this.getBasmalaWords() };
   }
 
-  private async getBasmalaTajweed(): Promise<string> {
-    if (!this.basmalaPromise) {
-      this.basmalaPromise = this.getSurah(1)
-        .then((surah) => surah.ayahs[0].tajweedText)
+  private async getBasmalaWords(): Promise<{ codeV2: string; textUthmani: string }[]> {
+    if (!this.basmalaWordsPromise) {
+      this.basmalaWordsPromise = this.getMushafPage(1)
+        .then((page) => page.lines
+          .flatMap((line) => line.words)
+          .filter((word) =>
+            word.surahNumber === 1 &&
+            word.ayahNumber === 1 &&
+            word.charType === 'word',
+          )
+          .map(({ codeV2, textUthmani }) => ({ codeV2, textUthmani })))
+        .then((words) => {
+          if (words.length === 0) {
+            throw new ContentUnavailableError(
+              'invalid-data',
+              'The source Mushaf page does not contain Basmala glyphs.',
+            );
+          }
+          return words;
+        })
         .catch((error: unknown) => {
-          this.basmalaPromise = null;
+          this.basmalaWordsPromise = null;
           throw error;
         });
     }
-    return this.basmalaPromise;
+    return this.basmalaWordsPromise;
   }
 
   async getPageNumberForSurah(surahNumber: number): Promise<number> {
@@ -443,7 +459,7 @@ function parseMushafPage(
     mushafId: 19,
     juzNumber,
     hizbNumber,
-    basmalaTajweed: null,
+    basmalaWords: null,
     surahs: [...surahs.values()],
     ayahs,
     lines: pageLines,

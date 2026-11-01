@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 5;
 
 export async function initializeDatabase(database: SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON;');
@@ -92,6 +92,22 @@ export async function initializeDatabase(database: SQLiteDatabase): Promise<void
       await database.execAsync(`
         DELETE FROM mushaf_page_cache;
         PRAGMA user_version = 3;
+      `);
+    }
+
+    if (currentVersion < 4) {
+      await database.execAsync(`
+        DELETE FROM mushaf_page_cache;
+        PRAGMA user_version = 4;
+      `);
+    }
+
+    if (currentVersion < 5) {
+      await database.execAsync(`
+        ALTER TABLE mushaf_page_cache ADD COLUMN basmala_font_data BLOB;
+        ALTER TABLE mushaf_page_cache ADD COLUMN basmala_font_sha256 TEXT;
+        DELETE FROM mushaf_page_cache;
+        PRAGMA user_version = 5;
       `);
     }
   });

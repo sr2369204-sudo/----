@@ -179,6 +179,7 @@ test('loads QCF Tajweed page one as source-ordered lines and words', async (t) =
   assert.equal(page.ayahs[0].words[0].audioUrl, 'wbw/001_001_001.mp3');
   assert.equal(page.juzNumber, 1);
   assert.equal(page.hizbNumber, 1);
+  assert.equal(page.basmalaWords, null);
 });
 
 test('loads page metadata for all 604 pages and rejects invalid page numbers', async (t) => {
@@ -247,13 +248,18 @@ test('preserves source line gaps and Surah transitions on a page', async (t) => 
   };
   mockFetch(t, async (url) => {
     const path = String(url);
-    const body = path.endsWith('/chapters?language=ar')
-      ? syntheticSurahDirectory
-      : path.includes('/chapters/1?')
-        ? syntheticChapter
-        : path.includes('/verses/by_chapter/1?')
-          ? syntheticVerses
-          : transitionVerses;
+    let body;
+    if (path.endsWith('/chapters?language=ar')) {
+      body = syntheticSurahDirectory;
+    } else if (path.includes('/chapters/1?')) {
+      body = syntheticChapter;
+    } else if (path.includes('/verses/by_chapter/1?')) {
+      body = syntheticVerses;
+    } else if (path.includes('/verses/by_page/1?')) {
+      body = syntheticPageVerses;
+    } else {
+      body = transitionVerses;
+    }
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -265,7 +271,9 @@ test('preserves source line gaps and Surah transitions on a page', async (t) => 
   assert.deepEqual(page.surahs.map((surah) => surah.surahNumber), [112, 113, 114]);
   assert.deepEqual(page.lines.map((line) => line.lineNumber), [3, 7, 12]);
   assert.deepEqual(page.ayahs.map((ayah) => ayah.surahNumber), [112, 113, 114]);
-  assert.equal(page.basmalaTajweed, syntheticVerses.verses[0].text_uthmani_tajweed);
+  assert.deepEqual(page.basmalaWords, [
+    { codeV2: 'SYNTHETIC_GLYPH_1', textUthmani: 'SYNTHETIC_TEST_TOKEN_1' },
+  ]);
 });
 
 test('resolves source-backed first pages for surahs and juzs', async (t) => {

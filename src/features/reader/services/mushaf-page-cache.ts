@@ -6,10 +6,12 @@ import { quranContentProvider } from '@/features/quran/services/content-provider
 
 const QCF_TAJWEED_FONT_URL =
   'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p';
+const BASMALA_FONT_PAGE_NUMBER = 1;
 
 export type CachedMushafPage = {
   page: MushafPage;
   fontBase64: string;
+  basmalaFontBase64: string | null;
 };
 
 type MushafCacheRow = {
@@ -17,6 +19,8 @@ type MushafCacheRow = {
   page_sha256: string;
   font_data: Uint8Array;
   font_sha256: string;
+  basmala_font_data: Uint8Array | null;
+  basmala_font_sha256: string | null;
 };
 
 export class MushafPageCache {
@@ -36,29 +40,41 @@ export class MushafPageCache {
       quranContentProvider.getMushafPage(pageNumber),
       this.downloadPageFont(pageNumber),
     ]);
+    const basmalaFontBytes = page.basmalaWords
+      ? await this.downloadPageFont(BASMALA_FONT_PAGE_NUMBER)
+      : null;
     const pageJson = JSON.stringify(page);
     const pageHash = await hashText(pageJson);
     const fontHash = await hashBytes(fontBytes);
+    const basmalaFontHash = basmalaFontBytes ? await hashBytes(basmalaFontBytes) : null;
 
     await this.database.runAsync(
       `INSERT OR REPLACE INTO mushaf_page_cache
-       (page_number, mushaf_id, page_json, page_sha256, font_data, font_sha256, cached_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (page_number, mushaf_id, page_json, page_sha256, font_data, font_sha256,
+        basmala_font_data, basmala_font_sha256, cached_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       page.pageNumber,
       page.mushafId,
       pageJson,
       pageHash,
       fontBytes,
       fontHash,
+      basmalaFontBytes,
+      basmalaFontHash,
       new Date().toISOString(),
     );
 
-    return { page, fontBase64: bytesToBase64(fontBytes) };
+    return {
+      page,
+      fontBase64: bytesToBase64(fontBytes),
+      basmalaFontBase64: basmalaFontBytes ? bytesToBase64(basmalaFontBytes) : null,
+    };
   }
 
   private async readCachedPage(pageNumber: number): Promise<CachedMushafPage | null> {
     const row = await this.database.getFirstAsync<MushafCacheRow>(
-      `SELECT page_json, page_sha256, font_data, font_sha256
+      `SELECT page_json, page_sha256, font_data, font_sha256,
+              basmala_font_data, basmala_font_sha256
        FROM mushaf_page_cache
        WHERE page_number = ? AND mushaf_id = 19`,
       pageNumber,
@@ -70,7 +86,11 @@ export class MushafPageCache {
     if (
       await hashText(row.page_json) !== row.page_sha256 ||
       await hashBytes(row.font_data) !== row.font_sha256 ||
-      !isWoff2Font(row.font_data)
+      !isWoff2Font(row.font_data) ||
+      (row.basmala_font_data === null) !== (row.basmala_font_sha256 === null) ||
+      row.basmala_font_data !== null &&
+        (!isWoff2Font(row.basmala_font_data) ||
+          await hashBytes(row.basmala_font_data) !== row.basmala_font_sha256)
     ) {
       throw new Error('النسخة المحلية من صفحة المصحف أو خطها تالفة.');
     }
@@ -89,7 +109,17 @@ export class MushafPageCache {
       throw new Error('النسخة المحلية من صفحة المصحف لا تطابق بيانات المصدر.');
     }
 
-    return { page, fontBase64: bytesToBase64(row.font_data) };
+    if ((page.basmalaWords !== null) !== (row.basmala_font_data !== null)) {
+      throw new Error('النسخة المحلية من خط البسملة لا تطابق بيانات صفحة المصحف.');
+    }
+
+    return {
+      page,
+      fontBase64: bytesToBase64(row.font_data),
+      basmalaFontBase64: row.basmala_font_data
+        ? bytesToBase64(row.basmala_font_data)
+        : null,
+    };
   }
 
   private async downloadPageFont(pageNumber: number): Promise<Uint8Array> {
@@ -158,7 +188,7 @@ function isCachedPage(page: unknown, pageNumber: number): page is MushafPage {
     !('mushafId' in page) ||
     !('juzNumber' in page) ||
     !('hizbNumber' in page) ||
-    !('basmalaTajweed' in page) ||
+    !('basmalaWords' in page) ||
     !('surahs' in page) ||
     !('ayahs' in page) ||
     !('lines' in page) ||
@@ -170,7 +200,16 @@ function isCachedPage(page: unknown, pageNumber: number): page is MushafPage {
 
   return page.pageNumber === pageNumber &&
     page.mushafId === 19 &&
-    (page.basmalaTajweed === null || typeof page.basmalaTajweed === 'string') &&
+    (page.basmalaWords === null ||
+      Array.isArray(page.basmalaWords) &&
+      page.basmalaWords.length > 0 &&
+      page.basmalaWords.every((word) =>
+        isRecord(word) &&
+        typeof word.codeV2 === 'string' &&
+        word.codeV2.length > 0 &&
+        typeof word.textUthmani === 'string' &&
+        word.textUthmani.length > 0,
+      )) &&
     Array.isArray(page.lines) &&
     page.lines.length > 0 &&
     page.surahs.length > 0 &&

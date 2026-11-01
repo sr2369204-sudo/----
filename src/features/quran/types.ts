@@ -57,7 +57,7 @@ export type MushafPage = {
   mushafId: 19;
   juzNumber: number;
   hizbNumber: number;
-  basmalaTajweed: string | null;
+  basmalaWords: { codeV2: string; textUthmani: string }[] | null;
   surahs: QuranSurahSummary[];
   ayahs: (QuranAyah & { surahNumber: number })[];
   lines: MushafPageLine[];

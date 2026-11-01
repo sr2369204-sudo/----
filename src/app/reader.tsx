@@ -23,7 +23,11 @@ import {
   quranContentProvider,
 } from '@/features/quran/services/content-provider';
 import type { QuranSurahDirectory } from '@/features/quran/types';
-import { MushafPageViewer, type SelectionAnchor } from '@/features/reader/components/MushafPageViewer';
+import {
+  MushafPageViewer,
+  type PageTurnDirection,
+  type SelectionAnchor,
+} from '@/features/reader/components/MushafPageViewer';
 import { SelectionSheet } from '@/features/reader/components/SelectionSheet';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
 import { useReaderPreferencesStore } from '@/features/reader/state/reader-preferences-store';
@@ -52,6 +56,8 @@ export default function ReaderScreen() {
   const selectWord = useReaderSelectionStore((state) => state.selectWord);
   const selectAyah = useReaderSelectionStore((state) => state.selectAyah);
   const [pageNumber, setPageNumber] = useState<number | null>(null);
+  const [pageTransitionDirection, setPageTransitionDirection] =
+    useState<PageTurnDirection | null>(null);
   const [selectionAnchor, setSelectionAnchor] = useState<SelectionAnchor | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [highlightRevision, setHighlightRevision] = useState(0);
@@ -69,6 +75,7 @@ export default function ReaderScreen() {
   const [navigationValue, setNavigationValue] = useState('');
   const [navigationBusy, setNavigationBusy] = useState(false);
   const audioRequest = useRef(0);
+  const lastPageTurn = useRef(0);
 
   const startLocationQuery = useQuery({
     queryKey: ['quran', 'reader-start', rawSurahNumber ?? '1', rawPageNumber ?? ''],
@@ -168,6 +175,7 @@ export default function ReaderScreen() {
     queryKey: ['quran', 'mushaf-page', 19, activePageNumber],
     enabled: activePageNumber !== null,
     staleTime: 24 * 60 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
     queryFn: () => {
       if (activePageNumber === null) {
         throw new Error('لم يُحدد رقم صفحة المصحف.');
@@ -194,6 +202,14 @@ export default function ReaderScreen() {
       );
     });
   }, [activePageNumber, database, page]);
+
+  useEffect(() => {
+    if (!page || page.pageNumber !== activePageNumber || !pageTransitionDirection) {
+      return;
+    }
+    const timer = setTimeout(() => setPageTransitionDirection(null), 260);
+    return () => clearTimeout(timer);
+  }, [activePageNumber, page, pageTransitionDirection]);
 
   useEffect(() => {
     if (!page) {
@@ -311,13 +327,40 @@ export default function ReaderScreen() {
     player.pause();
   }, [player]);
 
-  const navigateToPage = useCallback((destination: number) => {
+  const navigateToPage = useCallback((
+    destination: number,
+    direction?: PageTurnDirection,
+  ) => {
     audioRequest.current += 1;
     player.pause();
     useReaderSelectionStore.getState().clearSelection();
     setSelectionAnchor(null);
+    setPageTransitionDirection(
+      direction ?? (destination >= (page?.pageNumber ?? destination) ? 'next' : 'previous'),
+    );
     setPageNumber(destination);
-  }, [player]);
+  }, [page?.pageNumber, player]);
+
+  const handlePageTurn = useCallback((direction: PageTurnDirection) => {
+    if (
+      !page ||
+      page.pageNumber !== activePageNumber ||
+      selection ||
+      navigationOpen
+    ) {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastPageTurn.current < 300) {
+      return;
+    }
+    lastPageTurn.current = now;
+    const destination = page.pageNumber + (direction === 'next' ? 1 : -1);
+    if (destination < 1 || destination > 604) {
+      return;
+    }
+    navigateToPage(destination, direction);
+  }, [activePageNumber, navigateToPage, navigationOpen, page, selection]);
 
   const selectedElementId = selection
     ? selection.type === 'word'
@@ -390,11 +433,16 @@ export default function ReaderScreen() {
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             {page?.surahs[0]?.nameArabic ?? 'المصحف'}
           </Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {page
-              ? `الجزء ${toArabicNumbers(page.juzNumber)} · الصفحة ${toArabicNumbers(page.pageNumber)}`
-              : 'مصحف المدينة · رواية حفص'}
-          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="التنقل بين الصفحات والسور والأجزاء"
+            onPress={() => setNavigationOpen(true)}>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              {page
+                ? `الجزء ${toArabicNumbers(page.juzNumber)} · الصفحة ${toArabicNumbers(page.pageNumber)}`
+                : 'مصحف المدينة · رواية حفص'}
+            </Text>
+          </Pressable>
         </View>
         <View style={styles.readerTools}>
           <Pressable
@@ -470,13 +518,16 @@ export default function ReaderScreen() {
           <MushafPageViewer
             page={page}
             fontBase64={pageQuery.data.fontBase64}
+            basmalaFontBase64={pageQuery.data.basmalaFontBase64}
             fontSize={fontSize}
             showTajweed={showTajweed}
             isDark={colors.background === Colors.dark.background}
             highlights={highlights}
             selectedElementId={selectedElementId}
+            transitionDirection={pageTransitionDirection}
             onWordPress={onWordPress}
             onAyahPress={onAyahPress}
+            onPageTurn={handlePageTurn}
             onInteractionError={setInteractionError}
           />
           {playerStatus.playing && (
@@ -487,33 +538,6 @@ export default function ReaderScreen() {
               </Pressable>
             </View>
           )}
-          <View style={[styles.pageControls, { borderTopColor: colors.border }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="الصفحة التالية"
-              disabled={page.pageNumber >= 604}
-              onPress={() => navigateToPage(page.pageNumber + 1)}
-              style={[styles.pageButton, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.pageButtonText, { color: colors.background }]}>التالي ›</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="اختيار صفحة أو سورة أو جزء"
-              onPress={() => setNavigationOpen(true)}
-              style={[styles.pageJumpButton, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-              <Text style={[styles.pageJumpText, { color: colors.text }]}>
-                {toArabicNumbers(page.pageNumber)} / ٦٠٤
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="الصفحة السابقة"
-              disabled={page.pageNumber <= 1}
-              onPress={() => navigateToPage(page.pageNumber - 1)}
-              style={[styles.pageButton, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.pageButtonText, { color: colors.background }]}>‹ السابق</Text>
-            </Pressable>
-          </View>
         </>
       ) : null}
 
@@ -849,37 +873,6 @@ const styles = StyleSheet.create({
   stopLabel: {
     fontSize: 13,
     fontWeight: '800',
-  },
-  pageControls: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderTopWidth: 1,
-  },
-  pageButton: {
-    minWidth: 92,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  pageButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  pageJumpButton: {
-    minWidth: 94,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    borderWidth: 1,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  pageJumpText: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   error: {
     color: '#B42318',
