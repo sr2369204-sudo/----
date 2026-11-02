@@ -21,7 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { Colors, Spacing } from '@/constants/theme';
@@ -69,6 +69,7 @@ export default function ReaderScreen() {
   const rawSurahNumber = firstParam(params.surahNumber);
   const rawPageNumber = firstParam(params.pageNumber);
   const colors = useTheme();
+  const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
   const player = useAudioPlayer(null);
@@ -718,6 +719,17 @@ export default function ReaderScreen() {
     }
   }, [navigateToPage]);
 
+  useEffect(() => {
+    if (!selection && navVisible) {
+      // Avoid calling setState synchronously during render/effect to satisfy
+      // strict lint rules, especially since hideNavbar starts an animation.
+      const task = requestAnimationFrame(() => {
+        hideNavbar();
+      });
+      return () => cancelAnimationFrame(task);
+    }
+  }, [selection, navVisible, hideNavbar]);
+
   const initialError = startLocationQuery.error;
   const pageError = pageQuery.error;
   const pageLoading = startLocationQuery.isPending || activePageNumber === null || pageQuery.isPending;
@@ -728,7 +740,7 @@ export default function ReaderScreen() {
     (playerStatus.error ? `تعذر تشغيل التلاوة: ${playerStatus.error}` : null);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+    <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
       {/* The reader controls come up together with the word tools, never from a
           floating button of their own. */}
       <Animated.View
@@ -736,6 +748,7 @@ export default function ReaderScreen() {
         style={[
           styles.overlayNavbar,
           {
+            top: insets.top,
             backgroundColor:
               colors.background === Colors.dark.background
                 ? 'rgba(15, 23, 42, 0.94)'
@@ -749,7 +762,7 @@ export default function ReaderScreen() {
               {
                 translateY: navAnimation.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [-70, 0],
+                  outputRange: [-80 - insets.top, 0],
                 }),
               },
             ],
@@ -978,7 +991,7 @@ export default function ReaderScreen() {
           }}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

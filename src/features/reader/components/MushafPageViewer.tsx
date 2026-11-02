@@ -389,32 +389,6 @@ body {
     );
   }
 }
-.frame-corner {
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: ${isDark ? 'rgba(197, 163, 99, 0.55)' : 'rgba(178, 132, 45, 0.5)'};
-  box-shadow: 0 0 0 1.5px ${isDark ? 'rgba(197, 163, 99, 0.16)' : 'rgba(178, 132, 45, 0.14)'};
-  pointer-events: none;
-  z-index: 2;
-}
-.frame-corner.top-left {
-  top: 9px;
-  left: 9px;
-}
-.frame-corner.top-right {
-  top: 9px;
-  right: 9px;
-}
-.frame-corner.bottom-left {
-  bottom: 9px;
-  left: 9px;
-}
-.frame-corner.bottom-right {
-  bottom: 9px;
-  right: 9px;
-}
 .page-header {
   display: flex;
   flex: 0 0 17px;
@@ -495,64 +469,98 @@ body {
   position: relative;
   z-index: 1;
   width: 100%;
-  margin: 2px 0;
+  margin: 8px 0;
   min-height: 0;
-  color: ${isDark ? '#faeed7' : '#3c2c12'};
-  font-family: "Noto Naskh Arabic", "Amiri", "Traditional Arabic", serif;
 }
-.surah-title-rule {
-  flex: 1 1 auto;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, ${isDark ? 'rgba(158, 128, 70, 0.55)' : 'rgba(197, 163, 99, 0.65)'} 35%, ${isDark ? 'rgba(158, 128, 70, 0.55)' : 'rgba(197, 163, 99, 0.65)'} 65%, transparent);
-  pointer-events: none;
+.surah-title-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  position: relative;
+}
+.surah-title-container::before {
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  height: 2px;
+  background: ${isDark ? 'rgba(168, 135, 74, 0.4)' : 'rgba(200, 167, 101, 0.5)'};
+  z-index: 0;
+}
+.surah-info-circle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid ${isDark ? '#a8874a' : '#c8a765'};
+  background: ${isDark ? '#1e1910' : '#fefcf8'};
+  position: relative;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  z-index: 2;
+}
+.surah-info-circle::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  border: 1px dashed ${isDark ? 'rgba(168, 135, 74, 0.4)' : 'rgba(200, 167, 101, 0.5)'};
+}
+.info-label {
+  font-size: 8px;
+  color: ${isDark ? '#a8874a' : '#c8a765'};
+  margin-bottom: -1px;
+  font-weight: 600;
+}
+.info-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: ${isDark ? '#faeed7' : '#3c2c12'};
+  font-family: "Noto Naskh Arabic", serif;
 }
 .surah-title-box {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  min-width: min(230px, 76%);
-  padding: 3px 20px 4px;
-  border-radius: 999px;
-  border: 1.5px solid ${isDark ? '#a8874a' : '#c8a765'};
+  min-width: 180px;
+  padding: 8px 35px;
+  border-radius: 6px;
+  border: 2px solid ${isDark ? '#a8874a' : '#c8a765'};
   background: ${isDark
-    ? 'linear-gradient(180deg, #2a2216 0%, #3d3120 48%, #2a2216 100%)'
-    : 'linear-gradient(180deg, #fefcf8 0%, #f9ecd2 47%, #f0dcb4 53%, #f9ecd2 100%)'};
-  box-shadow: ${isDark
-    ? 'inset 0 1px 0 rgba(255, 235, 180, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.45)'
-    : 'inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(178, 132, 45, 0.18), 0 2px 8px rgba(120, 95, 45, 0.16)'};
-  white-space: nowrap;
+    ? 'linear-gradient(180deg, #2a2216 0%, #3d3120 100%)'
+    : 'linear-gradient(180deg, #fefcf8 0%, #f9ecd2 100%)'};
+  box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+  z-index: 1;
 }
 .surah-title-box::before {
   content: '';
   position: absolute;
-  inset: 2.5px;
-  border-radius: 999px;
-  border: 1px solid ${isDark ? 'rgba(197, 163, 99, 0.32)' : 'rgba(178, 132, 45, 0.3)'};
-  pointer-events: none;
-}
-.surah-ornament {
-  font-size: min(13px, 3.9cqi);
-  color: ${isDark ? '#d6b46a' : '#b38d45'};
-  line-height: 1;
-  text-shadow: 0 1px 0 ${isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.7)'};
+  inset: 3px;
+  border: 1px solid ${isDark ? 'rgba(168, 135, 74, 0.3)' : 'rgba(200, 167, 101, 0.4)'};
+  border-radius: 4px;
 }
 .surah-title-text {
   position: relative;
-  font-size: min(16px, 5cqi);
+  font-size: min(20px, 6cqi);
   font-weight: 700;
-  letter-spacing: 0.6px;
-  line-height: 1.25;
-  text-shadow: 0 1px 0 ${isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.85)'};
+  color: ${isDark ? '#faeed7' : '#3c2c12'};
+  font-family: "Noto Naskh Arabic", serif;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.1);
 }
 .opening-basmala {
   color: ${isDark ? '#e4ddcf' : '#263a30'};
   font-family: "QcfTajweedPage";
   font-palette: --QcfLight;
-  font-size: var(--quran-rendered-font-size, var(--quran-font-size));
+  font-size: calc(var(--quran-rendered-font-size, var(--quran-font-size)) * 1.05);
   min-height: 0;
+  padding: 14px 0 10px;
   white-space: nowrap;
   overflow: hidden;
   ${showTajweed ? '' : 'filter: grayscale(1);'}
@@ -590,11 +598,20 @@ body {
   font-size: inherit;
   line-height: 1.2;
 }
+.selected, .ayah-selected {
+  background: rgba(86, 125, 78, 0.25);
+  outline: none;
+}
 .selected {
   border-radius: 4px;
-  background: rgba(86, 125, 78, 0.25);
   box-shadow: 0 0 0 1.5px rgba(75, 110, 67, 0.65);
-  outline: none;
+}
+.ayah-selected {
+  /* Unified box look: no individual rounding or shadow */
+  border-radius: 0;
+}
+.ayah-selected.ayah-marker {
+  border-radius: 4px;
 }
 .hl-bg {
   border-radius: 4px;
@@ -644,10 +661,6 @@ body {
 </head>
 <body>
 <main class="page" aria-label="صفحة المصحف">
-  <div class="frame-corner top-left" aria-hidden="true"></div>
-  <div class="frame-corner top-right" aria-hidden="true"></div>
-  <div class="frame-corner bottom-left" aria-hidden="true"></div>
-  <div class="frame-corner bottom-right" aria-hidden="true"></div>
   <header class="page-header">
     <span class="header-label" id="header-surah-label">${surahHeaderLabel}</span>
     <span class="header-ornament">۞</span>
@@ -667,10 +680,22 @@ const linesElement = document.getElementById("mushaf-lines");
 const pageElement = document.querySelector(".page");
 
 function selectMushafElement(id) {
-  document.querySelectorAll(".selected").forEach((element) => element.classList.remove("selected"));
+  document.querySelectorAll(".selected, .ayah-selected").forEach((element) => {
+    element.classList.remove("selected", "ayah-selected");
+  });
   if (!id) return;
   const element = document.getElementById(id);
-  if (element) element.classList.add("selected");
+  if (!element) return;
+
+  if (element.classList.contains("ayah-marker")) {
+    const surah = element.dataset.surah;
+    const ayah = element.dataset.ayah;
+    document.querySelectorAll('[data-surah="' + surah + '"][data-ayah="' + ayah + '"]').forEach((el) => {
+      el.classList.add("ayah-selected");
+    });
+  } else {
+    element.classList.add("selected");
+  }
 }
 window.selectMushafElement = selectMushafElement;
 

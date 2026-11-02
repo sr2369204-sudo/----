@@ -37,13 +37,19 @@ export function renderMushafLinesHtml(page: MushafPage): string {
     if (titleRow >= 1 && !sourceLineNumbers.has(titleRow)) {
       surahTitles[titleRow] = `
         <div class="surah-title" style="grid-row: ${titleRow};" aria-label="سورة ${escapeHtml(surahName)}">
-          <span class="surah-title-rule" aria-hidden="true"></span>
-          <span class="surah-title-box">
-            <span class="surah-ornament start" aria-hidden="true">۞</span>
-            <span class="surah-title-text">سورة ${escapeHtml(surahName)}</span>
-            <span class="surah-ornament end" aria-hidden="true">۞</span>
-          </span>
-          <span class="surah-title-rule" aria-hidden="true"></span>
+          <div class="surah-title-container">
+            <div class="surah-info-circle start">
+              <span class="info-label">آياتها</span>
+              <span class="info-value">${toArabicNumberString(surah?.ayahCount ?? 0)}</span>
+            </div>
+            <div class="surah-title-box">
+              <span class="surah-title-text">سورة ${escapeHtml(surahName)}</span>
+            </div>
+            <div class="surah-info-circle end">
+              <span class="info-label">ترتيبها</span>
+              <span class="info-value">${toArabicNumberString(surah?.surahNumber ?? 0)}</span>
+            </div>
+          </div>
         </div>`;
     }
 

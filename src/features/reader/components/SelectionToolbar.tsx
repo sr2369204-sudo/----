@@ -412,16 +412,14 @@ function Toolbar({
     windowWidth,
     windowHeight,
     // The navbar is revealed together with the ring, so the ring has to start
-    // below it: the safe-area inset alone leaves the ring under the navbar on
-    // devices whose status bar is shorter than the navbar itself.
-    insetTop: Math.max(insets.top, navbarHeight),
+    // below it: the safe-area inset alone leaves the ring under the navbar.
+    insetTop: insets.top + navbarHeight,
     insetBottom: insets.bottom,
-    // The rect comes from inside the page view, whose origin sits at the safe
-    // area's padding edge; this overlay is positioned from the border edge, so
-    // the anchor has to be moved by the same amount or the ring floats above
-    // the word.
-    offsetX: insets.left,
-    offsetY: insets.top,
+    // The rect comes from inside the page view, whose origin sits at the
+    // border edge of the reader screen; this overlay is also positioned from
+    // the border edge, so no offsets are needed to align them.
+    offsetX: 0,
+    offsetY: 0,
   });
 
   const panelTitle =
@@ -444,7 +442,7 @@ function Toolbar({
           // Stops at the navbar: the controls that were just revealed with the
           // ring have to stay reachable, so this dismiss layer must not cover
           // them.
-          style={[StyleSheet.absoluteFill, { top: navbarHeight }]}
+          style={[StyleSheet.absoluteFill, { top: insets.top + navbarHeight }]}
           onPress={clearSelection}
         />
 
