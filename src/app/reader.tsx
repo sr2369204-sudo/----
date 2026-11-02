@@ -32,10 +32,7 @@ import {
   quranContentProvider,
 } from '@/features/quran/services/content-provider';
 import type { QuranSurahDirectory } from '@/features/quran/types';
-import {
-  type ElementRect,
-  type PageTurnDirection,
-} from '@/features/reader/components/MushafPageViewer';
+import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
 import {
   RecitationPlayer,
   RecitationScopeDialog,
@@ -514,10 +511,14 @@ export default function ReaderScreen() {
   }, [player]);
 
   const navigateToPage = useCallback((destination: number) => {
+    // The page and the selection are committed before playback is touched:
+    // stopping the player reaches the native side, and a turn whose page was
+    // never set is exactly what left the strip showing a page the rest of the
+    // screen did not know about.
+    setPageNumber(destination);
+    useReaderSelectionStore.getState().clearSelection();
     audioRequest.current += 1;
     player.pause();
-    useReaderSelectionStore.getState().clearSelection();
-    setPageNumber(destination);
   }, [player]);
 
   const toggleBookmark = useCallback((surahNumber: number, ayahNumber: number) => {
@@ -620,21 +621,20 @@ export default function ReaderScreen() {
     setRecitationError(null);
   }, [recitationPlaylist]);
 
-  const handlePageTurn = useCallback((direction: PageTurnDirection) => {
-    // The base is the page the strip is actually showing, never the page still
-    // being loaded: refusing a turn after the strip has already animated would
-    // force it to slide back on its own. Re-issuing the same destination while
-    // a turn is in flight is idempotent, so a repeated gesture can not skip a
-    // page.
-    if (!page || selection || navigationOpen) {
+  const handlePageTurn = useCallback((targetPageNumber: number) => {
+    // The strip only turns to a page that is mounted and painted, and it has
+    // already finished the animation by the time this runs, so the turn is
+    // committed as-is. Refusing it here — an open word selection, a page whose
+    // data was still loading — is what used to make the page slide back on its
+    // own a moment after the reader had turned it.
+    if (navigationOpen) {
       return;
     }
-    const destination = page.pageNumber + (direction === 'next' ? 1 : -1);
-    if (destination < 1 || destination > 604) {
+    if (!Number.isInteger(targetPageNumber) || targetPageNumber < 1 || targetPageNumber > 604) {
       return;
     }
-    navigateToPage(destination);
-  }, [navigateToPage, navigationOpen, page, selection]);
+    navigateToPage(targetPageNumber);
+  }, [navigateToPage, navigationOpen]);
 
   const selectedElementId = selection
     ? selection.type === 'word'

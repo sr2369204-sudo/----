@@ -41,7 +41,6 @@ type Props = {
     ayahNumber: number,
     rect: ElementRect,
   ) => void;
-  onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
   /**
    * Fired once the page has fully laid out: fonts decoded, line fitting applied
@@ -68,7 +67,6 @@ type PageMessage =
       ayahNumber: number;
       rect: ElementRect;
     }
-  | { type: 'turn'; direction: PageTurnDirection }
   | { type: 'ready' }
   | { type: 'pan-start'; x: number; y: number }
   | { type: 'pan-update'; dx: number; dy: number }
@@ -86,7 +84,6 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   selectedElementId,
   onWordPress,
   onAyahPress,
-  onPageTurn,
   onInteractionError,
   onReady,
   onPanStart,
@@ -125,10 +122,6 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     (message: PageMessage): void => {
       if (message.type === 'ready') {
         handleReady();
-        return;
-      }
-      if (message.type === 'turn') {
-        onPageTurn(message.direction);
         return;
       }
       if (message.type === 'pan-start') {
@@ -178,7 +171,6 @@ export const MushafPageViewer = memo(function MushafPageViewer({
       handleReady,
       onAyahPress,
       onInteractionError,
-      onPageTurn,
       onPanCancel,
       onPanEnd,
       onPanStart,
@@ -873,12 +865,20 @@ window.addEventListener("resize", () => {
 let pointerStart = null;
 let isPanning = false;
 let lastPostedDx = 0;
+// A pointer that travelled across the page must not be reported as a tap: a
+// swipe that ends on a word would otherwise open the word toolbar a moment
+// after the page had already been turned, which the reader never asked for.
+const TAP_SLOP_PX = 8;
+let gestureTravel = 0;
+let swallowClick = false;
 
 // Every message crosses the native bridge, so sub-pixel pointer noise is
 // dropped: only a meaningful horizontal change is relayed to the host.
 const PAN_UPDATE_THRESHOLD_PX = 2;
 
 pageElement.addEventListener("pointerdown", (event) => {
+  swallowClick = false;
+  gestureTravel = 0;
   if (event.button !== 0 || event.target.closest("button[data-kind]")) {
     pointerStart = null;
     isPanning = false;
@@ -894,6 +894,7 @@ pageElement.addEventListener("pointermove", (event) => {
   if (!pointerStart) return;
   const dx = event.clientX - pointerStart.x;
   const dy = event.clientY - pointerStart.y;
+  gestureTravel = Math.max(gestureTravel, Math.abs(dx), Math.abs(dy));
   if (!isPanning && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) {
     isPanning = true;
     lastPostedDx = dx;
@@ -916,6 +917,7 @@ pageElement.addEventListener("pointerup", (event) => {
   const wasPanning = isPanning;
   pointerStart = null;
   isPanning = false;
+  swallowClick = gestureTravel > TAP_SLOP_PX;
   if (wasPanning) {
     postPageMessage({ type: "pan-end", dx: dx, vx: vx });
   }
@@ -925,11 +927,16 @@ pageElement.addEventListener("pointercancel", () => {
   if (isPanning) {
     postPageMessage({ type: "pan-cancel" });
   }
+  swallowClick = gestureTravel > TAP_SLOP_PX;
   pointerStart = null;
   isPanning = false;
 });
 
 document.addEventListener("click", (event) => {
+  if (swallowClick) {
+    swallowClick = false;
+    return;
+  }
   const button = event.target.closest("button[data-kind]");
   if (!button) return;
   const rect = button.getBoundingClientRect();
@@ -967,9 +974,6 @@ window.addEventListener("message", (event) => {
 function isPageMessage(value: unknown): value is PageMessage {
   if (!isRecord(value) || typeof value.type !== 'string') {
     return false;
-  }
-  if (value.type === 'turn') {
-    return value.direction === 'next' || value.direction === 'previous';
   }
   if (value.type === 'pan-start') {
     return typeof value.x === 'number' && typeof value.y === 'number';

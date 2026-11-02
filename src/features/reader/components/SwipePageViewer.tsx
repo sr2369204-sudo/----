@@ -37,7 +37,12 @@ export type SwipePageViewerProps = {
     rect: ElementRect,
   ) => void;
   onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
-  onPageTurn: (direction: PageTurnDirection) => void;
+  /**
+   * Fired once the strip has finished turning. The page number is the prepared
+   * page it turned to, so the host commits exactly what is already on screen
+   * instead of guessing from its own still-loading data.
+   */
+  onPageTurn: (targetPageNumber: number) => void;
   onInteractionError: (message: string) => void;
   /** Tint of the indicator shown until the centred page has finished painting. */
   loadingColor?: string;
@@ -53,12 +58,6 @@ const CANCEL_DURATION_MS = 180;
  * always lands on an already prepared page.
  */
 const MAX_MOUNTED_PAGES = 3;
-/**
- * Safety net only: the host commits every turn the strip accepts, so this must
- * never fire in normal use. It is deliberately generous because the commit also
- * waits for the incoming page's annotations to load.
- */
-const TURN_CONFIRM_TIMEOUT_MS = ANIMATION_DURATION_MS + 2000;
 
 /**
  * Horizontal pull of the strip for one pointer position.
@@ -122,10 +121,16 @@ export function SwipePageViewer({
   }, [canGoNext, canGoNextOnUi]);
 
   const committedPageRef = useRef(currentPageNumber);
-  const turnPendingRef = useRef(false);
-  const turnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The page the strip rests on right now, updated the moment a turn is
+  // committed and whenever the host moves the reader somewhere else.
+  const restingPageRef = useRef(currentPageNumber);
   const onPageTurnRef = useRef(onPageTurn);
   onPageTurnRef.current = onPageTurn;
+
+  const commitTurn = useCallback((pageNumber: number) => {
+    restingPageRef.current = pageNumber;
+    onPageTurnRef.current(pageNumber);
+  }, []);
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
@@ -175,60 +180,71 @@ export function SwipePageViewer({
       const wantsPrev =
         dx > distanceThreshold || (dx > 25 && vx > SWIPE_VELOCITY_THRESHOLD);
 
-      // A page is only revealed once it has finished laying out, so a swipe can
-      // never expose a half-rendered page or an empty slot.
-      const direction: PageTurnDirection | null =
-        wantsNext && canGoNextOnUi.value
-          ? 'next'
-          : wantsPrev && canGoPrevOnUi.value
-            ? 'previous'
+      // The destination is the neighbour that is currently mounted and painted,
+      // never a page number computed from data that may still be loading. A
+      // swipe can therefore only ever land on a page that is already there.
+      const target: { direction: PageTurnDirection; pageNumber: number } | null =
+        wantsNext && canGoNextOnUi.value && nextPage !== null
+          ? { direction: 'next', pageNumber: nextPage.page.pageNumber }
+          : wantsPrev && canGoPrevOnUi.value && prevPage !== null
+            ? { direction: 'previous', pageNumber: prevPage.page.pageNumber }
             : null;
 
-      if (!direction) {
+      if (!target) {
+        resetPosition();
+        return;
+      }
+      // A repeat of a turn the host has not adopted yet would slide the strip
+      // against itself, so the page it already rests on is a hard edge.
+      if (target.pageNumber === restingPageRef.current) {
         resetPosition();
         return;
       }
 
       isTransitioning.value = true;
-      turnPendingRef.current = true;
-      turnTimerRef.current = setTimeout(() => {
-        turnTimerRef.current = null;
-        if (!turnPendingRef.current) {
-          return;
-        }
-        // The host refused the turn (selection open, out of range, ...).
-        turnPendingRef.current = false;
-        isTransitioning.value = false;
-        resetPosition();
-      }, TURN_CONFIRM_TIMEOUT_MS);
-
       pull.value = withTiming(
-        direction === 'next' ? -width : width,
+        target.direction === 'next' ? -width : width,
         { duration: ANIMATION_DURATION_MS, easing: Easing.out(Easing.cubic) },
         (finished) => {
           'worklet';
-          if (finished) {
-            runOnJS(onPageTurnRef.current)(direction);
+          if (!finished) {
+            isTransitioning.value = false;
+            return;
           }
+          // The turn belongs to the strip from the moment the gesture is
+          // accepted, so it re-centres on the destination in the same frame the
+          // animation ends. The destination is already laid out, and every slot
+          // moves by exactly one width, so this is invisible: it only stops the
+          // strip from depending on the host confirming the turn in time.
+          rowIndex.value = target.pageNumber;
+          pull.value = 0;
+          isTransitioning.value = false;
+          runOnJS(commitTurn)(target.pageNumber);
         },
       );
     },
-    [canGoNextOnUi, canGoPrevOnUi, isTransitioning, pull, resetPosition],
+    [
+      canGoNextOnUi,
+      canGoPrevOnUi,
+      commitTurn,
+      isTransitioning,
+      nextPage,
+      prevPage,
+      pull,
+      resetPosition,
+      rowIndex,
+    ],
   );
 
-  // The visible page never changes identity while it is on screen: the strip is
-  // re-centred atomically on the UI thread, so the page that slides in is
-  // already laid out and the outgoing page keeps its position off screen.
+  // A page the strip did not turn to itself (opening the reader, the page index,
+  // a bookmark) is adopted here. Its layout is pinned on the UI thread so the
+  // incoming page is already in place on the first visible frame.
   useEffect(() => {
     if (committedPageRef.current === currentPageNumber) {
       return;
     }
     committedPageRef.current = currentPageNumber;
-    turnPendingRef.current = false;
-    if (turnTimerRef.current !== null) {
-      clearTimeout(turnTimerRef.current);
-      turnTimerRef.current = null;
-    }
+    restingPageRef.current = currentPageNumber;
     runOnUI((target: number) => {
       'worklet';
       cancelAnimation(pull);
@@ -248,15 +264,6 @@ export function SwipePageViewer({
       return next.size === previous.size ? previous : next;
     });
   }, [currentPageNumber, isTransitioning, pull, rowIndex]);
-
-  useEffect(
-    () => () => {
-      if (turnTimerRef.current !== null) {
-        clearTimeout(turnTimerRef.current);
-      }
-    },
-    [],
-  );
 
   const pages = useMemo(() => {
     const window: CachedMushafPage[] = [];
@@ -346,7 +353,6 @@ export function SwipePageViewer({
                     isInteractive={isCurrent}
                     onWordPress={onWordPress}
                     onAyahPress={onAyahPress}
-                    onPageTurn={onPageTurn}
                     onInteractionError={onInteractionError}
                     onReady={markPageReady}
                     onPanStart={isCurrent ? handleWebPanStart : undefined}
@@ -389,7 +395,6 @@ type PageSlotProps = {
     rect: ElementRect,
   ) => void;
   onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
-  onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
   onReady: (pageNumber: number) => void;
   onPanStart?: (x: number, y: number) => void;
@@ -415,7 +420,6 @@ const PageSlot = memo(function PageSlot({
   isInteractive,
   onWordPress,
   onAyahPress,
-  onPageTurn,
   onInteractionError,
   onReady,
   onPanStart,
@@ -446,7 +450,6 @@ const PageSlot = memo(function PageSlot({
         selectedElementId={selectedElementId}
         onWordPress={onWordPress}
         onAyahPress={onAyahPress}
-        onPageTurn={onPageTurn}
         onInteractionError={onInteractionError}
         onReady={handleReady}
         onPanStart={onPanStart}
