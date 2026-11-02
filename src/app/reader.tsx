@@ -7,7 +7,7 @@ import {
   useAudioPlayerStatus,
   setAudioModeAsync,
 } from 'expo-audio';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -68,9 +68,9 @@ export default function ReaderScreen() {
   }>();
   const rawSurahNumber = firstParam(params.surahNumber);
   const rawPageNumber = firstParam(params.pageNumber);
-  const requestedSurah = Number(rawSurahNumber ?? '1');
   const colors = useTheme();
   const database = useSQLiteContext();
+  const queryClient = useQueryClient();
   const player = useAudioPlayer(null);
   const playerStatus = useAudioPlayerStatus(player);
   const recitationPlaylist = useAudioPlaylist({ loop: 'none' });
@@ -102,18 +102,19 @@ export default function ReaderScreen() {
   const [navigationBusy, setNavigationBusy] = useState(false);
   const audioRequest = useRef(0);
   const [navVisible, setNavVisible] = useState(false);
+  const [navbarHeight, setNavbarHeight] = useState(0);
   const [navAnimation] = useState(() => new Animated.Value(0));
 
-  const toggleNavbar = useCallback(() => {
-    setNavVisible((prev) => {
-      const next = !prev;
-      Animated.timing(navAnimation, {
-        toValue: next ? 1 : 0,
-        duration: 200,
-        useNativeDriver: Platform.OS !== 'web',
-      }).start();
-      return next;
-    });
+  // The reader controls are no longer opened from a floating button: they come
+  // up together with the word tools, so revealing the ring always reveals the
+  // navbar too.
+  const showNavbar = useCallback(() => {
+    setNavVisible(true);
+    Animated.timing(navAnimation, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
   }, [navAnimation]);
 
   const hideNavbar = useCallback(() => {
@@ -126,7 +127,7 @@ export default function ReaderScreen() {
   }, [navAnimation]);
 
   const startLocationQuery = useQuery({
-    queryKey: ['quran', 'reader-start', rawSurahNumber ?? '1', rawPageNumber ?? ''],
+    queryKey: ['quran', 'reader-start', rawSurahNumber ?? '', rawPageNumber ?? ''],
     queryFn: async () => {
       if (rawPageNumber !== undefined) {
         const requestedPage = parseArabicNumber(rawPageNumber);
@@ -135,10 +136,14 @@ export default function ReaderScreen() {
         }
         return requestedPage;
       }
-      if (!Number.isInteger(requestedSurah) || requestedSurah < 1 || requestedSurah > 114) {
-        throw new ContentUnavailableError('invalid-data', 'Invalid surah route parameter.');
-      }
-      if (requestedSurah !== 1) {
+      // An explicit surah always wins, Al-Fatiha included. Resuming the saved
+      // position is the request that carries no route parameter at all, so the
+      // two cases can no longer collapse into the same value.
+      if (rawSurahNumber !== undefined) {
+        const requestedSurah = parseArabicNumber(rawSurahNumber);
+        if (!Number.isInteger(requestedSurah) || requestedSurah < 1 || requestedSurah > 114) {
+          throw new ContentUnavailableError('invalid-data', 'Invalid surah route parameter.');
+        }
         return quranContentProvider.getPageNumberForSurah(requestedSurah);
       }
 
@@ -427,7 +432,8 @@ export default function ReaderScreen() {
     setInteractionError(null);
     setSelectionAnchor(rect);
     selectWord(surahNumber, ayah, word, 'compact');
-  }, [page, player, selectWord]);
+    showNavbar();
+  }, [page, player, selectWord, showNavbar]);
 
   const onAyahPress = useCallback((
     surahNumber: number,
@@ -446,7 +452,8 @@ export default function ReaderScreen() {
     setInteractionError(null);
     setSelectionAnchor(rect);
     selectAyah(surahNumber, ayah, 'compact');
-  }, [page, player, selectAyah]);
+    showNavbar();
+  }, [page, player, selectAyah, showNavbar]);
 
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
     const requestId = ++audioRequest.current;
@@ -454,9 +461,13 @@ export default function ReaderScreen() {
     recitationPlaylist.pause();
     let audioUrl: string | null;
     if (currentSelection.type === 'word') {
-      audioUrl = currentSelection.word.audioUrl
-        ? quranContentProvider.getWordAudioUrl(currentSelection.word.audioUrl)
-        : null;
+      // Rebuilt from the word's position: the `audio_url` carried by the API
+      // drifts one word ahead after every pause mark.
+      audioUrl = quranContentProvider.getWordAudioUrlForPosition(
+        currentSelection.surahNumber,
+        currentSelection.ayah.ayahNumber,
+        currentSelection.word.position,
+      );
     } else {
       try {
         audioUrl = await quranContentProvider.getAyahAudioUrl(
@@ -570,7 +581,12 @@ export default function ReaderScreen() {
       ? repository.deleteSavedWord(surahNumber, ayahNumber, wordId)
       : repository.createSavedWord({ surahNumber, ayahNumber, wordId, wordText });
     action
-      .then(() => setSavedWordRevision((revision) => revision + 1))
+      .then(() => {
+        setSavedWordRevision((revision) => revision + 1);
+        // The saved-words screen reads the same table through React Query; it
+        // has to be told the list changed or it keeps serving its cached copy.
+        return queryClient.invalidateQueries({ queryKey: ['annotations', 'saved-words'] });
+      })
       .catch((error: unknown) => {
         setInteractionError(
           error instanceof Error
@@ -578,7 +594,7 @@ export default function ReaderScreen() {
             : 'تعذر تحديث الكلمات المحفوظة.',
         );
       });
-  }, [database, savedWords]);
+  }, [database, queryClient, savedWords]);
 
   const selectReciter = useCallback((nextReciterId: number) => {
     const preferences = useReaderPreferencesStore.getState();
@@ -713,8 +729,10 @@ export default function ReaderScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      {/* Reader controls are toggled from the page header or this explicit close button. */}
+      {/* The reader controls come up together with the word tools, never from a
+          floating button of their own. */}
       <Animated.View
+        onLayout={(event) => setNavbarHeight(event.nativeEvent.layout.height)}
         style={[
           styles.overlayNavbar,
           {
@@ -866,19 +884,6 @@ export default function ReaderScreen() {
         />
       ) : null}
 
-      {page && !navVisible && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="إظهار أدوات القراءة"
-          onPress={toggleNavbar}
-          style={[
-            styles.quickControlsToggle,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}>
-          <Ionicons name="options-outline" size={15} color={colors.primary} />
-        </Pressable>
-      )}
-
       {recitationQueue && (
         <RecitationPlayer
           label={recitationQueue.label}
@@ -917,6 +922,7 @@ export default function ReaderScreen() {
       <SelectionToolbar
         surahName={currentSurahName}
         anchorRect={selectionAnchor}
+        navbarHeight={navbarHeight}
         isBookmarked={isBookmarked}
         isWordSaved={isWordSaved}
         isAudioPlaying={playerStatus.playing}
@@ -1182,18 +1188,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
-  },
-  quickControlsToggle: {
-    position: 'absolute',
-    top: 6,
-    alignSelf: 'center',
-    zIndex: 110,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   navActionBtn: {
     flexDirection: 'row-reverse',

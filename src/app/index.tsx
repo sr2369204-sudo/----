@@ -85,7 +85,7 @@ export default function HomeScreen() {
               <Text style={styles.heroBody}>
                 تابع من آخر موضع وصلت إليه، أو ابحث عن السورة التي تريدها.
               </Text>
-              <Link href={{ pathname: '/reader', params: { surahNumber: '1' } }} asChild>
+              <Link href="/reader" asChild>
                 <Pressable
                   accessibilityRole="button"
                   style={StyleSheet.flatten([styles.startButton])}>

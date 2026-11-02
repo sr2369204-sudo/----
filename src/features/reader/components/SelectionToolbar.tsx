@@ -53,6 +53,8 @@ type IconName = React.ComponentProps<typeof Ionicons>['name'];
 type Props = {
   surahName: string;
   anchorRect: ElementRect | null;
+  /** Height of the reader navbar, which the ring has to stay clear of. */
+  navbarHeight: number;
   isBookmarked: boolean;
   isWordSaved: boolean;
   isAudioPlaying: boolean;
@@ -86,6 +88,7 @@ function Toolbar({
   selection,
   surahName,
   anchorRect,
+  navbarHeight,
   isBookmarked,
   isWordSaved,
   isAudioPlaying,
@@ -408,8 +411,17 @@ function Toolbar({
     count: actions.length,
     windowWidth,
     windowHeight,
-    insetTop: insets.top,
+    // The navbar is revealed together with the ring, so the ring has to start
+    // below it: the safe-area inset alone leaves the ring under the navbar on
+    // devices whose status bar is shorter than the navbar itself.
+    insetTop: Math.max(insets.top, navbarHeight),
     insetBottom: insets.bottom,
+    // The rect comes from inside the page view, whose origin sits at the safe
+    // area's padding edge; this overlay is positioned from the border edge, so
+    // the anchor has to be moved by the same amount or the ring floats above
+    // the word.
+    offsetX: insets.left,
+    offsetY: insets.top,
   });
 
   const panelTitle =
@@ -429,7 +441,10 @@ function Toolbar({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="إغلاق شريط الإجراءات"
-          style={StyleSheet.absoluteFill}
+          // Stops at the navbar: the controls that were just revealed with the
+          // ring have to stay reachable, so this dismiss layer must not cover
+          // them.
+          style={[StyleSheet.absoluteFill, { top: navbarHeight }]}
           onPress={clearSelection}
         />
 
@@ -723,6 +738,9 @@ type RingLayoutInput = {
   windowHeight: number;
   insetTop: number;
   insetBottom: number;
+  /** Offset from the page view's origin to this overlay's origin. */
+  offsetX: number;
+  offsetY: number;
 };
 
 function computeRingLayout({
@@ -732,6 +750,8 @@ function computeRingLayout({
   windowHeight,
   insetTop,
   insetBottom,
+  offsetX,
+  offsetY,
 }: RingLayoutInput): {
   points: { left: number; top: number }[];
   close: { left: number; top: number };
@@ -744,8 +764,8 @@ function computeRingLayout({
     width: 60,
     height: 28,
   };
-  const centerX = anchor.x + anchor.width / 2;
-  const centerY = anchor.y + anchor.height / 2;
+  const centerX = anchor.x + (anchorRect ? offsetX : 0) + anchor.width / 2;
+  const centerY = anchor.y + (anchorRect ? offsetY : 0) + anchor.height / 2;
   const wordHalf = Math.max(anchor.width, anchor.height) / 2;
 
   const topLimit = insetTop + 2;

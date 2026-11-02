@@ -498,6 +498,37 @@ export class QuranComContentProvider implements QuranContentProvider {
     return new URL(audioPath, WORD_AUDIO_BASE_URL).toString();
   }
 
+  /**
+   * Recording of a single word, addressed by its position inside the ayah.
+   *
+   * The word recordings are numbered by that position, but the `audio_url` the
+   * API attaches to a word counts every pause mark as a word too: from the
+   * first pause mark on it points one file ahead, so it plays the following
+   * word. The position this page already carries is the numbering that exists
+   * on the CDN, so the URL is rebuilt from it instead of trusted as-is.
+   */
+  getWordAudioUrlForPosition(
+    surahNumber: number,
+    ayahNumber: number,
+    position: number,
+  ): string {
+    if (
+      !Number.isInteger(surahNumber) ||
+      surahNumber < 1 ||
+      surahNumber > 114 ||
+      !Number.isInteger(ayahNumber) ||
+      ayahNumber < 1 ||
+      !Number.isInteger(position) ||
+      position < 1 ||
+      position > 999
+    ) {
+      throw new ContentUnavailableError('invalid-data', 'Word audio reference is invalid.');
+    }
+    return this.getWordAudioUrl(
+      `wbw/${padToThree(surahNumber)}_${padToThree(ayahNumber)}_${padToThree(position)}.mp3`,
+    );
+  }
+
   private async requestJson(path: string): Promise<unknown> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
@@ -840,6 +871,10 @@ function assertAyahReference(surahNumber: number, ayahNumber: number): void {
 
 function isSafeWordAudioPath(value: string): boolean {
   return /^wbw\/\d{3}_\d{3}_\d{3}\.mp3$/.test(value);
+}
+
+function padToThree(value: number): string {
+  return String(value).padStart(3, '0');
 }
 
 function isSafeAudioPath(value: string): boolean {
