@@ -1,6 +1,6 @@
 import { Link, useLocalSearchParams } from 'expo-router';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -53,6 +53,7 @@ export default function ReaderScreen() {
   const requestedSurah = Number(rawSurahNumber ?? '1');
   const colors = useTheme();
   const database = useSQLiteContext();
+  const queryClient = useQueryClient();
   const player = useAudioPlayer(null);
   const playerStatus = useAudioPlayerStatus(player);
   const reciterId = useReaderPreferencesStore((state) => state.reciterId);
@@ -76,28 +77,20 @@ export default function ReaderScreen() {
   const [navigationBusy, setNavigationBusy] = useState(false);
   const audioRequest = useRef(0);
   const lastPageTurn = useRef(0);
-  const [controlsOpacity] = useState(() => new Animated.Value(0));
-  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [navVisible, setNavVisible] = useState(false);
+  const [navAnimation] = useState(() => new Animated.Value(0));
 
-  const showControls = useCallback(() => {
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    Animated.timing(controlsOpacity, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-    controlsTimer.current = setTimeout(() => {
-      Animated.timing(controlsOpacity, {
-        toValue: 0,
-        duration: 380,
+  const toggleNavbar = useCallback(() => {
+    setNavVisible((prev) => {
+      const next = !prev;
+      Animated.timing(navAnimation, {
+        toValue: next ? 1 : 0,
+        duration: 200,
         useNativeDriver: true,
       }).start();
-    }, 3000);
-  }, [controlsOpacity]);
-
-  useEffect(() => () => {
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-  }, []);
+      return next;
+    });
+  }, [navAnimation]);
 
   const startLocationQuery = useQuery({
     queryKey: ['quran', 'reader-start', rawSurahNumber ?? '1', rawPageNumber ?? ''],
@@ -146,8 +139,8 @@ export default function ReaderScreen() {
       if (savedTajweed !== undefined && savedTajweed !== 'true' && savedTajweed !== 'false') {
         throw new Error('إعداد ألوان التجويد المحفوظ غير صالح.');
       }
-      const parsedFontSize = savedFontSize === undefined ? 33 : Number(savedFontSize);
-      if (!Number.isInteger(parsedFontSize) || parsedFontSize < 21 || parsedFontSize > 37) {
+      const parsedFontSize = savedFontSize === undefined ? 36 : Number(savedFontSize);
+      if (!Number.isInteger(parsedFontSize) || parsedFontSize < 20 || parsedFontSize > 60) {
         throw new Error('حجم الخط المحفوظ غير صالح.');
       }
       return {
@@ -159,7 +152,7 @@ export default function ReaderScreen() {
   });
 
   const showTajweed = displayPreferencesQuery.data?.showTajweed ?? true;
-  const fontSize = displayPreferencesQuery.data?.fontSize ?? 33;
+  const fontSize = displayPreferencesQuery.data?.fontSize ?? 36;
   const displayPreferencesError =
     displaySaveError ??
     (displayPreferencesQuery.error instanceof Error
@@ -239,6 +232,30 @@ export default function ReaderScreen() {
       );
     });
   }, [activePageNumber, database, page]);
+
+  // Buffer of 5 pages forward and 5 pages backward for seamless page turning without flash or lag
+  useEffect(() => {
+    if (!activePageNumber) return;
+    const cache = new MushafPageCache(database);
+    for (let offset = 1; offset <= 5; offset++) {
+      const forward = activePageNumber + offset;
+      if (forward <= 604) {
+        void queryClient.prefetchQuery({
+          queryKey: ['quran', 'mushaf-page', 19, forward],
+          queryFn: () => cache.getPage(forward),
+          staleTime: 24 * 60 * 60 * 1000,
+        });
+      }
+      const backward = activePageNumber - offset;
+      if (backward >= 1) {
+        void queryClient.prefetchQuery({
+          queryKey: ['quran', 'mushaf-page', 19, backward],
+          queryFn: () => cache.getPage(backward),
+          staleTime: 24 * 60 * 60 * 1000,
+        });
+      }
+    }
+  }, [activePageNumber, database, queryClient]);
 
   useEffect(() => {
     if (!page || page.pageNumber !== activePageNumber || !pageTransitionDirection) {
@@ -491,38 +508,90 @@ export default function ReaderScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      {/* Tap-to-reveal floating controls */}
-      <Animated.View style={[styles.floatingControls, { opacity: controlsOpacity }]} pointerEvents="box-none">
+      {/* Sleek Top Overlay Navbar - Toggles on screen tap */}
+      <Animated.View
+        style={[
+          styles.overlayNavbar,
+          {
+            backgroundColor:
+              colors.background === Colors.dark.background
+                ? 'rgba(15, 23, 42, 0.94)'
+                : 'rgba(253, 251, 247, 0.96)',
+            borderBottomColor:
+              colors.background === Colors.dark.background
+                ? 'rgba(255, 255, 255, 0.08)'
+                : 'rgba(0, 0, 0, 0.06)',
+            opacity: navAnimation,
+            transform: [
+              {
+                translateY: navAnimation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-70, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+        pointerEvents={navVisible ? 'auto' : 'none'}
+      >
         <Link href="/" replace asChild>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="العودة للسور"
-            style={StyleSheet.flatten([styles.floatingButton, { backgroundColor: colors.surface, borderColor: colors.border }])}>
-            <Text style={[styles.floatingGlyph, { color: colors.text }]}>←</Text>
+            style={({ pressed }) => [
+              styles.navActionBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <Text style={[styles.navActionGlyph, { color: colors.text }]}>←</Text>
+            <Text style={[styles.navActionText, { color: colors.text }]}>السور</Text>
           </Pressable>
         </Link>
+
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="التنقل بين الصفحات والسور والأجزاء"
+          accessibilityLabel="الانتقال إلى موضع آخر"
           onPress={() => setNavigationOpen(true)}
-          style={StyleSheet.flatten([styles.floatingButton, { backgroundColor: colors.surface, borderColor: colors.border }])}>
-          <Text style={[styles.floatingGlyph, { color: colors.text, fontSize: 15 }]}>☰</Text>
+          style={({ pressed }) => [styles.navCenterInfo, pressed && { opacity: 0.75 }]}
+        >
+          <Text style={[styles.navSurahTitle, { color: colors.text }]}>
+            سورة {currentSurahName}
+          </Text>
+          <Text style={[styles.navPageSubtitle, { color: colors.textSecondary }]}>
+            صفحة {toArabicDigits(activePageNumber ?? 1)} · الجزء {toArabicDigits(page?.juzNumber ?? 1)}
+          </Text>
         </Pressable>
-      </Animated.View>
 
-      {/* Invisible tap zones on left/right edges to reveal controls */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="إظهار أزرار التحكم"
-        onPress={showControls}
-        style={styles.tapZoneLeft}
-      />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="إظهار أزرار التحكم"
-        onPress={showControls}
-        style={styles.tapZoneRight}
-      />
+        <View style={styles.navLeftActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="فهرس الصفحات والسور"
+            onPress={() => setNavigationOpen(true)}
+            style={({ pressed }) => [
+              styles.navIconBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <Text style={[styles.navIconGlyph, { color: colors.text }]}>☰</Text>
+          </Pressable>
+
+          <Link href="/settings" asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="الإعدادات"
+              style={({ pressed }) => [
+                styles.navIconBtn,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+                pressed && { opacity: 0.75 },
+              ]}
+            >
+              <Text style={[styles.navIconGlyph, { color: colors.text }]}>⚙</Text>
+            </Pressable>
+          </Link>
+        </View>
+      </Animated.View>
 
       {pageLoading && !noInitialPage ? (
         <View style={styles.centered}>
@@ -565,6 +634,7 @@ export default function ReaderScreen() {
             onAyahPress={onAyahPress}
             onPageTurn={handlePageTurn}
             onInteractionError={setInteractionError}
+            onPageTap={toggleNavbar}
           />
           {playerStatus.playing && (
             <View style={[styles.playingBar, { backgroundColor: colors.primary }]}>
@@ -802,48 +872,72 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  floatingControls: {
+  overlayNavbar: {
     position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 20,
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
     flexDirection: 'row-reverse',
-    gap: 8,
-    pointerEvents: 'box-none',
-  },
-  floatingButton: {
-    width: 38,
-    height: 38,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 19,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
     shadowColor: '#000',
     shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
-  floatingGlyph: {
-    fontSize: 18,
+  navActionBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  navActionGlyph: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  navActionText: {
+    fontSize: 13,
     fontWeight: '600',
-    lineHeight: 22,
   },
-  tapZoneLeft: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 44,
-    zIndex: 5,
+  navCenterInfo: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
-  tapZoneRight: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 44,
-    zIndex: 5,
+  navSurahTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  navPageSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  navLeftActions: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  navIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIconGlyph: {
+    fontSize: 16,
   },
   centered: {
     flex: 1,
@@ -1012,3 +1106,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+function toArabicDigits(value: number | string): string {
+  return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
+}
