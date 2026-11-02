@@ -92,7 +92,7 @@ function isThemePreference(value: string): value is 'system' | 'light' | 'dark' 
 export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      <SQLiteProvider databaseName="mushaf.db" onInit={initializeDatabase}>
+      <SQLiteProvider databaseName="mushaf_v2.db" onInit={initializeDatabase}>
         <AppLayout />
       </SQLiteProvider>
     </QueryClientProvider>
