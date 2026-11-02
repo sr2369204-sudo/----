@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -75,6 +76,28 @@ export default function ReaderScreen() {
   const [navigationBusy, setNavigationBusy] = useState(false);
   const audioRequest = useRef(0);
   const lastPageTurn = useRef(0);
+  const controlsOpacity = useRef(new Animated.Value(0)).current;
+  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showControls = useCallback(() => {
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    Animated.timing(controlsOpacity, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+    controlsTimer.current = setTimeout(() => {
+      Animated.timing(controlsOpacity, {
+        toValue: 0,
+        duration: 380,
+        useNativeDriver: true,
+      }).start();
+    }, 3000);
+  }, [controlsOpacity]);
+
+  useEffect(() => () => {
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+  }, []);
 
   const startLocationQuery = useQuery({
     queryKey: ['quran', 'reader-start', rawSurahNumber ?? '1', rawPageNumber ?? ''],
@@ -123,7 +146,7 @@ export default function ReaderScreen() {
       if (savedTajweed !== undefined && savedTajweed !== 'true' && savedTajweed !== 'false') {
         throw new Error('إعداد ألوان التجويد المحفوظ غير صالح.');
       }
-      const parsedFontSize = savedFontSize === undefined ? 29 : Number(savedFontSize);
+      const parsedFontSize = savedFontSize === undefined ? 33 : Number(savedFontSize);
       if (!Number.isInteger(parsedFontSize) || parsedFontSize < 21 || parsedFontSize > 37) {
         throw new Error('حجم الخط المحفوظ غير صالح.');
       }
@@ -136,7 +159,7 @@ export default function ReaderScreen() {
   });
 
   const showTajweed = displayPreferencesQuery.data?.showTajweed ?? true;
-  const fontSize = displayPreferencesQuery.data?.fontSize ?? 29;
+  const fontSize = displayPreferencesQuery.data?.fontSize ?? 33;
   const displayPreferencesError =
     displaySaveError ??
     (displayPreferencesQuery.error instanceof Error
@@ -452,24 +475,38 @@ export default function ReaderScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      {/* Minimalist floating controls instead of navbar */}
-      <View style={styles.floatingControls}>
+      {/* Tap-to-reveal floating controls */}
+      <Animated.View style={[styles.floatingControls, { opacity: controlsOpacity }]} pointerEvents="box-none">
         <Link href="/" replace asChild>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="العودة للسور"
             style={StyleSheet.flatten([styles.floatingButton, { backgroundColor: colors.surface, borderColor: colors.border }])}>
-            <Text style={[styles.floatingGlyph, { color: colors.primary }]}>→</Text>
+            <Text style={[styles.floatingGlyph, { color: colors.text }]}>←</Text>
           </Pressable>
         </Link>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="التنقل بين الصفحات والسور والأجزاء"
           onPress={() => setNavigationOpen(true)}
-          style={[styles.floatingButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.floatingGlyph, { color: colors.primary, fontSize: 16 }]}>☰</Text>
+          style={StyleSheet.flatten([styles.floatingButton, { backgroundColor: colors.surface, borderColor: colors.border }])}>
+          <Text style={[styles.floatingGlyph, { color: colors.text, fontSize: 15 }]}>☰</Text>
         </Pressable>
-      </View>
+      </Animated.View>
+
+      {/* Invisible tap zones on left/right edges to reveal controls */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="إظهار أزرار التحكم"
+        onPress={showControls}
+        style={styles.tapZoneLeft}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="إظهار أزرار التحكم"
+        onPress={showControls}
+        style={styles.tapZoneRight}
+      />
 
       {pageLoading && !noInitialPage ? (
         <View style={styles.centered}>
@@ -752,28 +789,46 @@ const styles = StyleSheet.create({
   },
   floatingControls: {
     position: 'absolute',
-    top: 10,
-    right: 12,
-    zIndex: 10,
+    top: 14,
+    right: 14,
+    zIndex: 20,
     flexDirection: 'row-reverse',
     gap: 8,
+    pointerEvents: 'box-none',
   },
   floatingButton: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 19,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
   floatingGlyph: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  tapZoneLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    zIndex: 5,
+  },
+  tapZoneRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    zIndex: 5,
   },
   centered: {
     flex: 1,

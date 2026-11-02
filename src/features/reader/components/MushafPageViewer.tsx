@@ -488,9 +488,24 @@ body {
   line-height: 1.25;
 }
 .selected {
-  border-radius: 5px;
-  background: rgba(86, 125, 78, 0.24);
-  box-shadow: 0 0 0 1px rgba(75, 110, 67, 0.55);
+  border-radius: 3px;
+  background: rgba(86, 125, 78, 0.22);
+  box-shadow: 0 0 0 1.5px rgba(75, 110, 67, 0.6);
+  outline: none;
+}
+.word[style*="background-color"], .ayah-marker[style*="background-color"] {
+  position: relative;
+  isolation: isolate;
+}
+.word[style*="background-color"]::before, .ayah-marker[style*="background-color"]::before {
+  content: '';
+  position: absolute;
+  inset: -1px -2px;
+  border-radius: 3px;
+  background: inherit;
+  z-index: -1;
+  opacity: 0.92;
+  filter: blur(0.5px);
 }
 .page-footer {
   display: flex;
@@ -503,6 +518,28 @@ body {
   border-top: 1px solid ${isDark ? 'rgba(138, 112, 61, 0.22)' : 'rgba(197, 163, 99, 0.3)'};
   margin-top: 2px;
 }
+.hl-bg {
+  background-color: var(--hl-bg, transparent);
+}
+.hl-marker {
+  position: relative;
+  isolation: isolate;
+}
+.hl-marker::before {
+  content: '';
+  position: absolute;
+  inset: 2px -3px 0px -3px;
+  border-radius: 2px 4px 4px 1px / 3px 5px 5px 2px;
+  background: var(--hl-marker-color, transparent);
+  transform: rotate(-0.4deg) scaleX(1.01);
+  z-index: -1;
+  opacity: 0.72;
+  mix-blend-mode: multiply;
+}
+.hl-marker.hl-bg::before {
+  opacity: 0.85;
+}
+${isDark ? `.hl-marker::before { mix-blend-mode: screen; }` : ''}
 .page-number-ornament {
   display: inline-flex;
   align-items: center;
@@ -575,7 +612,17 @@ for (const line of page.lines) {
       button.dataset.wordId = word.id;
       button.textContent = word.codeV2;
       button.setAttribute("aria-label", word.textUthmani + "، كلمة " + word.position + " من الآية " + word.ayahNumber);
-      button.style.backgroundColor = highlightStyles[word.id] || "";
+      const wordEntry = highlightStyles[word.id];
+      if (wordEntry) {
+        if (wordEntry.bg) {
+          button.classList.add("hl-bg");
+          button.style.setProperty("--hl-bg", wordEntry.bg);
+        }
+        if (wordEntry.marker) {
+          button.classList.add("hl-marker");
+          button.style.setProperty("--hl-marker-color", wordEntry.marker);
+        }
+      }
       inner.appendChild(button);
     } else {
       inner.appendChild(VerseMarker(word));
@@ -598,7 +645,11 @@ function VerseMarker(word) {
   marker.dataset.kind = "ayah";
   marker.textContent = word.codeV2;
   marker.setAttribute("aria-label", "إجراءات الآية " + word.ayahNumber);
-  marker.style.backgroundColor = highlightStyles[marker.id] || "";
+  const ayahEntry = highlightStyles[marker.id];
+  if (ayahEntry && ayahEntry.bg) {
+    marker.classList.add("hl-bg");
+    marker.style.setProperty("--hl-bg", ayahEntry.bg);
+  }
   return marker;
 }
 
@@ -724,23 +775,43 @@ function postPageTurn(direction) {
 }
 
 let pointerStart = null;
+let swipeDeltaX = 0;
 const pageElement = document.querySelector(".page");
-const turnThreshold = 55;
-const edgeZone = 26;
+const turnThreshold = 38;
+const edgeZone = 32;
+
 pageElement.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 || event.target.closest("button[data-kind]")) {
     pointerStart = null;
     return;
   }
+  pageElement.setPointerCapture(event.pointerId);
   pointerStart = { x: event.clientX, y: event.clientY };
+  swipeDeltaX = 0;
 });
+
+pageElement.addEventListener("pointermove", (event) => {
+  if (!pointerStart) return;
+  const dx = event.clientX - pointerStart.x;
+  const dy = event.clientY - pointerStart.y;
+  if (Math.abs(dx) > Math.abs(dy) * 1.1 && !event.target.closest("button[data-kind]")) {
+    swipeDeltaX = dx;
+    const clampedDx = Math.sign(dx) * Math.min(Math.abs(dx) * 0.35, 28);
+    pageElement.style.transform = "translateX(" + clampedDx + "px)";
+    pageElement.style.transition = "none";
+  }
+});
+
 pageElement.addEventListener("pointerup", (event) => {
   if (!pointerStart) return;
   const deltaX = event.clientX - pointerStart.x;
   const deltaY = event.clientY - pointerStart.y;
   const start = pointerStart;
   pointerStart = null;
-  if (Math.abs(deltaX) >= turnThreshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+  pageElement.style.transition = "transform 180ms cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+  pageElement.style.transform = "translateX(0)";
+  setTimeout(function() { pageElement.style.transform = ""; pageElement.style.transition = ""; }, 200);
+  if (Math.abs(deltaX) >= turnThreshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
     postPageTurn(deltaX < 0 ? "next" : "previous");
     return;
   }
@@ -752,7 +823,13 @@ pageElement.addEventListener("pointerup", (event) => {
     postPageTurn("previous");
   }
 });
-pageElement.addEventListener("pointercancel", () => { pointerStart = null; });
+
+pageElement.addEventListener("pointercancel", function() {
+  pointerStart = null;
+  pageElement.style.transition = "transform 180ms ease";
+  pageElement.style.transform = "translateX(0)";
+  setTimeout(function() { pageElement.style.transform = ""; pageElement.style.transition = ""; }, 200);
+});
 
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-kind]");
@@ -821,22 +898,20 @@ function isPageMessage(value: unknown): value is PageMessage {
       value.position > 0);
 }
 
-function buildHighlightStyles(page: MushafPage, highlights: Highlight[]): Record<string, string> {
-  const styles: Record<string, string> = {};
+type HighlightEntry = { bg: string; marker?: string };
+
+function buildHighlightStyles(page: MushafPage, highlights: Highlight[]): Record<string, HighlightEntry> {
+  const styles: Record<string, HighlightEntry> = {};
   for (const ayah of page.ayahs) {
     const ayahHighlight = highlights.find((highlight) =>
       highlight.target.type === 'ayah' &&
       highlight.target.surahNumber === ayah.surahNumber &&
       highlight.target.ayahNumber === ayah.ayahNumber,
     );
-    if (ayahHighlight) {
-      styles[`ayah-${ayah.surahNumber}-${ayah.ayahNumber}`] =
-        toRgba(ayahHighlight.color, ayahHighlight.opacity);
-    }
 
     for (const word of ayah.words) {
       const wordIndex = ayah.words.findIndex((item) => item.id === word.id);
-      const highlight = highlights.find((item) => {
+      const wordHighlight = highlights.find((item) => {
         const target = item.target;
         if (
           target.surahNumber !== ayah.surahNumber ||
@@ -844,19 +919,33 @@ function buildHighlightStyles(page: MushafPage, highlights: Highlight[]): Record
         ) {
           return false;
         }
-        if (target.type === 'ayah') {
-          return true;
-        }
         if (target.type === 'word') {
           return target.wordId === word.id;
         }
-        const start = ayah.words.findIndex((item) => item.id === target.startWordId);
-        const end = ayah.words.findIndex((item) => item.id === target.endWordId);
-        return start >= 0 && end >= start && wordIndex >= start && wordIndex <= end;
+        if (target.type === 'range') {
+          const start = ayah.words.findIndex((item) => item.id === target.startWordId);
+          const end = ayah.words.findIndex((item) => item.id === target.endWordId);
+          return start >= 0 && end >= start && wordIndex >= start && wordIndex <= end;
+        }
+        return false;
       });
-      if (highlight) {
-        styles[word.id] = toRgba(highlight.color, highlight.opacity);
+
+      const entry: HighlightEntry = { bg: '' };
+      if (ayahHighlight) {
+        entry.bg = toRgba(ayahHighlight.color, ayahHighlight.opacity * 0.55);
       }
+      if (wordHighlight) {
+        entry.marker = toRgba(wordHighlight.color, wordHighlight.opacity);
+      }
+      if (entry.bg || entry.marker) {
+        styles[word.id] = entry;
+      }
+    }
+
+    if (ayahHighlight) {
+      styles[`ayah-${ayah.surahNumber}-${ayah.ayahNumber}`] = {
+        bg: toRgba(ayahHighlight.color, ayahHighlight.opacity * 0.4),
+      };
     }
   }
   return styles;
