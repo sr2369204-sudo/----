@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 7;
 
 export async function initializeDatabase(database: SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON;');
@@ -108,6 +108,42 @@ export async function initializeDatabase(database: SQLiteDatabase): Promise<void
         ALTER TABLE mushaf_page_cache ADD COLUMN basmala_font_sha256 TEXT;
         DELETE FROM mushaf_page_cache;
         PRAGMA user_version = 5;
+      `);
+    }
+
+    if (currentVersion < 6) {
+      await database.execAsync(`
+        CREATE TABLE bookmarks (
+          id TEXT PRIMARY KEY NOT NULL,
+          surah_number INTEGER NOT NULL CHECK (surah_number BETWEEN 1 AND 114),
+          ayah_number INTEGER NOT NULL CHECK (ayah_number > 0),
+          created_at TEXT NOT NULL,
+          UNIQUE (surah_number, ayah_number)
+        );
+
+        CREATE INDEX bookmarks_by_reference
+          ON bookmarks (surah_number, ayah_number);
+
+        PRAGMA user_version = 6;
+      `);
+    }
+
+    if (currentVersion < 7) {
+      await database.execAsync(`
+        CREATE TABLE saved_words (
+          id TEXT PRIMARY KEY NOT NULL,
+          surah_number INTEGER NOT NULL CHECK (surah_number BETWEEN 1 AND 114),
+          ayah_number INTEGER NOT NULL CHECK (ayah_number > 0),
+          word_id TEXT NOT NULL CHECK (length(word_id) > 0),
+          word_text TEXT NOT NULL CHECK (length(word_text) > 0),
+          created_at TEXT NOT NULL,
+          UNIQUE (surah_number, ayah_number, word_id)
+        );
+
+        CREATE INDEX saved_words_by_reference
+          ON saved_words (surah_number, ayah_number);
+
+        PRAGMA user_version = 7;
       `);
     }
   });

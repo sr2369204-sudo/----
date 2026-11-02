@@ -35,6 +35,10 @@ test('creates the initial schema and Mushaf page cache on a fresh database', asy
   assert.match(schema, /PRAGMA user_version = 4/);
   assert.match(schema, /ALTER TABLE mushaf_page_cache ADD COLUMN basmala_font_data/);
   assert.match(schema, /PRAGMA user_version = 5/);
+  assert.match(schema, /CREATE TABLE bookmarks/);
+  assert.match(schema, /PRAGMA user_version = 6/);
+  assert.match(schema, /CREATE TABLE saved_words/);
+  assert.match(schema, /PRAGMA user_version = 7/);
 });
 
 test('adds the Mushaf page cache to a version-one database', async () => {
@@ -48,6 +52,10 @@ test('adds the Mushaf page cache to a version-one database', async () => {
   assert.match(schema, /DELETE FROM mushaf_page_cache/);
   assert.match(schema, /ALTER TABLE mushaf_page_cache ADD COLUMN basmala_font_data/);
   assert.match(schema, /PRAGMA user_version = 5/);
+  assert.match(schema, /CREATE TABLE bookmarks/);
+  assert.match(schema, /PRAGMA user_version = 6/);
+  assert.match(schema, /CREATE TABLE saved_words/);
+  assert.match(schema, /PRAGMA user_version = 7/);
 });
 
 test('adds the Basmala font cache to a version-four database', async () => {
@@ -60,10 +68,14 @@ test('adds the Basmala font cache to a version-four database', async () => {
   assert.match(schema, /ALTER TABLE mushaf_page_cache ADD COLUMN basmala_font_sha256/);
   assert.match(schema, /DELETE FROM mushaf_page_cache/);
   assert.match(schema, /PRAGMA user_version = 5/);
+  assert.match(schema, /CREATE TABLE bookmarks/);
+  assert.match(schema, /PRAGMA user_version = 6/);
+  assert.match(schema, /CREATE TABLE saved_words/);
+  assert.match(schema, /PRAGMA user_version = 7/);
 });
 
 test('rejects databases newer than the app schema', async () => {
-  const database = createDatabase(6);
+  const database = createDatabase(8);
 
   await assert.rejects(initializeDatabase(database), /newer than supported/);
 });

@@ -20,6 +20,7 @@ import type { Highlight } from '@/features/annotations/types';
 import type { CachedMushafPage } from '@/features/reader/services/mushaf-page-cache';
 import {
   MushafPageViewer,
+  type ElementRect,
   type PageTurnDirection,
 } from './MushafPageViewer';
 
@@ -36,8 +37,9 @@ export type SwipePageViewerProps = {
     surahNumber: number,
     ayahNumber: number,
     wordId: string,
+    rect: ElementRect,
   ) => void;
-  onAyahPress: (surahNumber: number, ayahNumber: number) => void;
+  onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
   onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
 };

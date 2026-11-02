@@ -3,10 +3,13 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type {
   AnnotationTarget,
+  Bookmark,
   CreateHighlightInput,
   CreateNoteInput,
+  CreateSavedWordInput,
   Highlight,
   Note,
+  SavedWord,
 } from '../types';
 
 type AnnotationRow = {
@@ -27,6 +30,22 @@ type HighlightRow = AnnotationRow & {
 
 type NoteRow = AnnotationRow & {
   body: string;
+};
+
+type BookmarkRow = {
+  id: string;
+  surah_number: number;
+  ayah_number: number;
+  created_at: string;
+};
+
+type SavedWordRow = {
+  id: string;
+  surah_number: number;
+  ayah_number: number;
+  word_id: string;
+  word_text: string;
+  created_at: string;
 };
 
 export class SqliteAnnotationRepository {
@@ -125,6 +144,136 @@ export class SqliteAnnotationRepository {
 
   async deleteNote(id: string): Promise<void> {
     await this.database.runAsync('DELETE FROM notes WHERE id = ?', id);
+  }
+
+  async listBookmarksForAyah(surahNumber: number, ayahNumber: number): Promise<Bookmark[]> {
+    const rows = await this.database.getAllAsync<BookmarkRow>(
+      `SELECT * FROM bookmarks
+       WHERE surah_number = ? AND ayah_number = ?
+       ORDER BY created_at ASC, id ASC`,
+      surahNumber,
+      ayahNumber,
+    );
+    return rows.map(toBookmark);
+  }
+
+  async createBookmark(surahNumber: number, ayahNumber: number): Promise<Bookmark> {
+    if (
+      !Number.isInteger(surahNumber) ||
+      surahNumber < 1 ||
+      surahNumber > 114 ||
+      !Number.isInteger(ayahNumber) ||
+      ayahNumber < 1
+    ) {
+      throw new Error('Bookmarks require a valid surah and ayah reference.');
+    }
+
+    const existing = await this.listBookmarksForAyah(surahNumber, ayahNumber);
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    const id = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    await this.database.runAsync(
+      `INSERT OR IGNORE INTO bookmarks (id, surah_number, ayah_number, created_at)
+       VALUES (?, ?, ?, ?)`,
+      id,
+      surahNumber,
+      ayahNumber,
+      now,
+    );
+    const saved = await this.listBookmarksForAyah(surahNumber, ayahNumber);
+    if (saved.length === 0) {
+      throw new Error('تعذر حفظ العلامة المرجعية.');
+    }
+    return saved[0];
+  }
+
+  async deleteBookmark(surahNumber: number, ayahNumber: number): Promise<void> {
+    await this.database.runAsync(
+      'DELETE FROM bookmarks WHERE surah_number = ? AND ayah_number = ?',
+      surahNumber,
+      ayahNumber,
+    );
+  }
+
+  async listSavedWords(): Promise<SavedWord[]> {
+    const rows = await this.database.getAllAsync<SavedWordRow>(
+      `SELECT * FROM saved_words
+       ORDER BY created_at DESC, id DESC`,
+    );
+    return rows.map(toSavedWord);
+  }
+
+  async listSavedWordsForAyah(surahNumber: number, ayahNumber: number): Promise<SavedWord[]> {
+    const rows = await this.database.getAllAsync<SavedWordRow>(
+      `SELECT * FROM saved_words
+       WHERE surah_number = ? AND ayah_number = ?
+       ORDER BY created_at ASC, id ASC`,
+      surahNumber,
+      ayahNumber,
+    );
+    return rows.map(toSavedWord);
+  }
+
+  async createSavedWord(input: CreateSavedWordInput): Promise<SavedWord> {
+    if (
+      !Number.isInteger(input.surahNumber) ||
+      input.surahNumber < 1 ||
+      input.surahNumber > 114 ||
+      !Number.isInteger(input.ayahNumber) ||
+      input.ayahNumber < 1 ||
+      input.wordId.trim().length === 0
+    ) {
+      throw new Error('Saved words require a valid surah, ayah, and word reference.');
+    }
+
+    const wordText = input.wordText.trim();
+    if (wordText.length === 0) {
+      throw new Error('Saved words require the word text.');
+    }
+
+    const existing = (await this.listSavedWordsForAyah(input.surahNumber, input.ayahNumber)).find(
+      (word) => word.wordId === input.wordId,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const id = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    await this.database.runAsync(
+      `INSERT OR IGNORE INTO saved_words (
+        id, surah_number, ayah_number, word_id, word_text, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      id,
+      input.surahNumber,
+      input.ayahNumber,
+      input.wordId,
+      wordText,
+      now,
+    );
+    const saved = (await this.listSavedWordsForAyah(input.surahNumber, input.ayahNumber)).find(
+      (word) => word.wordId === input.wordId,
+    );
+    if (!saved) {
+      throw new Error('تعذر حفظ الكلمة.');
+    }
+    return saved;
+  }
+
+  async deleteSavedWord(
+    surahNumber: number,
+    ayahNumber: number,
+    wordId: string,
+  ): Promise<void> {
+    await this.database.runAsync(
+      'DELETE FROM saved_words WHERE surah_number = ? AND ayah_number = ? AND word_id = ?',
+      surahNumber,
+      ayahNumber,
+      wordId,
+    );
   }
 }
 
@@ -258,5 +407,25 @@ function toNote(row: NoteRow): Note {
     body: row.body,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function toBookmark(row: BookmarkRow): Bookmark {
+  return {
+    id: row.id,
+    surahNumber: row.surah_number,
+    ayahNumber: row.ayah_number,
+    createdAt: row.created_at,
+  };
+}
+
+function toSavedWord(row: SavedWordRow): SavedWord {
+  return {
+    id: row.id,
+    surahNumber: row.surah_number,
+    ayahNumber: row.ayah_number,
+    wordId: row.word_id,
+    wordText: row.word_text,
+    createdAt: row.created_at,
   };
 }

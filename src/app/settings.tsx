@@ -21,11 +21,14 @@ const themeOptions: { value: ThemePreference; label: string }[] = [
 
 const fontSizePresets: { value: number; label: string }[] = [
   { value: 32, label: 'صغير' },
-  { value: 36, label: 'عادي' },
-  { value: 42, label: 'كبير' },
-  { value: 48, label: 'كبير جداً' },
-  { value: 54, label: 'أقصى ملء' },
+  { value: 44, label: 'عادي' },
+  { value: 56, label: 'كبير' },
+  { value: 68, label: 'كبير جداً' },
+  { value: 80, label: 'أقصى ملء' },
 ];
+
+const FONT_SIZE_MIN = 20;
+const FONT_SIZE_MAX = 80;
 
 const ArabicReciterNames: Record<number, string> = {
   1: 'عبد الباسط عبد الصمد · مجوّد',
@@ -65,15 +68,17 @@ export default function SettingsScreen() {
       const row = await database.getFirstAsync<{ value: string }>(
         "SELECT value FROM app_settings WHERE key = 'reader.fontSize'",
       );
-      const parsed = row ? Number(row.value) : 36;
-      return Number.isInteger(parsed) && parsed >= 20 && parsed <= 60 ? parsed : 36;
+      const parsed = row ? Number(row.value) : 44;
+      return Number.isInteger(parsed) && parsed >= FONT_SIZE_MIN && parsed <= FONT_SIZE_MAX
+        ? parsed
+        : 44;
     },
   });
 
-  const currentFontSize = fontSizeQuery.data ?? 36;
+  const currentFontSize = fontSizeQuery.data ?? 44;
 
   async function saveFontSize(size: number): Promise<void> {
-    const clamped = Math.max(20, Math.min(60, size));
+    const clamped = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, size));
     setSaving(true);
     try {
       await database.runAsync(
@@ -175,12 +180,12 @@ export default function SettingsScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="تقليل حجم الخط"
-              disabled={saving || currentFontSize <= 22}
+              disabled={saving || currentFontSize <= FONT_SIZE_MIN}
               onPress={() => void saveFontSize(currentFontSize - 2)}
               style={[
                 styles.stepperButton,
                 { backgroundColor: colors.background, borderColor: colors.border },
-                currentFontSize <= 22 && { opacity: 0.4 },
+                currentFontSize <= FONT_SIZE_MIN && { opacity: 0.4 },
               ]}
             >
               <Text style={[styles.stepperGlyph, { color: colors.text }]}>−</Text>
@@ -196,12 +201,12 @@ export default function SettingsScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="زيادة حجم الخط"
-              disabled={saving || currentFontSize >= 58}
+              disabled={saving || currentFontSize >= FONT_SIZE_MAX}
               onPress={() => void saveFontSize(currentFontSize + 2)}
               style={[
                 styles.stepperButton,
                 { backgroundColor: colors.background, borderColor: colors.border },
-                currentFontSize >= 58 && { opacity: 0.4 },
+                currentFontSize >= FONT_SIZE_MAX && { opacity: 0.4 },
               ]}
             >
               <Text style={[styles.stepperGlyph, { color: colors.text }]}>+</Text>

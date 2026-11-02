@@ -27,6 +27,7 @@ const syntheticVerses = {
           char_type_name: 'word',
           text_uthmani: 'SYNTHETIC_TEST_TOKEN',
           audio_url: 'wbw/001_001_001.mp3',
+          translation: { text: 'SYNTHETIC_TRANSLATION' },
         },
         {
           id: 2,
@@ -145,6 +146,7 @@ test('normalizes Uthmani words and excludes verse-end markers', async (t) => {
   assert.equal(surah.ayahs[0].words[0].id, '1');
   assert.equal(surah.ayahs[0].words[0].textUthmani, 'SYNTHETIC_TEST_TOKEN');
   assert.equal(surah.ayahs[0].words[0].audioUrl, 'wbw/001_001_001.mp3');
+  assert.equal(surah.ayahs[0].words[0].translationText, 'SYNTHETIC_TRANSLATION');
   assert.equal(surah.ayahs[0].tajweedText, 'SYNTHETIC_TEST_TOKEN <span class=end>١</span>');
 });
 
@@ -205,7 +207,7 @@ test('loads page metadata for all 604 pages and rejects invalid page numbers', a
 
   assert.equal(page.pageNumber, 604);
   assert.ok(requestedUrls.some((url) => url.includes('/verses/by_page/604?')));
-  assert.ok(requestedUrls.some((url) => url.includes('word_fields=code_v2%2Ctext_uthmani%2Caudio_url')));
+  assert.ok(requestedUrls.some((url) => url.includes('word_fields=code_v2%2Ctext_uthmani%2Caudio_url%2Ctranslation')));
 });
 
 test('preserves source line gaps and Surah transitions on a page', async (t) => {
@@ -293,6 +295,67 @@ test('resolves source-backed first pages for surahs and juzs', async (t) => {
   const provider = new QuranComContentProvider();
   assert.equal(await provider.getPageNumberForSurah(9), 187);
   assert.equal(await provider.getPageNumberForJuz(10), 182);
+});
+
+test('resolves the Mushaf page for a specific ayah', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify({
+      verse: { verse_key: '2:255', page_number: 42 },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const pageNumber = await new QuranComContentProvider().getPageNumberForAyah(2, 255);
+
+  assert.equal(pageNumber, 42);
+  assert.ok(requestedUrls.some((url) => url.endsWith('/verses/by_key/2:255?fields=page_number')));
+});
+
+test('loads and cleans the source Tafsir text for an ayah', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify({
+      tafsir: { text: '<p>تفسير&nbsp;ميسر</p>' },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const tafsir = await new QuranComContentProvider().getAyahTafsir(2, 255);
+
+  assert.equal(tafsir, 'تفسير ميسر');
+  assert.ok(requestedUrls.some((url) => url.endsWith('/tafsirs/16/by_ayah/2:255')));
+});
+
+test('searches source ayahs and returns normalized verse references', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify({
+      search: {
+        results: [
+          { verse_key: '2:255', text: 'آية&nbsp;بحث' },
+          { verse_key: 'invalid' },
+        ],
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const provider = new QuranComContentProvider();
+  const results = await provider.searchAyahs('الرحمن', 20);
+
+  assert.deepEqual(results, [{ surahNumber: 2, ayahNumber: 255, text: 'آية بحث' }]);
+  assert.ok(requestedUrls.some((url) => url.endsWith('/search?q=%D8%A7%D9%84%D8%B1%D8%AD%D9%85%D9%86&size=20&page=1&language=ar')));
+  await assert.rejects(provider.searchAyahs('   '), RangeError);
 });
 
 test('resolves source-backed ayah audio URLs and reciter metadata', async (t) => {
@@ -409,6 +472,119 @@ test('reports network errors from the public content API', async (t) => {
     assert.ok(error instanceof ContentUnavailableError);
     assert.equal(error.reason, 'network');
     assert.equal(error.message, 'offline');
+    return true;
+  });
+});
+
+test('loads a full chapter recitation ordered by ayah number', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify({
+      audio_files: [
+        { verse_key: '1:3', url: 'Alafasy/mp3/001003.mp3' },
+        { verse_key: '1:1', url: 'Alafasy/mp3/001001.mp3' },
+        { verse_key: '1:2', url: '//mirrors.quranicaudio.com/everyayah/Husary_64kbps/001002.mp3' },
+      ],
+      pagination: { total_records: 3 },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const provider = new QuranComContentProvider();
+  const tracks = await provider.getChapterRecitation(7, 1);
+
+  assert.deepEqual(tracks, [
+    { surahNumber: 1, ayahNumber: 1, url: 'https://verses.quran.com/Alafasy/mp3/001001.mp3' },
+    {
+      surahNumber: 1,
+      ayahNumber: 2,
+      url: 'https://mirrors.quranicaudio.com/everyayah/Husary_64kbps/001002.mp3',
+    },
+    { surahNumber: 1, ayahNumber: 3, url: 'https://verses.quran.com/Alafasy/mp3/001003.mp3' },
+  ]);
+  assert.ok(
+    requestedUrls.some((url) => url.endsWith('/recitations/7/by_chapter/1?per_page=300')),
+  );
+  await assert.rejects(provider.getChapterRecitation(7, 115), RangeError);
+});
+
+test('rejects a chapter recitation that references a different verse', async (t) => {
+  mockFetch(t, async () => new Response(JSON.stringify({
+    audio_files: [{ verse_key: '2:1', url: 'Alafasy/mp3/002001.mp3' }],
+    pagination: { total_records: 1 },
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  }));
+
+  await assert.rejects(new QuranComContentProvider().getChapterRecitation(7, 1), (error) => {
+    assert.ok(error instanceof ContentUnavailableError);
+    assert.equal(error.reason, 'invalid-data');
+    return true;
+  });
+});
+
+test('collects ordered verse keys for a page and a juz across pagination', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    const requestUrl = String(url);
+    requestedUrls.push(requestUrl);
+    if (requestUrl.includes('/verses/by_page/2?')) {
+      return new Response(JSON.stringify({
+        verses: [
+          { verse_key: '2:6' },
+          { verse_key: '2:7' },
+        ],
+        pagination: { total_records: 2 },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    const isSecondPage = requestUrl.includes('page=2');
+    return new Response(JSON.stringify({
+      verses: isSecondPage
+        ? [{ verse_key: '2:3' }, { verse_key: '2:4' }]
+        : [{ verse_key: '2:1' }, { verse_key: '2:2' }],
+      pagination: { total_records: 4 },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const provider = new QuranComContentProvider();
+  const pageKeys = await provider.getVerseKeysForPage(2);
+  const juzKeys = await provider.getVerseKeysForJuz(1);
+
+  assert.deepEqual(pageKeys, ['2:6', '2:7']);
+  assert.deepEqual(juzKeys, ['2:1', '2:2', '2:3', '2:4']);
+  assert.ok(
+    requestedUrls.some((url) => url.endsWith('/verses/by_page/2?language=ar&mushaf=19&fields=verse_key&per_page=300&page=1')),
+  );
+  assert.ok(
+    requestedUrls.some((url) => url.endsWith('/verses/by_juz/1?language=ar&fields=verse_key&per_page=300&page=2')),
+  );
+  await assert.rejects(provider.getVerseKeysForPage(605), RangeError);
+  await assert.rejects(provider.getVerseKeysForJuz(31), RangeError);
+});
+
+test('rejects incomplete verse key responses', async (t) => {
+  mockFetch(t, async (url) => new Response(JSON.stringify(
+    String(url).includes('page=2')
+      ? { verses: [], pagination: { total_records: 2 } }
+      : { verses: [{ verse_key: '2:1' }], pagination: { total_records: 2 } },
+  ), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  }));
+
+  await assert.rejects(new QuranComContentProvider().getVerseKeysForJuz(1), (error) => {
+    assert.ok(error instanceof ContentUnavailableError);
+    assert.equal(error.reason, 'invalid-data');
     return true;
   });
 });

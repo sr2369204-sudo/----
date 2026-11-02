@@ -1,5 +1,12 @@
 import { Link, useLocalSearchParams } from 'expo-router';
-import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  useAudioPlayer,
+  useAudioPlaylist,
+  useAudioPlaylistStatus,
+  useAudioPlayerStatus,
+  setAudioModeAsync,
+} from 'expo-audio';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -19,16 +26,28 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { Colors, Spacing } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
-import type { Highlight } from '@/features/annotations/types';
+import type { Highlight, SavedWord } from '@/features/annotations/types';
 import {
   ContentUnavailableError,
   quranContentProvider,
 } from '@/features/quran/services/content-provider';
 import type { QuranSurahDirectory } from '@/features/quran/types';
-import type { PageTurnDirection } from '@/features/reader/components/MushafPageViewer';
+import {
+  type ElementRect,
+  type PageTurnDirection,
+} from '@/features/reader/components/MushafPageViewer';
+import {
+  RecitationPlayer,
+  RecitationScopeDialog,
+} from '@/features/reader/components/RecitationPlayer';
 import { SwipePageViewer } from '@/features/reader/components/SwipePageViewer';
-import { SelectionSheet } from '@/features/reader/components/SelectionSheet';
+import { SelectionToolbar } from '@/features/reader/components/SelectionToolbar';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
+import {
+  buildRecitationQueue,
+  type RecitationQueue,
+  type RecitationScope,
+} from '@/features/reader/services/recitation-queue';
 import {
   DEFAULT_RECITER_ID,
   useReaderPreferencesStore,
@@ -40,7 +59,10 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 
 type NavigationMode = 'page' | 'surah' | 'juz';
+type BookmarkedAyah = { surahNumber: number; ayahNumber: number };
 const PAGE_QUERY_RETRY_COUNT = 2;
+/** Vertical offset for the floating recitation player, just below the top navbar. */
+const RECITATION_PLAYER_TOP = 62;
 
 export default function ReaderScreen() {
   const params = useLocalSearchParams<{
@@ -54,6 +76,8 @@ export default function ReaderScreen() {
   const database = useSQLiteContext();
   const player = useAudioPlayer(null);
   const playerStatus = useAudioPlayerStatus(player);
+  const recitationPlaylist = useAudioPlaylist({ loop: 'none' });
+  const recitationStatus = useAudioPlaylistStatus(recitationPlaylist);
   const reciterId = useReaderPreferencesStore((state) => state.reciterId);
   const selection = useReaderSelectionStore((state) => state.selection);
   const selectWord = useReaderSelectionStore((state) => state.selectWord);
@@ -62,6 +86,15 @@ export default function ReaderScreen() {
   const [pageTransitionDirection, setPageTransitionDirection] =
     useState<PageTurnDirection | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [bookmarks, setBookmarks] = useState<BookmarkedAyah[]>([]);
+  const [bookmarkRevision, setBookmarkRevision] = useState(0);
+  const [savedWords, setSavedWords] = useState<SavedWord[]>([]);
+  const [savedWordRevision, setSavedWordRevision] = useState(0);
+  const [recitationQueue, setRecitationQueue] = useState<RecitationQueue | null>(null);
+  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
+  const [recitationBusy, setRecitationBusy] = useState(false);
+  const [recitationError, setRecitationError] = useState<string | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = useState<ElementRect | null>(null);
   const [highlightRevision, setHighlightRevision] = useState(0);
   const [displaySaveError, setDisplaySaveError] = useState<string | null>(null);
   const [highlightError, setHighlightError] = useState<string | null>(null);
@@ -145,8 +178,8 @@ export default function ReaderScreen() {
       if (savedTajweed !== undefined && savedTajweed !== 'true' && savedTajweed !== 'false') {
         throw new Error('إعداد ألوان التجويد المحفوظ غير صالح.');
       }
-      const parsedFontSize = savedFontSize === undefined ? 36 : Number(savedFontSize);
-      if (!Number.isInteger(parsedFontSize) || parsedFontSize < 20 || parsedFontSize > 60) {
+      const parsedFontSize = savedFontSize === undefined ? 44 : Number(savedFontSize);
+      if (!Number.isInteger(parsedFontSize) || parsedFontSize < 20 || parsedFontSize > 80) {
         throw new Error('حجم الخط المحفوظ غير صالح.');
       }
       return {
@@ -158,7 +191,7 @@ export default function ReaderScreen() {
   });
 
   const showTajweed = displayPreferencesQuery.data?.showTajweed ?? true;
-  const fontSize = displayPreferencesQuery.data?.fontSize ?? 36;
+  const fontSize = displayPreferencesQuery.data?.fontSize ?? 44;
   const displayPreferencesError =
     displaySaveError ??
     (displayPreferencesQuery.error instanceof Error
@@ -232,6 +265,12 @@ export default function ReaderScreen() {
     staleTime: 24 * 60 * 60 * 1000,
   });
 
+  const recitersQuery = useQuery({
+    queryKey: ['quran', 'reciters'],
+    queryFn: () => quranContentProvider.getReciters(),
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+
   const page = pageQuery.data?.page;
 
   useEffect(() => {
@@ -286,6 +325,61 @@ export default function ReaderScreen() {
   }, [database, highlightRevision, page]);
 
   useEffect(() => {
+    if (!page) {
+      return;
+    }
+    let active = true;
+    const repository = new SqliteAnnotationRepository(database);
+    Promise.all(
+      page.ayahs.map((ayah) =>
+        repository.listBookmarksForAyah(ayah.surahNumber, ayah.ayahNumber),
+      ),
+    )
+      .then((items) => {
+        if (active) {
+          setBookmarks(
+            items.flat().map((bookmark) => ({
+              surahNumber: bookmark.surahNumber,
+              ayahNumber: bookmark.ayahNumber,
+            })),
+          );
+        }
+      })
+      .catch(() => {
+        /* non-fatal: the page still renders without bookmark markers */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [bookmarkRevision, database, page]);
+
+  useEffect(() => {
+    if (!page) {
+      return;
+    }
+    let active = true;
+    const repository = new SqliteAnnotationRepository(database);
+    Promise.all(
+      page.ayahs.map((ayah) =>
+        repository.listSavedWordsForAyah(ayah.surahNumber, ayah.ayahNumber),
+      ),
+    )
+      .then((items) => {
+        if (active) {
+          setSavedWords(items.flat());
+        }
+      })
+      .catch(() => {
+        /* non-fatal: saved word markers simply stay hidden for this page */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [database, page, savedWordRevision]);
+
+  useEffect(() => {
     let active = true;
     setAudioModeAsync({ playsInSilentMode: true }).catch((error: unknown) => {
       if (active) {
@@ -298,13 +392,15 @@ export default function ReaderScreen() {
       active = false;
       audioRequest.current += 1;
       player.pause();
+      recitationPlaylist.pause();
     };
-  }, [player]);
+  }, [player, recitationPlaylist]);
 
   const onWordPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
     wordId: string,
+    rect: ElementRect,
   ) => {
     const ayah = page?.ayahs.find(
       (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
@@ -317,12 +413,14 @@ export default function ReaderScreen() {
     audioRequest.current += 1;
     player.pause();
     setInteractionError(null);
+    setSelectionAnchor(rect);
     selectWord(surahNumber, ayah, word, 'compact');
   }, [page, player, selectWord]);
 
   const onAyahPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
+    rect: ElementRect,
   ) => {
     const ayah = page?.ayahs.find(
       (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
@@ -334,12 +432,14 @@ export default function ReaderScreen() {
     audioRequest.current += 1;
     player.pause();
     setInteractionError(null);
+    setSelectionAnchor(rect);
     selectAyah(surahNumber, ayah, 'compact');
   }, [page, player, selectAyah]);
 
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
     const requestId = ++audioRequest.current;
     setAudioError(null);
+    recitationPlaylist.pause();
     let audioUrl: string | null;
     if (currentSelection.type === 'word') {
       audioUrl = currentSelection.word.audioUrl
@@ -391,7 +491,7 @@ export default function ReaderScreen() {
     }
     player.replace(audioUrl);
     player.play();
-  }, [database, player, reciterId]);
+  }, [database, player, recitationPlaylist, reciterId]);
 
   const stopAudio = useCallback(() => {
     audioRequest.current += 1;
@@ -410,6 +510,106 @@ export default function ReaderScreen() {
     );
     setPageNumber(destination);
   }, [page?.pageNumber, player]);
+
+  const toggleBookmark = useCallback((surahNumber: number, ayahNumber: number) => {
+    const repository = new SqliteAnnotationRepository(database);
+    const exists = bookmarks.some(
+      (bookmark) => bookmark.surahNumber === surahNumber && bookmark.ayahNumber === ayahNumber,
+    );
+    const action: Promise<unknown> = exists
+      ? repository.deleteBookmark(surahNumber, ayahNumber)
+      : repository.createBookmark(surahNumber, ayahNumber);
+    action
+      .then(() => setBookmarkRevision((revision) => revision + 1))
+      .catch((error: unknown) => {
+        setInteractionError(
+          error instanceof Error
+            ? `تعذر تحديث العلامة المرجعية: ${error.message}`
+            : 'تعذر تحديث العلامة المرجعية.',
+        );
+      });
+  }, [bookmarks, database]);
+
+  const openAyah = useCallback((surahNumber: number, ayahNumber: number) => {
+    quranContentProvider
+      .getPageNumberForAyah(surahNumber, ayahNumber)
+      .then((destination) => navigateToPage(destination))
+      .catch((error: unknown) => {
+        setInteractionError(
+          error instanceof Error
+            ? `تعذر الانتقال إلى الآية: ${error.message}`
+            : 'تعذر الانتقال إلى الآية.',
+        );
+      });
+  }, [navigateToPage]);
+
+  const toggleSaveWord = useCallback((
+    surahNumber: number,
+    ayahNumber: number,
+    wordId: string,
+    wordText: string,
+  ) => {
+    const repository = new SqliteAnnotationRepository(database);
+    const exists = savedWords.some(
+      (word) =>
+        word.surahNumber === surahNumber &&
+        word.ayahNumber === ayahNumber &&
+        word.wordId === wordId,
+    );
+    const action: Promise<unknown> = exists
+      ? repository.deleteSavedWord(surahNumber, ayahNumber, wordId)
+      : repository.createSavedWord({ surahNumber, ayahNumber, wordId, wordText });
+    action
+      .then(() => setSavedWordRevision((revision) => revision + 1))
+      .catch((error: unknown) => {
+        setInteractionError(
+          error instanceof Error
+            ? `تعذر تحديث الكلمات المحفوظة: ${error.message}`
+            : 'تعذر تحديث الكلمات المحفوظة.',
+        );
+      });
+  }, [database, savedWords]);
+
+  const selectReciter = useCallback((nextReciterId: number) => {
+    const preferences = useReaderPreferencesStore.getState();
+    preferences.setPreferences(preferences.themePreference, nextReciterId);
+    saveSetting(database, 'reciterId', String(nextReciterId)).catch((error: unknown) => {
+      setRecitationError(
+        error instanceof Error ? `تعذر حفظ القارئ المختار: ${error.message}` : 'تعذر حفظ القارئ المختار.',
+      );
+    });
+  }, [database]);
+
+  const startRecitation = useCallback(async (scope: RecitationScope) => {
+    setRecitationBusy(true);
+    setRecitationError(null);
+    try {
+      audioRequest.current += 1;
+      player.pause();
+      const queue = await buildRecitationQueue(reciterId, scope);
+      recitationPlaylist.pause();
+      recitationPlaylist.clear();
+      for (const track of queue.tracks) {
+        recitationPlaylist.add(track.url);
+      }
+      recitationPlaylist.play();
+      setRecitationQueue(queue);
+      setScopeDialogOpen(false);
+    } catch (error) {
+      setRecitationError(
+        error instanceof Error ? `تعذر تشغيل التلاوة: ${error.message}` : 'تعذر تشغيل التلاوة.',
+      );
+    } finally {
+      setRecitationBusy(false);
+    }
+  }, [player, recitationPlaylist, reciterId]);
+
+  const closeRecitation = useCallback(() => {
+    recitationPlaylist.pause();
+    recitationPlaylist.clear();
+    setRecitationQueue(null);
+    setRecitationError(null);
+  }, [recitationPlaylist]);
 
   const handlePageTurn = useCallback((direction: PageTurnDirection) => {
     if (
@@ -437,6 +637,24 @@ export default function ReaderScreen() {
       ? `word-${selection.word.id}`
       : `ayah-${selection.surahNumber}-${selection.ayah.ayahNumber}`
     : null;
+
+  const isBookmarked = selection
+    ? bookmarks.some(
+        (bookmark) =>
+          bookmark.surahNumber === selection.surahNumber &&
+          bookmark.ayahNumber === selection.ayah.ayahNumber,
+      )
+    : false;
+
+  const isWordSaved =
+    selection && selection.type === 'word'
+      ? savedWords.some(
+          (word) =>
+            word.surahNumber === selection.surahNumber &&
+            word.ayahNumber === selection.ayah.ayahNumber &&
+            word.wordId === selection.word.id,
+        )
+      : false;
 
   const currentSurahName =
     page?.surahs.find((surah) => surah.surahNumber === selection?.surahNumber)?.nameArabic ??
@@ -527,7 +745,7 @@ export default function ReaderScreen() {
               pressed && { opacity: 0.75 },
             ]}
           >
-            <Text style={[styles.navActionGlyph, { color: colors.text }]}>←</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.text} />
             <Text style={[styles.navActionText, { color: colors.text }]}>السور</Text>
           </Pressable>
         </Link>
@@ -549,6 +767,18 @@ export default function ReaderScreen() {
         <View style={styles.navLeftActions}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="تشغيل التلاوة"
+            onPress={() => setScopeDialogOpen(true)}
+            style={({ pressed }) => [
+              styles.navIconBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <Ionicons name="headset-outline" size={18} color={colors.text} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="إخفاء أدوات القراءة"
             onPress={hideNavbar}
             style={({ pressed }) => [
@@ -557,7 +787,7 @@ export default function ReaderScreen() {
               pressed && { opacity: 0.75 },
             ]}
           >
-            <Text style={[styles.navIconGlyph, { color: colors.text }]}>⌃</Text>
+            <Ionicons name="chevron-up" size={18} color={colors.text} />
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -569,7 +799,7 @@ export default function ReaderScreen() {
               pressed && { opacity: 0.75 },
             ]}
           >
-            <Text style={[styles.navIconGlyph, { color: colors.text }]}>☰</Text>
+            <Ionicons name="list-outline" size={18} color={colors.text} />
           </Pressable>
 
           <Link href="/settings" asChild>
@@ -582,7 +812,7 @@ export default function ReaderScreen() {
                 pressed && { opacity: 0.75 },
               ]}
             >
-              <Text style={[styles.navIconGlyph, { color: colors.text }]}>⚙</Text>
+              <Ionicons name="settings-outline" size={18} color={colors.text} />
             </Pressable>
           </Link>
         </View>
@@ -615,30 +845,20 @@ export default function ReaderScreen() {
           </Pressable>
         </View>
       ) : page && pageQuery.data ? (
-        <>
-          <SwipePageViewer
-            currentPage={pageQuery.data}
-            prevPage={prevPageQuery.data ?? null}
-            nextPage={nextPageQuery.data ?? null}
-            fontSize={fontSize}
-            showTajweed={showTajweed}
-            isDark={colors.background === Colors.dark.background}
-            highlights={highlights}
-            selectedElementId={selectedElementId}
-            onWordPress={onWordPress}
-            onAyahPress={onAyahPress}
-            onPageTurn={handlePageTurn}
-            onInteractionError={setInteractionError}
-          />
-          {playerStatus.playing && (
-            <View style={[styles.playingBar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.playingLabel, { color: colors.background }]}>التلاوة تعمل الآن</Text>
-              <Pressable accessibilityRole="button" onPress={stopAudio}>
-                <Text style={[styles.stopLabel, { color: colors.background }]}>إيقاف</Text>
-              </Pressable>
-            </View>
-          )}
-        </>
+        <SwipePageViewer
+          currentPage={pageQuery.data}
+          prevPage={prevPageQuery.data ?? null}
+          nextPage={nextPageQuery.data ?? null}
+          fontSize={fontSize}
+          showTajweed={showTajweed}
+          isDark={colors.background === Colors.dark.background}
+          highlights={highlights}
+          selectedElementId={selectedElementId}
+          onWordPress={onWordPress}
+          onAyahPress={onAyahPress}
+          onPageTurn={handlePageTurn}
+          onInteractionError={setInteractionError}
+        />
       ) : null}
 
       {page && !navVisible && (
@@ -650,8 +870,31 @@ export default function ReaderScreen() {
             styles.quickControlsToggle,
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}>
-          <Text style={[styles.quickControlsGlyph, { color: colors.primary }]}>۞</Text>
+          <Ionicons name="options-outline" size={15} color={colors.primary} />
         </Pressable>
+      )}
+
+      {recitationQueue && (
+        <RecitationPlayer
+          label={recitationQueue.label}
+          offsetTop={RECITATION_PLAYER_TOP}
+          colors={colors}
+          status={{
+            playing: recitationStatus.playing,
+            isBuffering: recitationStatus.isBuffering,
+            currentIndex: recitationStatus.currentIndex,
+            trackCount: recitationStatus.trackCount,
+            currentTime: recitationStatus.currentTime,
+            duration: recitationStatus.duration,
+          }}
+          onTogglePlay={() =>
+            recitationStatus.playing ? recitationPlaylist.pause() : recitationPlaylist.play()
+          }
+          onNext={() => recitationPlaylist.next()}
+          onPrevious={() => recitationPlaylist.previous()}
+          onClose={closeRecitation}
+          onOpenPicker={() => setScopeDialogOpen(true)}
+        />
       )}
 
       {displayPreferencesError && (
@@ -666,12 +909,18 @@ export default function ReaderScreen() {
         <Text accessibilityRole="alert" style={styles.error}>{navigationError}</Text>
       )}
 
-      <SelectionSheet
+      <SelectionToolbar
         surahName={currentSurahName}
+        anchorRect={selectionAnchor}
+        isBookmarked={isBookmarked}
+        isWordSaved={isWordSaved}
+        isAudioPlaying={playerStatus.playing}
         onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
+        onToggleBookmark={toggleBookmark}
+        onToggleSaveWord={toggleSaveWord}
         onPlayAudio={playSelection}
         onStopAudio={stopAudio}
-        isAudioPlaying={playerStatus.playing}
+        onOpenAyah={openAyah}
       />
 
       <NavigationDialog
@@ -696,6 +945,28 @@ export default function ReaderScreen() {
         onChoose={(mode, value) => void navigateTo(mode, String(value))}
         onDirectoryRetry={() => void directoryQuery.refetch()}
       />
+
+      {scopeDialogOpen && (
+        <RecitationScopeDialog
+          visible
+          colors={colors}
+          reciters={recitersQuery.data ?? []}
+          reciterId={reciterId}
+          surahs={directory?.surahs}
+          currentSurahNumber={selection?.surahNumber ?? page?.surahs[0]?.surahNumber ?? 1}
+          currentJuzNumber={page?.juzNumber ?? 1}
+          currentPageNumber={activePageNumber ?? 1}
+          currentAyahNumber={selection?.ayah.ayahNumber ?? page?.ayahs[0]?.ayahNumber ?? 1}
+          busy={recitationBusy}
+          error={recitationError}
+          onSelectReciter={selectReciter}
+          onConfirm={(scope) => void startRecitation(scope)}
+          onClose={() => {
+            setScopeDialogOpen(false);
+            setRecitationError(null);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -919,9 +1190,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickControlsGlyph: {
-    fontSize: 13,
-  },
   navActionBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -930,10 +1198,6 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
-  },
-  navActionGlyph: {
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   navActionText: {
     fontSize: 13,
@@ -1002,21 +1266,6 @@ const styles = StyleSheet.create({
   retryText: {
     fontSize: 14,
     fontWeight: '700',
-  },
-  playingBar: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  playingLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  stopLabel: {
-    fontSize: 13,
-    fontWeight: '800',
   },
   error: {
     color: '#B42318',

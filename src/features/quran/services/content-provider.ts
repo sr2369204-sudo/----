@@ -1,9 +1,11 @@
 import type {
+  AyahSearchResult,
   MushafPage,
   MushafPageLine,
   QuranAyah,
   QuranSurah,
   QuranSurahDirectory,
+  QuranWord,
 } from '../types';
 
 export type ContentUnavailableReason = 'network' | 'invalid-data' | 'server';
@@ -27,8 +29,14 @@ export interface QuranContentProvider {
   getMushafPage(pageNumber: number): Promise<MushafPage>;
   getPageNumberForSurah(surahNumber: number): Promise<number>;
   getPageNumberForJuz(juzNumber: number): Promise<number>;
+  getPageNumberForAyah(surahNumber: number, ayahNumber: number): Promise<number>;
   getAyahAudioUrl(reciterId: number, surahNumber: number, ayahNumber: number): Promise<string>;
   getReciters(): Promise<QuranReciter[]>;
+  getChapterRecitation(reciterId: number, surahNumber: number): Promise<RecitationTrack[]>;
+  getVerseKeysForPage(pageNumber: number): Promise<string[]>;
+  getVerseKeysForJuz(juzNumber: number): Promise<string[]>;
+  getAyahTafsir(surahNumber: number, ayahNumber: number): Promise<string>;
+  searchAyahs(query: string, limit?: number): Promise<AyahSearchResult[]>;
 }
 
 const API_BASE_URL = 'https://api.quran.com/api/v4';
@@ -37,12 +45,26 @@ const WORD_AUDIO_BASE_URL = 'https://audio.qurancdn.com/';
 const SOURCE_ID = 'quran-com-api';
 const CONTENT_VERSION = 'api-v4';
 const API_REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * Quran.com resource id for «التفسير الميسر» (Arabic). Verified against
+ * GET /resources/tafsirs?language=ar.
+ */
+const TAFSIR_ID = 16;
 
 export type QuranReciter = {
   id: number;
   name: string;
   style: string;
 };
+
+/** A single playable ayah recording resolved from the source reciter. */
+export type RecitationTrack = {
+  surahNumber: number;
+  ayahNumber: number;
+  url: string;
+};
+
+const VERSE_KEY_PAGE_SIZE = 300;
 
 export class QuranComContentProvider implements QuranContentProvider {
   private surahDirectoryPromise: Promise<QuranSurahDirectory> | null = null;
@@ -116,7 +138,7 @@ export class QuranComContentProvider implements QuranContentProvider {
     const [chapterPayload, versesPayload] = await Promise.all([
       this.requestJson(`/chapters/${surahNumber}?language=ar`),
       this.requestJson(
-        `/verses/by_chapter/${surahNumber}?language=ar&words=true&word_fields=text_uthmani&fields=text_uthmani_tajweed&per_page=300`,
+        `/verses/by_chapter/${surahNumber}?language=ar&words=true&word_fields=text_uthmani%2Ctranslation&fields=text_uthmani_tajweed&per_page=300`,
       ),
     ]);
 
@@ -131,7 +153,7 @@ export class QuranComContentProvider implements QuranContentProvider {
     const [directory, versesPayload] = await Promise.all([
       this.getSurahDirectory(),
       this.requestJson(
-        `/verses/by_page/${pageNumber}?language=ar&mushaf=19&words=true&word_fields=code_v2%2Ctext_uthmani%2Caudio_url&fields=text_uthmani_tajweed&per_page=300`,
+        `/verses/by_page/${pageNumber}?language=ar&mushaf=19&words=true&word_fields=code_v2%2Ctext_uthmani%2Caudio_url%2Ctranslation&fields=text_uthmani_tajweed&per_page=300`,
       ),
     ]);
 
@@ -203,6 +225,71 @@ export class QuranComContentProvider implements QuranContentProvider {
       throw new ContentUnavailableError('invalid-data', 'The requested Mushaf location is invalid.');
     }
     return payload.verses[0].page_number;
+  }
+
+  async getPageNumberForAyah(surahNumber: number, ayahNumber: number): Promise<number> {
+    assertAyahReference(surahNumber, ayahNumber);
+    const payload = await this.requestJson(
+      `/verses/by_key/${surahNumber}:${ayahNumber}?fields=page_number`,
+    );
+    if (
+      !isRecord(payload) ||
+      !isRecord(payload.verse) ||
+      typeof payload.verse.page_number !== 'number' ||
+      !Number.isInteger(payload.verse.page_number) ||
+      payload.verse.page_number < 1 ||
+      payload.verse.page_number > 604
+    ) {
+      throw new ContentUnavailableError('invalid-data', 'The requested Mushaf location is invalid.');
+    }
+    return payload.verse.page_number;
+  }
+
+  async getAyahTafsir(surahNumber: number, ayahNumber: number): Promise<string> {
+    assertAyahReference(surahNumber, ayahNumber);
+    const payload = await this.requestJson(
+      `/tafsirs/${TAFSIR_ID}/by_ayah/${surahNumber}:${ayahNumber}`,
+    );
+    if (!isRecord(payload) || !isRecord(payload.tafsir) || typeof payload.tafsir.text !== 'string') {
+      throw new ContentUnavailableError('invalid-data', 'Tafsir response is invalid.');
+    }
+    const text = stripMarkup(payload.tafsir.text);
+    if (text.length === 0) {
+      throw new ContentUnavailableError('invalid-data', 'Tafsir response is empty.');
+    }
+    return text;
+  }
+
+  async searchAyahs(query: string, limit = 20): Promise<AyahSearchResult[]> {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      throw new RangeError('بحث فارغ.');
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      throw new RangeError('Search limit must be an integer between 1 and 50.');
+    }
+    const payload = await this.requestJson(
+      `/search?q=${encodeURIComponent(trimmed)}&size=${limit}&page=1&language=ar`,
+    );
+    if (!isRecord(payload) || !isRecord(payload.search) || !Array.isArray(payload.search.results)) {
+      throw new ContentUnavailableError('invalid-data', 'Search response is invalid.');
+    }
+    const results: AyahSearchResult[] = [];
+    for (const item of payload.search.results) {
+      if (!isRecord(item) || typeof item.verse_key !== 'string') {
+        continue;
+      }
+      const match = /^(\d{1,3}):(\d{1,3})$/.exec(item.verse_key);
+      if (!match) {
+        continue;
+      }
+      results.push({
+        surahNumber: Number(match[1]),
+        ayahNumber: Number(match[2]),
+        text: typeof item.text === 'string' ? stripMarkup(item.text) : '',
+      });
+    }
+    return results;
   }
 
   async getAyahAudioUrl(
@@ -290,6 +377,118 @@ export class QuranComContentProvider implements QuranContentProvider {
       );
     }
     return playableReciters;
+  }
+
+  async getChapterRecitation(reciterId: number, surahNumber: number): Promise<RecitationTrack[]> {
+    if (!Number.isInteger(reciterId) || reciterId < 1) {
+      throw new RangeError('Reciter id must be a positive integer.');
+    }
+    if (!Number.isInteger(surahNumber) || surahNumber < 1 || surahNumber > 114) {
+      throw new RangeError('Surah number must be between 1 and 114.');
+    }
+
+    const payload = await this.requestJson(
+      `/recitations/${reciterId}/by_chapter/${surahNumber}?per_page=${VERSE_KEY_PAGE_SIZE}`,
+    );
+    if (!isRecord(payload) || !Array.isArray(payload.audio_files)) {
+      throw new ContentUnavailableError('invalid-data', 'Chapter recitation response is invalid.');
+    }
+
+    const seen = new Set<number>();
+    const tracks: RecitationTrack[] = [];
+    for (const item of payload.audio_files) {
+      if (
+        !isRecord(item) ||
+        typeof item.verse_key !== 'string' ||
+        typeof item.url !== 'string' ||
+        !isSafeAudioPath(item.url)
+      ) {
+        throw new ContentUnavailableError(
+          'invalid-data',
+          'Chapter recitation contains an invalid entry.',
+        );
+      }
+      const match = /^(\d{1,3}):(\d{1,3})$/.exec(item.verse_key);
+      if (!match || Number(match[1]) !== surahNumber || seen.has(Number(match[2]))) {
+        throw new ContentUnavailableError(
+          'invalid-data',
+          'Chapter recitation references an invalid verse.',
+        );
+      }
+      seen.add(Number(match[2]));
+      tracks.push({
+        surahNumber,
+        ayahNumber: Number(match[2]),
+        url: new URL(item.url, AYAH_AUDIO_BASE_URL).toString(),
+      });
+    }
+
+    if (tracks.length === 0) {
+      throw new ContentUnavailableError('invalid-data', 'Chapter recitation is empty.');
+    }
+    return tracks.sort((left, right) => left.ayahNumber - right.ayahNumber);
+  }
+
+  async getVerseKeysForPage(pageNumber: number): Promise<string[]> {
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
+      throw new RangeError('Mushaf page number must be between 1 and 604.');
+    }
+    return this.collectVerseKeys(
+      `/verses/by_page/${pageNumber}?language=ar&mushaf=19&fields=verse_key`,
+    );
+  }
+
+  async getVerseKeysForJuz(juzNumber: number): Promise<string[]> {
+    if (!Number.isInteger(juzNumber) || juzNumber < 1 || juzNumber > 30) {
+      throw new RangeError('Juz number must be between 1 and 30.');
+    }
+    return this.collectVerseKeys(`/verses/by_juz/${juzNumber}?language=ar&fields=verse_key`);
+  }
+
+  private async collectVerseKeys(path: string): Promise<string[]> {
+    const verseKeys: string[] = [];
+    let totalRecords: number | null = null;
+    let pageNumber = 1;
+    for (;;) {
+      const payload = await this.requestJson(
+        `${path}&per_page=${VERSE_KEY_PAGE_SIZE}&page=${pageNumber}`,
+      );
+      if (
+        !isRecord(payload) ||
+        !Array.isArray(payload.verses) ||
+        !isRecord(payload.pagination) ||
+        typeof payload.pagination.total_records !== 'number' ||
+        !Number.isInteger(payload.pagination.total_records) ||
+        payload.pagination.total_records < 1
+      ) {
+        throw new ContentUnavailableError('invalid-data', 'Verse key response is invalid.');
+      }
+      totalRecords = payload.pagination.total_records;
+
+      for (const verse of payload.verses) {
+        if (
+          !isRecord(verse) ||
+          typeof verse.verse_key !== 'string' ||
+          !/^\d{1,3}:\d{1,3}$/.test(verse.verse_key)
+        ) {
+          throw new ContentUnavailableError(
+            'invalid-data',
+            'Verse key response contains an invalid entry.',
+          );
+        }
+        verseKeys.push(verse.verse_key);
+      }
+
+      if (verseKeys.length >= totalRecords || payload.verses.length === 0) {
+        break;
+      }
+      pageNumber += 1;
+    }
+
+    if (totalRecords === null || verseKeys.length < totalRecords) {
+      throw new ContentUnavailableError('invalid-data', 'Verse key response is incomplete.');
+    }
+    return verseKeys;
   }
 
   getWordAudioUrl(audioPath: string): string {
@@ -453,6 +652,7 @@ function parseMushafPage(
           position: item.position,
           textUthmani: item.text_uthmani,
           audioUrl: item.audio_url,
+          translationText: parseWordTranslation(item.translation),
         });
       }
     }
@@ -570,6 +770,7 @@ function parseSurah(
           position: word.position,
           textUthmani: word.text_uthmani,
           audioUrl: word.audio_url,
+          translationText: parseWordTranslation(word.translation),
         };
       });
 
@@ -604,6 +805,37 @@ function parseSurah(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function parseWordTranslation(value: unknown): QuranWord['translationText'] {
+  if (!isRecord(value) || typeof value.text !== 'string') {
+    return null;
+  }
+  const text = value.text.trim();
+  return text.length === 0 ? null : text;
+}
+
+function stripMarkup(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function assertAyahReference(surahNumber: number, ayahNumber: number): void {
+  if (
+    !Number.isInteger(surahNumber) ||
+    surahNumber < 1 ||
+    surahNumber > 114 ||
+    !Number.isInteger(ayahNumber) ||
+    ayahNumber < 1
+  ) {
+    throw new RangeError('Surah and ayah numbers must be valid positive integers.');
+  }
 }
 
 function isSafeWordAudioPath(value: string): boolean {

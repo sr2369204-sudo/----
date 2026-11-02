@@ -3,6 +3,14 @@ export type QuranWord = {
   position: number;
   textUthmani: string;
   audioUrl: string | null;
+  /** Word-level meaning supplied by the source (Quran.com), null when unavailable. */
+  translationText: string | null;
+};
+
+export type AyahSearchResult = {
+  surahNumber: number;
+  ayahNumber: number;
+  text: string;
 };
 
 export type QuranAyah = {

@@ -1,4 +1,5 @@
 import { Link } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import {
@@ -96,6 +97,27 @@ export default function HomeScreen() {
                 <Text style={styles.heroDecorationText}>۞</Text>
               </View>
             </View>
+
+            <Link href="/saved-words" asChild>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="الكلمات المحفوظة"
+                style={StyleSheet.flatten([
+                  styles.savedWordsCard,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ])}>
+                <View style={[styles.savedWordsIcon, { backgroundColor: colors.backgroundSelected }]}>
+                  <Ionicons name="bookmark" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.savedWordsInfo}>
+                  <Text style={[styles.savedWordsTitle, { color: colors.text }]}>الكلمات المحفوظة</Text>
+                  <Text style={[styles.savedWordsCaption, { color: colors.textSecondary }]}>
+                    راجع كل الكلمات التي حفظتها من المصحف
+                  </Text>
+                </View>
+                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+              </Pressable>
+            </Link>
 
             <View style={styles.sectionHeading}>
               <View>
@@ -333,6 +355,36 @@ const styles = StyleSheet.create({
   heroDecorationText: {
     color: 'rgba(255,255,255,0.08)',
     fontSize: 170,
+  },
+  savedWordsCard: {
+    minHeight: 72,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderWidth: 1,
+    borderRadius: 18,
+  },
+  savedWordsIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savedWordsInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  savedWordsTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  savedWordsCaption: {
+    fontSize: 12,
+    textAlign: 'right',
   },
   sectionHeading: {
     flexDirection: 'row-reverse',

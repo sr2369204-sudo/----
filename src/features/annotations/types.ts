@@ -45,3 +45,26 @@ export type CreateNoteInput = {
   target: AnnotationTarget;
   body: string;
 };
+
+export type Bookmark = {
+  id: string;
+  surahNumber: number;
+  ayahNumber: number;
+  createdAt: string;
+};
+
+export type SavedWord = {
+  id: string;
+  surahNumber: number;
+  ayahNumber: number;
+  wordId: string;
+  wordText: string;
+  createdAt: string;
+};
+
+export type CreateSavedWordInput = {
+  surahNumber: number;
+  ayahNumber: number;
+  wordId: string;
+  wordText: string;
+};
