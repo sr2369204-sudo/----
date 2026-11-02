@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/immutability, react-hooks/refs */
 import { useCallback, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   LayoutChangeEvent,
   StyleSheet,
   useWindowDimensions,
@@ -43,8 +44,8 @@ export type SwipePageViewerProps = {
   onInteractionError: (message: string) => void;
 };
 
-const SWIPE_DISTANCE_RATIO = 0.28;
-const SWIPE_VELOCITY_THRESHOLD = 450;
+const SWIPE_DISTANCE_RATIO = 0.18;
+const SWIPE_VELOCITY_THRESHOLD = 200;
 const BOUNDARY_RESISTANCE = 0.15;
 const ANIMATION_DURATION_MS = 220;
 const CANCEL_DURATION_MS = 180;
@@ -73,8 +74,9 @@ export function SwipePageViewer({
   const isGestureActive = useSharedValue(false);
 
   const currentPageNumber = currentPage.page.pageNumber;
-  const hasPrev = currentPageNumber > 1 && prevPage !== null;
-  const hasNext = currentPageNumber < 604 && nextPage !== null;
+  // Boundaries of the Holy Quran: Page 1 and Page 604
+  const hasPrev = currentPageNumber > 1;
+  const hasNext = currentPageNumber < 604;
 
   const hasPrevRef = useRef(hasPrev);
   hasPrevRef.current = hasPrev;
@@ -113,20 +115,30 @@ export function SwipePageViewer({
       if (isTransitioning.value) return;
 
       const width = containerWidthRef.current;
-      const distanceThreshold = width * SWIPE_DISTANCE_RATIO;
+      const distanceThreshold = Math.max(50, width * SWIPE_DISTANCE_RATIO);
 
       // RTL: Moving to next page is swipe from right to left (dx < 0)
       const shouldTurnNext =
         hasNextRef.current &&
-        (dx < -distanceThreshold || (dx < -35 && vx < -SWIPE_VELOCITY_THRESHOLD));
+        (dx < -distanceThreshold || (dx < -25 && vx < -SWIPE_VELOCITY_THRESHOLD));
 
       // RTL: Moving to previous page is swipe from left to right (dx > 0)
       const shouldTurnPrev =
         hasPrevRef.current &&
-        (dx > distanceThreshold || (dx > 35 && vx > SWIPE_VELOCITY_THRESHOLD));
+        (dx > distanceThreshold || (dx > 25 && vx > SWIPE_VELOCITY_THRESHOLD));
 
       if (shouldTurnNext) {
         isTransitioning.value = true;
+        let finishedOnce = false;
+        const finalize = () => {
+          if (finishedOnce) return;
+          finishedOnce = true;
+          finishTransition('next');
+        };
+
+        // Safety fallback timer for Web / Android to ensure transition always settles
+        setTimeout(finalize, ANIMATION_DURATION_MS + 40);
+
         translateX.value = withTiming(
           -width,
           {
@@ -135,12 +147,22 @@ export function SwipePageViewer({
           },
           (finished) => {
             if (finished) {
-              runOnJS(finishTransition)('next');
+              runOnJS(finalize)();
             }
           },
         );
       } else if (shouldTurnPrev) {
         isTransitioning.value = true;
+        let finishedOnce = false;
+        const finalize = () => {
+          if (finishedOnce) return;
+          finishedOnce = true;
+          finishTransition('previous');
+        };
+
+        // Safety fallback timer for Web / Android to ensure transition always settles
+        setTimeout(finalize, ANIMATION_DURATION_MS + 40);
+
         translateX.value = withTiming(
           width,
           {
@@ -149,7 +171,7 @@ export function SwipePageViewer({
           },
           (finished) => {
             if (finished) {
-              runOnJS(finishTransition)('previous');
+              runOnJS(finalize)();
             }
           },
         );
@@ -162,7 +184,7 @@ export function SwipePageViewer({
 
   // Gesture Handler for Native (Android / iOS)
   const panGesture = Gesture.Pan()
-    .activeOffsetX([-12, 12])
+    .activeOffsetX([-10, 10])
     .failOffsetY([-25, 25])
     .onStart(() => {
       'worklet';
@@ -187,12 +209,6 @@ export function SwipePageViewer({
       'worklet';
       if (isTransitioning.value) return;
       runOnJS(completeSwipe)(event.translationX, event.velocityX);
-    })
-    .onFinalize(() => {
-      'worklet';
-      if (!isTransitioning.value && translateX.value !== 0) {
-        runOnJS(resetPosition)();
-      }
     });
 
   // Web iframe pan bridging callbacks
@@ -247,7 +263,7 @@ export function SwipePageViewer({
     <View style={styles.container} onLayout={onLayout}>
       {/* Background layer: Pre-rendered underneath at position 0 */}
       <View style={[StyleSheet.absoluteFill, styles.backgroundContainer]} pointerEvents="none">
-        {nextPage && (
+        {nextPage ? (
           <Animated.View style={[StyleSheet.absoluteFill, nextBackgroundStyle]}>
             <MushafPageViewer
               page={nextPage.page}
@@ -265,9 +281,19 @@ export function SwipePageViewer({
               onInteractionError={noop}
             />
           </Animated.View>
+        ) : (
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFill,
+              nextBackgroundStyle,
+              { backgroundColor, justifyContent: 'center', alignItems: 'center' },
+            ]}
+          >
+            <ActivityIndicator color={isDark ? '#38BDF8' : '#0F766E'} />
+          </Animated.View>
         )}
 
-        {prevPage && (
+        {prevPage ? (
           <Animated.View style={[StyleSheet.absoluteFill, prevBackgroundStyle]}>
             <MushafPageViewer
               page={prevPage.page}
@@ -284,6 +310,16 @@ export function SwipePageViewer({
               onPageTurn={noop}
               onInteractionError={noop}
             />
+          </Animated.View>
+        ) : (
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFill,
+              prevBackgroundStyle,
+              { backgroundColor, justifyContent: 'center', alignItems: 'center' },
+            ]}
+          >
+            <ActivityIndicator color={isDark ? '#38BDF8' : '#0F766E'} />
           </Animated.View>
         )}
       </View>
