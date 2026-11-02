@@ -119,20 +119,21 @@ function SelectionMenu({
   const reference = `${surahName} · الآية ${toArabicNumbers(selection.ayah.ayahNumber)}`;
   const isWord = selection.type === 'word';
   const title = isWord ? selection.word.textUthmani : `الآية ${toArabicNumbers(selection.ayah.ayahNumber)}`;
-  const menuWidth = Math.min(320, width - 24);
-  const menuHeight = 82;
+  const toolbarWidth = editor === 'highlights' ? 220 : 180;
+  const toolbarHeight = 44;
+  const anchorCenterX = anchor ? anchor.x + anchor.width / 2 : width / 2;
   const left = Math.max(
     12,
     Math.min(
-      width - menuWidth - 12,
-      (anchor ? anchor.x + anchor.width / 2 : width / 2) - menuWidth / 2,
+      width - toolbarWidth - 12,
+      anchorCenterX - toolbarWidth / 2,
     ),
   );
-  const belowTop = anchor ? anchor.y + anchor.height + 10 : height / 2 - menuHeight / 2;
-  const top = Math.min(
-    Math.max(insets.top + 8, belowTop),
-    height - insets.bottom - menuHeight - 8,
-  );
+  const isAbove = (anchor ? anchor.y : height / 2) >= insets.top + toolbarHeight + 14;
+  const top = isAbove
+    ? Math.max(insets.top + 8, (anchor ? anchor.y : height / 2) - toolbarHeight - 8)
+    : Math.min(height - insets.bottom - toolbarHeight - 8, (anchor ? anchor.y + anchor.height : height / 2) + 8);
+  const arrowLeft = Math.max(12, Math.min(toolbarWidth - 22, anchorCenterX - left - 5));
 
   async function refreshSavedItems(): Promise<void> {
     const [savedHighlights, savedNotes] = await Promise.all([
@@ -154,7 +155,7 @@ function SelectionMenu({
       });
       await refreshSavedItems();
       onHighlightsChanged();
-      setEditor('actions');
+      clearSelection();
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? `تعذر حفظ التمييز: ${error.message}` : 'تعذر حفظ التمييز.',
@@ -171,6 +172,7 @@ function SelectionMenu({
       await repository.deleteHighlight(id);
       await refreshSavedItems();
       onHighlightsChanged();
+      clearSelection();
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? `تعذر حذف التمييز: ${error.message}` : 'تعذر حذف التمييز.',
@@ -212,13 +214,21 @@ function SelectionMenu({
     }
   }
 
-  async function shareSelection(): Promise<void> {
+  async function copyOrShare(): Promise<void> {
+    setBusy(true);
+    setErrorMessage(null);
     try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(`${selectedText}\n${reference}`);
+      }
       await Share.share({ message: `${selectedText}\n${reference}` });
+      clearSelection();
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? `تعذرت مشاركة التحديد: ${error.message}` : 'تعذرت المشاركة.',
+        error instanceof Error ? `تعذرت المشاركة: ${error.message}` : 'تعذرت المشاركة.',
       );
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -253,40 +263,105 @@ function SelectionMenu({
         {editor === 'actions' ? (
           <View
             style={[
-              styles.menu,
+              styles.floatingToolbar,
               {
                 left,
                 top,
-                width: menuWidth,
+                width: toolbarWidth,
                 backgroundColor: palette.surface,
                 borderColor: palette.border,
               },
             ]}>
-            <Text style={[styles.menuTitle, { color: palette.text }]} numberOfLines={1}>
-              {title}
-            </Text>
-            <View style={styles.menuActions}>
-              <MenuAction
-                icon={isAudioPlaying ? 'Ⅱ' : '♫'}
-                label={isAudioPlaying ? 'إيقاف' : 'استماع'}
-                primary
+            <FloatingIcon
+              icon={isAudioPlaying ? '❚❚' : '▶'}
+              label={isAudioPlaying ? 'إيقاف التلاوة' : 'استماع'}
+              primary={isAudioPlaying}
+              disabled={busy}
+              onPress={() => {
+                if (isAudioPlaying) {
+                  onStopAudio();
+                } else {
+                  void playAudio();
+                }
+              }}
+            />
+            <FloatingIcon
+              icon="🎨"
+              label="تلوين الكلمة"
+              onPress={() => setEditor('highlights')}
+            />
+            <FloatingIcon
+              icon="✍️"
+              label="ملاحظة"
+              onPress={() => setEditor('notes')}
+            />
+            <FloatingIcon
+              icon="📋"
+              label="مشاركة أو نسخ"
+              onPress={() => void copyOrShare()}
+            />
+            <View
+              style={[
+                styles.arrowCaret,
+                isAbove ? styles.arrowDown : styles.arrowUp,
+                {
+                  left: arrowLeft,
+                  borderTopColor: isAbove ? palette.surface : 'transparent',
+                  borderBottomColor: !isAbove ? palette.surface : 'transparent',
+                },
+              ]}
+            />
+          </View>
+        ) : editor === 'highlights' ? (
+          <View
+            style={[
+              styles.floatingToolbar,
+              {
+                left,
+                top,
+                width: toolbarWidth,
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
+              },
+            ]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="رجوع"
+              onPress={() => setEditor('actions')}
+              style={styles.pillBackBtn}>
+              <Text style={[styles.pillBackGlyph, { color: palette.primary }]}>→</Text>
+            </Pressable>
+            {highlightColors.map((color) => (
+              <Pressable
+                key={color}
+                accessibilityRole="button"
+                accessibilityLabel="تمييز بهذا اللون"
                 disabled={busy}
-                onPress={() => {
-                  if (isAudioPlaying) {
-                    onStopAudio();
-                  } else {
-                    void playAudio();
-                  }
-                }}
+                onPress={() => void saveHighlight(color)}
+                style={[styles.quickColorDot, { backgroundColor: color }]}
               />
-              <MenuAction icon="✦" label="تمييز" onPress={() => setEditor('highlights')} />
-              <MenuAction icon="▤" label="ملاحظة" onPress={() => setEditor('notes')} />
-              <MenuAction icon="•••" label="المزيد" onPress={() => setEditor('more')} />
-            </View>
-            {busy && <Text style={[styles.caption, { color: palette.textSecondary }]}>جارٍ التشغيل…</Text>}
-            {errorMessage && (
-              <Text accessibilityRole="alert" style={styles.error}>{errorMessage}</Text>
+            ))}
+            {highlights.length > 0 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="حذف التمييز"
+                disabled={busy}
+                onPress={() => void deleteHighlight(highlights[0].id)}
+                style={styles.pillDeleteBtn}>
+                <Text style={styles.pillDeleteGlyph}>✕</Text>
+              </Pressable>
             )}
+            <View
+              style={[
+                styles.arrowCaret,
+                isAbove ? styles.arrowDown : styles.arrowUp,
+                {
+                  left: arrowLeft,
+                  borderTopColor: isAbove ? palette.surface : 'transparent',
+                  borderBottomColor: !isAbove ? palette.surface : 'transparent',
+                },
+              ]}
+            />
           </View>
         ) : (
           <View
@@ -313,106 +388,45 @@ function SelectionMenu({
               </Pressable>
             </View>
             <ScrollView contentContainerStyle={styles.dialogBody} keyboardShouldPersistTaps="handled">
-              {editor === 'highlights' ? (
-                <View style={styles.editor}>
-                  <Text style={[styles.editorTitle, { color: palette.text }]}>لون التمييز</Text>
-                  <View style={styles.paletteRow}>
-                    {highlightColors.map((color) => (
-                      <Pressable
-                        key={color}
-                        accessibilityRole="button"
-                        accessibilityLabel={`حفظ تمييز باللون ${color}`}
-                        disabled={busy}
-                        onPress={() => void saveHighlight(color)}
-                        style={[styles.colorSwatch, { backgroundColor: color }]}
-                      />
-                    ))}
+              <View style={styles.editor}>
+                <Text style={[styles.editorTitle, { color: palette.text }]}>ملاحظات شخصية</Text>
+                <TextInput
+                  accessibilityLabel="نص الملاحظة"
+                  multiline
+                  maxLength={4000}
+                  value={noteBody}
+                  onChangeText={setNoteBody}
+                  placeholder="اكتب ملاحظة خاصة بك"
+                  placeholderTextColor={palette.textSecondary}
+                  textAlign="right"
+                  style={[
+                    styles.noteInput,
+                    {
+                      color: palette.text,
+                      backgroundColor: palette.background,
+                      borderColor: palette.border,
+                    },
+                  ]}
+                />
+                <ActionButton
+                  label={busy ? 'جارٍ الحفظ…' : 'حفظ على هذا الجهاز'}
+                  backgroundColor={palette.primary}
+                  textColor={palette.background}
+                  disabled={busy || noteBody.trim().length === 0}
+                  onPress={() => void saveNote()}
+                />
+                {notes.map((note) => (
+                  <View key={note.id} style={styles.noteItem}>
+                    <Text style={[styles.noteBody, { color: palette.text }]}>{note.body}</Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={busy}
+                      onPress={() => void deleteNote(note.id)}>
+                      <Text style={styles.deleteText}>حذف الملاحظة</Text>
+                    </Pressable>
                   </View>
-                  <Text style={[styles.caption, { color: palette.textSecondary }]}>
-                    يمكن أن يتراكب تمييز الكلمة مع تمييز الآية.
-                  </Text>
-                  {highlights.map((highlight) => (
-                    <View key={highlight.id} style={styles.savedItem}>
-                      <View
-                        style={[styles.savedColor, {
-                          backgroundColor: highlight.color,
-                          opacity: highlight.opacity,
-                        }]}
-                      />
-                      <Text style={[styles.caption, { color: palette.textSecondary }]}>تمييز محفوظ</Text>
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={busy}
-                        onPress={() => void deleteHighlight(highlight.id)}>
-                        <Text style={styles.deleteText}>حذف</Text>
-                      </Pressable>
-                    </View>
-                  ))}
-                </View>
-              ) : editor === 'notes' ? (
-                <View style={styles.editor}>
-                  <Text style={[styles.editorTitle, { color: palette.text }]}>ملاحظات شخصية</Text>
-                  <TextInput
-                    accessibilityLabel="نص الملاحظة"
-                    multiline
-                    maxLength={4000}
-                    value={noteBody}
-                    onChangeText={setNoteBody}
-                    placeholder="اكتب ملاحظة خاصة بك"
-                    placeholderTextColor={palette.textSecondary}
-                    textAlign="right"
-                    style={[
-                      styles.noteInput,
-                      {
-                        color: palette.text,
-                        backgroundColor: palette.background,
-                        borderColor: palette.border,
-                      },
-                    ]}
-                  />
-                  <ActionButton
-                    label={busy ? 'جارٍ الحفظ…' : 'حفظ على هذا الجهاز'}
-                    backgroundColor={palette.primary}
-                    textColor={palette.background}
-                    disabled={busy || noteBody.trim().length === 0}
-                    onPress={() => void saveNote()}
-                  />
-                  {notes.map((note) => (
-                    <View key={note.id} style={styles.noteItem}>
-                      <Text style={[styles.noteBody, { color: palette.text }]}>{note.body}</Text>
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={busy}
-                        onPress={() => void deleteNote(note.id)}>
-                        <Text style={styles.deleteText}>حذف الملاحظة</Text>
-                      </Pressable>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.editor}>
-                  <Text style={[styles.caption, { color: palette.textSecondary }]}>{reference}</Text>
-                  <ActionButton
-                    label={isAudioPlaying ? 'إيقاف التلاوة' : isWord ? 'استماع إلى الكلمة' : 'استماع إلى الآية'}
-                    backgroundColor={palette.primary}
-                    textColor={palette.background}
-                    disabled={busy}
-                    onPress={() => {
-                      if (isAudioPlaying) {
-                        onStopAudio();
-                      } else {
-                        void playAudio();
-                      }
-                    }}
-                  />
-                  <ActionButton
-                    label="مشاركة النص والمرجع"
-                    backgroundColor={palette.backgroundSelected}
-                    textColor={palette.text}
-                    onPress={() => void shareSelection()}
-                  />
-                </View>
-              )}
+                ))}
+              </View>
               {errorMessage && (
                 <Text accessibilityRole="alert" style={styles.error}>{errorMessage}</Text>
               )}
@@ -424,7 +438,7 @@ function SelectionMenu({
   );
 }
 
-function MenuAction({
+function FloatingIcon({
   icon,
   label,
   onPress,
@@ -444,18 +458,18 @@ function MenuAction({
       accessibilityLabel={label}
       disabled={disabled}
       onPress={onPress}
-      style={[
-        styles.menuAction,
+      style={({ pressed }) => [
+        styles.floatingIconBtn,
         { backgroundColor: primary ? palette.primary : palette.backgroundSelected },
         disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
       ]}>
-      <Text style={[styles.menuIcon, { color: primary ? palette.background : palette.primary }]}>
-        {icon}
-      </Text>
       <Text
-        style={[styles.menuActionLabel, { color: primary ? palette.background : palette.text }]}
-        numberOfLines={1}>
-        {label}
+        style={[
+          styles.floatingIconGlyph,
+          { color: primary ? palette.background : palette.primary },
+        ]}>
+        {icon}
       </Text>
     </Pressable>
   );
@@ -502,46 +516,80 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0, 0, 0, 0.08)',
   },
-  menu: {
+  floatingToolbar: {
     position: 'absolute',
-    paddingHorizontal: Spacing.two,
-    paddingTop: Spacing.two,
-    paddingBottom: 7,
-    borderWidth: 1,
-    borderRadius: 18,
-    elevation: 8,
-    shadowColor: '#18251F',
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  menuTitle: {
-    marginBottom: 7,
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  menuActions: {
     flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
-    gap: 5,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    height: 44,
+    paddingHorizontal: 8,
+    borderWidth: 1.2,
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
-  menuAction: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 47,
+  floatingIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
-    gap: 1,
   },
-  menuIcon: {
-    fontSize: 17,
+  floatingIconGlyph: {
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  arrowCaret: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  arrowDown: {
+    bottom: -6,
+    borderTopWidth: 6,
+  },
+  arrowUp: {
+    top: -6,
+    borderBottomWidth: 6,
+  },
+  pillBackBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillBackGlyph: {
+    fontSize: 18,
     fontWeight: '700',
   },
-  menuActionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+  quickColorDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    borderColor: 'rgba(0, 0, 0, 0.15)',
+  },
+  pillDeleteBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFEAEA',
+  },
+  pillDeleteGlyph: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#D32F2F',
   },
   dialog: {
     alignSelf: 'center',

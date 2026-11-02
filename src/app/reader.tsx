@@ -64,10 +64,6 @@ export default function ReaderScreen() {
   const [selectionAnchor, setSelectionAnchor] = useState<SelectionAnchor | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [highlightRevision, setHighlightRevision] = useState(0);
-  const [displayOverrides, setDisplayOverrides] = useState<{
-    showTajweed: boolean;
-    fontSize: number;
-  } | null>(null);
   const [displaySaveError, setDisplaySaveError] = useState<string | null>(null);
   const [highlightError, setHighlightError] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -139,9 +135,8 @@ export default function ReaderScreen() {
     staleTime: Infinity,
   });
 
-  const showTajweed =
-    displayOverrides?.showTajweed ?? displayPreferencesQuery.data?.showTajweed ?? true;
-  const fontSize = displayOverrides?.fontSize ?? displayPreferencesQuery.data?.fontSize ?? 29;
+  const showTajweed = displayPreferencesQuery.data?.showTajweed ?? true;
+  const fontSize = displayPreferencesQuery.data?.fontSize ?? 29;
   const displayPreferencesError =
     displaySaveError ??
     (displayPreferencesQuery.error instanceof Error
@@ -457,73 +452,23 @@ export default function ReaderScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      {/* Minimalist floating controls instead of navbar */}
+      <View style={styles.floatingControls}>
         <Link href="/" replace asChild>
           <Pressable
             accessibilityRole="button"
-            style={StyleSheet.flatten([
-              styles.backButton,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ])}>
-            <Text style={[styles.backGlyph, { color: colors.primary }]}>→</Text>
+            accessibilityLabel="العودة للسور"
+            style={StyleSheet.flatten([styles.floatingButton, { backgroundColor: colors.surface, borderColor: colors.border }])}>
+            <Text style={[styles.floatingGlyph, { color: colors.primary }]}>→</Text>
           </Pressable>
         </Link>
-        <View style={styles.headerTitle}>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            المصحف
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="التنقل بين الصفحات والسور والأجزاء"
-            onPress={() => setNavigationOpen(true)}>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              {page
-                ? `الجزء ${toArabicNumbers(page.juzNumber)} · الصفحة ${toArabicNumbers(page.pageNumber)}`
-                : 'مصحف المدينة · رواية حفص'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.readerTools}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={showTajweed ? 'إخفاء ألوان التجويد' : 'إظهار ألوان التجويد'}
-            accessibilityState={{ selected: showTajweed }}
-            onPress={() => setDisplayOverrides((current) => ({
-              showTajweed: !(current?.showTajweed ?? displayPreferencesQuery.data?.showTajweed ?? true),
-              fontSize: current?.fontSize ?? displayPreferencesQuery.data?.fontSize ?? 29,
-            }))}
-            style={[
-              styles.toolButton,
-              {
-                backgroundColor: showTajweed ? colors.backgroundSelected : colors.surface,
-                borderColor: showTajweed ? colors.primary : colors.border,
-              },
-            ]}>
-            <Text style={[styles.tajweedToolText, { color: colors.primary }]}>تج</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تكبير الخط"
-            disabled={fontSize >= 37}
-            onPress={() => setDisplayOverrides((current) => ({
-              showTajweed: current?.showTajweed ?? displayPreferencesQuery.data?.showTajweed ?? true,
-              fontSize: Math.min(37, (current?.fontSize ?? displayPreferencesQuery.data?.fontSize ?? 29) + 2),
-            }))}
-            style={[styles.fontButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.fontButtonText, { color: colors.text }]}>A+</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تصغير الخط"
-            disabled={fontSize <= 21}
-            onPress={() => setDisplayOverrides((current) => ({
-              showTajweed: current?.showTajweed ?? displayPreferencesQuery.data?.showTajweed ?? true,
-              fontSize: Math.max(21, (current?.fontSize ?? displayPreferencesQuery.data?.fontSize ?? 29) - 2),
-            }))}
-            style={[styles.fontButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.fontButtonText, { color: colors.text }]}>A−</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="التنقل بين الصفحات والسور والأجزاء"
+          onPress={() => setNavigationOpen(true)}
+          style={[styles.floatingButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.floatingGlyph, { color: colors.primary, fontSize: 16 }]}>☰</Text>
+        </Pressable>
       </View>
 
       {pageLoading && !noInitialPage ? (
@@ -805,66 +750,29 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  header: {
-    minHeight: 68,
+  floatingControls: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+    zIndex: 10,
     flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderBottomWidth: 1,
+    gap: 8,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 13,
-  },
-  backGlyph: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  headerTitle: {
-    flex: 1,
-    alignItems: 'flex-end',
-    gap: 3,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'right',
-  },
-  subtitle: {
-    fontSize: 11,
-    textAlign: 'right',
-  },
-  readerTools: {
-    flexDirection: 'row',
-    gap: 5,
-  },
-  toolButton: {
+  floatingButton: {
     width: 36,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: 11,
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  tajweedToolText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  fontButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 11,
-  },
-  fontButtonText: {
-    fontSize: 12,
+  floatingGlyph: {
+    fontSize: 20,
     fontWeight: '700',
   },
   centered: {

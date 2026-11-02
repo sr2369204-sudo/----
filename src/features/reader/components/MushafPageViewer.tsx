@@ -257,8 +257,8 @@ body {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: 10px 12px 12px;
-  background: ${isDark ? '#111a16' : '#eee9dc'};
+  padding: 8px 10px 10px;
+  background: ${isDark ? '#0c110f' : '#ece7dc'};
 }
 .page {
   --quran-font-size: ${fontSize}px;
@@ -269,18 +269,19 @@ body {
   height: 100%;
   max-width: 520px;
   margin: 0 auto;
-  padding: 8px 10px 6px;
+  padding: 8px 12px 6px;
   container-type: size;
-  border: 3px double #b89758;
-  border-radius: 4px;
-  outline: 1px solid #e8d8ae;
-  outline-offset: -7px;
-  color: #263a30;
-  background:
-    radial-gradient(ellipse at 10% 12%, rgba(216, 198, 155, 0.12), transparent 38%),
-    radial-gradient(ellipse at 92% 85%, rgba(216, 198, 155, 0.1), transparent 42%),
-    #fffaf0;
-  box-shadow: 0 3px 14px rgba(37, 31, 20, 0.18);
+  border: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
+  border-radius: 6px;
+  outline: 1px solid ${isDark ? 'rgba(138, 112, 61, 0.45)' : 'rgba(197, 163, 99, 0.5)'};
+  outline-offset: -5px;
+  color: ${isDark ? '#e4ddcf' : '#1e3026'};
+  background: ${isDark
+    ? '#131917'
+    : 'radial-gradient(ellipse at 50% 30%, #fffefb 0%, #fffdf7 70%, #fbf6ec 100%)'};
+  box-shadow: ${isDark
+    ? '0 6px 24px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4)'
+    : '0 6px 22px rgba(45, 35, 18, 0.12), 0 1px 4px rgba(45, 35, 18, 0.05)'};
   ${transitionDirection ? `animation: page-${transitionDirection} 220ms ease-out both;` : ''}
 }
 @supports (width: 1cqi) {
@@ -288,7 +289,7 @@ body {
     --quran-font-size: min(
       ${fontSize}px,
       7.4cqi,
-      calc((100cqb - 76px) / ${sourceLineCount} / 1.42)
+      calc((100cqb - 72px) / ${sourceLineCount} / 1.42)
     );
   }
 }
@@ -300,53 +301,60 @@ body {
   from { opacity: 0.65; transform: translateX(3%); }
   to { opacity: 1; transform: translateX(0); }
 }
-.page:before {
+.frame-corner {
   position: absolute;
-  inset: 5px;
-  border: 1px solid rgba(88, 112, 78, 0.52);
-  content: "";
+  width: 8px;
+  height: 8px;
   pointer-events: none;
+  z-index: 2;
 }
-.frame-ornament {
-  position: absolute;
-  inset: 8px;
-  z-index: 0;
-  pointer-events: none;
+.frame-corner.top-left {
+  top: 7px;
+  left: 7px;
+  border-top: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
+  border-left: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
 }
-.frame-ornament:before {
-  position: absolute;
-  inset: 0;
-  border: 1px solid rgba(176, 142, 76, 0.7);
-  content: "";
+.frame-corner.top-right {
+  top: 7px;
+  right: 7px;
+  border-top: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
+  border-right: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
 }
-.frame-ornament:after {
-  position: absolute;
-  inset: 2px;
-  background:
-    radial-gradient(circle, #ad8b4d 0 1px, transparent 1.5px) left top / 8px 14px repeat-y,
-    radial-gradient(circle, #ad8b4d 0 1px, transparent 1.5px) right top / 8px 14px repeat-y,
-    repeating-linear-gradient(90deg, transparent 0 5px, rgba(93, 122, 79, 0.55) 5px 6px, transparent 6px 11px) left top / 100% 3px repeat-x,
-    repeating-linear-gradient(90deg, transparent 0 5px, rgba(93, 122, 79, 0.55) 5px 6px, transparent 6px 11px) left bottom / 100% 3px repeat-x;
-  content: "";
-  opacity: 0.7;
+.frame-corner.bottom-left {
+  bottom: 7px;
+  left: 7px;
+  border-bottom: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
+  border-left: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
+}
+.frame-corner.bottom-right {
+  bottom: 7px;
+  right: 7px;
+  border-bottom: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
+  border-right: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
 }
 .page-header {
   display: flex;
-  flex: 0 0 30px;
+  flex: 0 0 26px;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   position: relative;
   z-index: 1;
+  padding: 0 8px 2px;
+  border-bottom: 1px solid ${isDark ? 'rgba(138, 112, 61, 0.22)' : 'rgba(197, 163, 99, 0.3)'};
+  margin-bottom: 2px;
 }
 .header-label {
   min-width: 0;
-  padding: 2px 6px;
-  color: #354d37;
-  font: 600 11px sans-serif;
-  text-align: right;
+  color: ${isDark ? '#c5b690' : '#6f582e'};
+  font: 600 11px "Noto Naskh Arabic", "Amiri", "Traditional Arabic", sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.header-ornament {
+  color: ${isDark ? '#8a703d' : '#bba064'};
+  font-size: 11px;
+  opacity: 0.8;
 }
 .lines {
   display: grid;
@@ -355,8 +363,7 @@ body {
   align-content: stretch;
   width: 100%;
   min-height: 0;
-  padding: 2px 8px 4px;
-  border-inline: 1px solid rgba(169, 138, 82, 0.22);
+  padding: 2px 4px;
   overflow: hidden;
 }
 .line {
@@ -388,68 +395,57 @@ body {
   text-align: center;
 }
 .surah-title {
-  display: grid;
-  grid-template-columns: minmax(12px, 1fr) auto minmax(12px, 1fr);
-  align-items: center;
-  gap: 6px;
-  z-index: 1;
-  margin: 0 4px;
-  min-height: 0;
-  color: #354d37;
-  font-family: "Noto Naskh Arabic", "Noto Naskh Arabic UI", serif;
-  font-feature-settings: "ccmp" 1, "rlig" 1, "calt" 1;
-}
-.surah-title-rule {
-  position: relative;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #c4a15e 12%, #c4a15e 88%, transparent);
-  pointer-events: none;
-}
-.surah-title-rule:before {
-  position: absolute;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  border: 1px solid #b89758;
-  background: #fffaf0;
-  content: "";
-  transform: translateY(-50%) rotate(45deg);
-}
-.surah-title-rule:first-child:before { inset-inline-end: -2px; }
-.surah-title-rule:last-child:before { inset-inline-start: -2px; }
-.surah-title-box {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 5px 28px 6px;
-  border: 1.5px solid #c4a15e;
-  border-radius: 8px;
-  outline: 1px solid rgba(184, 151, 88, 0.45);
-  outline-offset: -4px;
-  background: linear-gradient(#fffdf6, #f6e9c8);
-  box-shadow: inset 0 0 0 5px rgba(255, 250, 240, 0.65);
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin: 1px 0;
+  min-height: 0;
+  color: ${isDark ? '#faeed7' : '#3c2c12'};
+  font-family: "Noto Naskh Arabic", "Amiri", "Traditional Arabic", serif;
+}
+.surah-title-rule {
+  flex: 1 1 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, ${isDark ? 'rgba(158, 128, 70, 0.6)' : 'rgba(197, 163, 99, 0.7)'} 30%, ${isDark ? 'rgba(158, 128, 70, 0.6)' : 'rgba(197, 163, 99, 0.7)'} 70%, transparent);
+  pointer-events: none;
+}
+.surah-title-box {
+  flex: 0 0 auto;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: min(210px, 72%);
+  padding: 4px 18px 5px;
+  border-radius: 20px;
+  border: 1.5px solid ${isDark ? '#9e8046' : '#c5a363'};
+  outline: 1px solid ${isDark ? 'rgba(158, 128, 70, 0.4)' : 'rgba(197, 163, 99, 0.45)'};
+  outline-offset: -3.5px;
+  background: ${isDark
+    ? 'linear-gradient(180deg, #241d13 0%, #382d1c 50%, #241d13 100%)'
+    : 'linear-gradient(180deg, #fdfbf7 0%, #faeed7 48%, #f2dfba 52%, #faeed7 100%)'};
+  box-shadow: ${isDark
+    ? 'inset 0 1px 0 rgba(255, 235, 180, 0.1), 0 2px 6px rgba(0, 0, 0, 0.4)'
+    : 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 2px 6px rgba(120, 95, 45, 0.12)'};
   white-space: nowrap;
 }
-.surah-title-box:before, .surah-title-box:after {
-  position: absolute;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  border: 1px solid #b89758;
-  background: #fffaf0;
-  content: "";
-  transform: translateY(-50%) rotate(45deg);
+.surah-ornament {
+  font-size: min(13px, 3.8cqi);
+  color: ${isDark ? '#c5a363' : '#b38d45'};
+  line-height: 1;
 }
-.surah-title-box:before { inset-inline-start: -5px; }
-.surah-title-box:after { inset-inline-end: -5px; }
 .surah-title-text {
-  font-size: min(18px, 5.8cqi);
+  font-size: min(17px, 5.2cqi);
   font-weight: 700;
-  line-height: 1.2;
+  letter-spacing: 0.5px;
+  line-height: 1.25;
 }
 .opening-basmala {
-  color: #263a30;
+  color: ${isDark ? '#e4ddcf' : '#263a30'};
   font-family: "QcfTajweedPage";
   font-palette: --QcfLight;
   font-size: var(--quran-rendered-font-size, var(--quran-font-size));
@@ -478,7 +474,7 @@ body {
 .ayah-marker {
   min-width: 1em;
   min-height: 1em;
-  color: #514327;
+  color: ${isDark ? '#c5b690' : '#514327'};
   font-family: "QcfTajweedPage";
   font-palette: --QcfLight;
   font-size: 0.88em;
@@ -498,60 +494,64 @@ body {
 }
 .page-footer {
   display: flex;
-  flex: 0 0 34px;
+  flex: 0 0 26px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   position: relative;
   z-index: 1;
-  color: #596747;
-  font: 10px sans-serif;
+  padding-top: 2px;
+  border-top: 1px solid ${isDark ? 'rgba(138, 112, 61, 0.22)' : 'rgba(197, 163, 99, 0.3)'};
+  margin-top: 2px;
+}
+.page-number-ornament {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.page-num-bracket {
+  color: ${isDark ? '#8a703d' : '#b8934d'};
+  font-size: 11px;
+  opacity: 0.85;
 }
 .page-number {
-  min-width: 40px;
-  padding: 4px 9px;
-  border: 1px solid #b9985d;
-  border-radius: 50%;
-  background: #fff7e8;
-  color: #344a34;
-  font: 700 14px serif;
+  min-width: 28px;
+  color: ${isDark ? '#e4dac0' : '#382b13'};
+  font-family: "Noto Naskh Arabic", "Amiri", serif;
+  font-weight: 700;
+  font-size: 13.5px;
   text-align: center;
+  letter-spacing: 0.5px;
 }
-.legend { display: flex; flex-wrap: wrap; gap: 3px 6px; justify-content: flex-end; }
-.legend-item { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
-.dot { width: 6px; height: 6px; border-radius: 50%; }
-.dot.madd { background: #a33db5; }
-.dot.ghunnah { background: #18864b; }
-.dot.ikhfa { background: #1684b8; }
-.dot.iqlab { background: #c54135; }
-.dot.qalqalah { background: #d87a19; }
-.dot.silent { background: #8c9298; }
 </style>
 </head>
 <body>
 <main class="page" aria-label="صفحة المصحف">
-<div class="frame-ornament" aria-hidden="true"></div>
-<header class="page-header">
-  <span class="header-label" id="juz-label"></span>
-</header>
-<section class="lines" id="mushaf-lines"></section>
-<footer class="page-footer">
-  <span>مصحف المدينة · رواية حفص</span>
-  <span class="page-number" id="page-number"></span>
-  <aside class="legend" style="display:${showTajweed ? 'flex' : 'none'}">
-    <span class="legend-item"><i class="dot madd"></i>مد</span>
-    <span class="legend-item"><i class="dot ghunnah"></i>غنة</span>
-    <span class="legend-item"><i class="dot ikhfa"></i>إخفاء</span>
-    <span class="legend-item"><i class="dot iqlab"></i>إقلاب</span>
-    <span class="legend-item"><i class="dot qalqalah"></i>قلقلة</span>
-    <span class="legend-item"><i class="dot silent"></i>صامت</span>
-  </aside>
-</footer>
+  <div class="frame-corner top-left" aria-hidden="true"></div>
+  <div class="frame-corner top-right" aria-hidden="true"></div>
+  <div class="frame-corner bottom-left" aria-hidden="true"></div>
+  <div class="frame-corner bottom-right" aria-hidden="true"></div>
+  <header class="page-header">
+    <span class="header-label" id="header-surah-label"></span>
+    <span class="header-ornament">۞</span>
+    <span class="header-label" id="header-juz-label"></span>
+  </header>
+  <section class="lines" id="mushaf-lines"></section>
+  <footer class="page-footer">
+    <div class="page-number-ornament">
+      <span class="page-num-bracket">۞</span>
+      <span class="page-number" id="page-number"></span>
+      <span class="page-num-bracket">۞</span>
+    </div>
+  </footer>
 </main>
 <script>
 const page = ${pageJson};
 const highlightStyles = ${highlightsJson};
 const linesElement = document.getElementById("mushaf-lines");
-document.getElementById("juz-label").textContent =
+const surahName = page.surahs && page.surahs.length > 0 ? page.surahs[0].nameArabic : "";
+document.getElementById("header-surah-label").textContent = surahName ? "سورة " + surahName : "";
+document.getElementById("header-juz-label").textContent =
   "الجزء " + toArabicNumber(page.juzNumber) + " · الحزب " + toArabicNumber(page.hizbNumber);
 document.getElementById("page-number").textContent = toArabicNumber(page.pageNumber);
 
@@ -624,10 +624,18 @@ for (const ayah of page.ayahs) {
     startRule.setAttribute("aria-hidden", "true");
     const box = document.createElement("span");
     box.className = "surah-title-box";
+    const startOrn = document.createElement("span");
+    startOrn.className = "surah-ornament start";
+    startOrn.textContent = "۞";
+    startOrn.setAttribute("aria-hidden", "true");
     const text = document.createElement("span");
     text.className = "surah-title-text";
     text.textContent = "سورة " + (surah ? surah.nameArabic : "");
-    box.appendChild(text);
+    const endOrn = document.createElement("span");
+    endOrn.className = "surah-ornament end";
+    endOrn.textContent = "۞";
+    endOrn.setAttribute("aria-hidden", "true");
+    box.append(startOrn, text, endOrn);
     const endRule = document.createElement("span");
     endRule.className = "surah-title-rule";
     endRule.setAttribute("aria-hidden", "true");
