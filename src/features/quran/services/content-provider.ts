@@ -36,6 +36,7 @@ const AYAH_AUDIO_BASE_URL = 'https://verses.quran.com/';
 const WORD_AUDIO_BASE_URL = 'https://audio.qurancdn.com/';
 const SOURCE_ID = 'quran-com-api';
 const CONTENT_VERSION = 'api-v4';
+const API_REQUEST_TIMEOUT_MS = 15_000;
 
 export type QuranReciter = {
   id: number;
@@ -299,27 +300,35 @@ export class QuranComContentProvider implements QuranContentProvider {
   }
 
   private async requestJson(path: string): Promise<unknown> {
-    let response: Response;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
     try {
-      response = await fetch(`${API_BASE_URL}${path}`);
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new ContentUnavailableError(
+          'server',
+          `Quran.com API returned HTTP ${response.status}.`,
+        );
+      }
+      return await response.json();
     } catch (error) {
+      if (error instanceof ContentUnavailableError) {
+        throw error;
+      }
+      if (controller.signal.aborted) {
+        throw new ContentUnavailableError('network', 'انتهت مهلة الاتصال بمصدر القرآن.');
+      }
+      if (error instanceof SyntaxError) {
+        throw new ContentUnavailableError('invalid-data', 'Quran.com API returned invalid JSON.');
+      }
       throw new ContentUnavailableError(
         'network',
         error instanceof Error ? error.message : 'Quran.com could not be reached.',
       );
-    }
-
-    if (!response.ok) {
-      throw new ContentUnavailableError(
-        'server',
-        `Quran.com API returned HTTP ${response.status}.`,
-      );
-    }
-
-    try {
-      return await response.json();
-    } catch {
-      throw new ContentUnavailableError('invalid-data', 'Quran.com API returned invalid JSON.');
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

@@ -2,11 +2,15 @@ import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { MushafPage } from '@/features/quran/types';
-import { quranContentProvider } from '@/features/quran/services/content-provider';
+import {
+  ContentUnavailableError,
+  quranContentProvider,
+} from '@/features/quran/services/content-provider';
 
 const QCF_TAJWEED_FONT_URL =
   'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p';
 const BASMALA_FONT_PAGE_NUMBER = 1;
+const FONT_REQUEST_TIMEOUT_MS = 15_000;
 
 export type CachedMushafPage = {
   page: MushafPage;
@@ -123,21 +127,37 @@ export class MushafPageCache {
   }
 
   private async downloadPageFont(pageNumber: number): Promise<Uint8Array> {
-    let response: Response;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FONT_REQUEST_TIMEOUT_MS);
     try {
-      response = await fetch(`${QCF_TAJWEED_FONT_URL}${pageNumber}.woff2`);
-    } catch (error) {
-      throw new Error('تعذر الاتصال بمصدر خط المصحف.', { cause: error });
-    }
-    if (!response.ok) {
-      throw new Error(`تعذر تنزيل خط المصحف (HTTP ${response.status}).`);
-    }
+      const response = await fetch(`${QCF_TAJWEED_FONT_URL}${pageNumber}.woff2`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new ContentUnavailableError(
+          'server',
+          `تعذر تنزيل خط المصحف (HTTP ${response.status}).`,
+        );
+      }
 
-    const fontBytes = new Uint8Array(await response.arrayBuffer());
-    if (!isWoff2Font(fontBytes)) {
-      throw new Error('ملف الخط الذي أعاده المصدر غير صالح.');
+      const fontBytes = new Uint8Array(await response.arrayBuffer());
+      if (!isWoff2Font(fontBytes)) {
+        throw new ContentUnavailableError('invalid-data', 'ملف الخط الذي أعاده المصدر غير صالح.');
+      }
+      return fontBytes;
+    } catch (error) {
+      if (error instanceof ContentUnavailableError) {
+        throw error;
+      }
+      throw new ContentUnavailableError(
+        'network',
+        error instanceof Error
+          ? `تعذر الاتصال بمصدر خط المصحف: ${error.message}`
+          : 'تعذر الاتصال بمصدر خط المصحف.',
+      );
+    } finally {
+      clearTimeout(timeout);
     }
-    return fontBytes;
   }
 }
 

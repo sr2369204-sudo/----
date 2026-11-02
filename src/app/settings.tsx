@@ -190,7 +190,7 @@ export default function SettingsScreen() {
               <Text style={[styles.fontSizeValueText, { color: colors.primary }]}>
                 {toArabicSettingDigits(currentFontSize)}
               </Text>
-              <Text style={[styles.fontSizeUnitText, { color: colors.textSecondary }]}>بكسل</Text>
+              <Text style={[styles.fontSizeUnitText, { color: colors.textSecondary }]}>مستوى</Text>
             </View>
 
             <Pressable
@@ -240,7 +240,7 @@ export default function SettingsScreen() {
                 styles.fontPreviewText,
                 {
                   color: colors.text,
-                  fontSize: Math.min(28, Math.max(16, currentFontSize * 0.65)),
+                  fontSize: Math.min(28, Math.max(16, currentFontSize * 0.76)),
                 },
               ]}
             >

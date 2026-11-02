@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Spacing } from '@/constants/theme';
 import type { QuranSurahSummary } from '@/features/quran/types';
 import { ContentUnavailableError, quranContentProvider } from '@/features/quran/services/content-provider';
+import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import { useTheme } from '@/hooks/use-theme';
 
 type RevelationFilter = 'all' | 'makkah' | 'madinah';
@@ -35,13 +36,12 @@ export default function HomeScreen() {
   });
 
   const visibleSurahs = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
+    const query = normalizeSurahSearch(search);
     return (surahDirectory.data?.surahs ?? []).filter((surah) => {
       const matchesSearch =
         query.length === 0 ||
-        surah.nameArabic.includes(query) ||
-        String(surah.surahNumber).includes(query) ||
-        toArabicNumbers(surah.surahNumber).includes(query);
+        normalizeSurahSearch(surah.nameArabic).includes(query) ||
+        normalizeSurahSearch(String(surah.surahNumber)).includes(query);
       return matchesSearch &&
         (revelationFilter === 'all' || surah.revelationPlace === revelationFilter);
     });
@@ -82,13 +82,13 @@ export default function HomeScreen() {
               <Text style={styles.heroEyebrow}>رحلتك مع القرآن</Text>
               <Text style={styles.heroTitle}>مساحة هادئة لقراءتك</Text>
               <Text style={styles.heroBody}>
-                افتح المصحف، وابحث عن السورة التي تريدها، وتابع آياتك بوضوح.
+                تابع من آخر موضع وصلت إليه، أو ابحث عن السورة التي تريدها.
               </Text>
               <Link href={{ pathname: '/reader', params: { surahNumber: '1' } }} asChild>
                 <Pressable
                   accessibilityRole="button"
                   style={StyleSheet.flatten([styles.startButton])}>
-                  <Text style={[styles.startButtonText, { color: colors.primary }]}>ابدأ القراءة</Text>
+                  <Text style={[styles.startButtonText, { color: colors.primary }]}>متابعة القراءة</Text>
                   <Text style={[styles.startArrow, { color: colors.primary }]}>←</Text>
                 </Pressable>
               </Link>

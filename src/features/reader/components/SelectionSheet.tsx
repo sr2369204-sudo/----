@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import {
   Modal,
   Pressable,
@@ -16,7 +17,6 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { Spacing } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import type { AnnotationTarget, Highlight, Note } from '@/features/annotations/types';
-import type { SelectionAnchor } from '@/features/reader/components/MushafPageViewer';
 import type { ReaderSelection } from '@/features/reader/state/selection-store';
 import { useTheme } from '@/hooks/use-theme';
 import { useReaderSelectionStore } from '@/features/reader/state/selection-store';
@@ -35,7 +35,6 @@ const HIGHLIGHT_COLORS = [
 
 type Props = {
   surahName: string;
-  anchor: SelectionAnchor | null;
   onHighlightsChanged: () => void;
   onPlayAudio: (selection: ReaderSelection) => Promise<void>;
   onStopAudio: () => void;
@@ -61,7 +60,6 @@ export function SelectionSheet(props: Props) {
 function SelectionMenu({
   selection,
   surahName,
-  anchor,
   onHighlightsChanged,
   onPlayAudio,
   onStopAudio,
@@ -69,6 +67,7 @@ function SelectionMenu({
 }: Props & { selection: ReaderSelection }) {
   const database = useSQLiteContext();
   const clearSelection = useReaderSelectionStore((state) => state.clearSelection);
+  const selectAyah = useReaderSelectionStore((state) => state.selectAyah);
   const palette = useTheme();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -78,6 +77,7 @@ function SelectionMenu({
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [customColor, setCustomColor] = useState('');
 
@@ -131,19 +131,8 @@ function SelectionMenu({
   const isWord = selection.type === 'word';
   const title = isWord ? selection.word.textUthmani : `الآية ${toArabicNumbers(selection.ayah.ayahNumber)}`;
 
-  // Toolbar layout computation
-  const TOOLBAR_WIDTH = editor === 'actions' ? 252 : editor === 'highlights' ? 300 : 340;
-  const TOOLBAR_HEIGHT = 52;
-  const anchorCenterX = anchor ? anchor.x + anchor.width / 2 : width / 2;
-  const left = Math.max(12, Math.min(width - TOOLBAR_WIDTH - 12, anchorCenterX - TOOLBAR_WIDTH / 2));
-  const isAbove = (anchor ? anchor.y : height / 2) >= insets.top + TOOLBAR_HEIGHT + 16;
-  const top = isAbove
-    ? Math.max(insets.top + 8, (anchor ? anchor.y : height / 2) - TOOLBAR_HEIGHT - 10)
-    : Math.min(
-        height - insets.bottom - TOOLBAR_HEIGHT - 8,
-        (anchor ? anchor.y + anchor.height : height / 2) + 10,
-      );
-  const arrowLeft = Math.max(14, Math.min(TOOLBAR_WIDTH - 24, anchorCenterX - left - 6));
+  const sheetWidth = Math.min(width - 24, 480);
+  const sheetBottomPadding = Math.max(insets.bottom, Spacing.three);
 
   async function refreshSavedItems(): Promise<void> {
     const [savedHighlights, savedNotes] = await Promise.all([
@@ -228,13 +217,25 @@ function SelectionMenu({
     }
   }
 
-  async function copyOrShare(): Promise<void> {
+  async function copySelectedText(): Promise<void> {
     setBusy(true);
     setErrorMessage(null);
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(`${selectedText}\n${reference}`);
-      }
+      await Clipboard.setStringAsync(`${selectedText}\n${reference}`);
+      setSuccessMessage('تم نسخ النص والمرجع.');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? `تعذر نسخ النص: ${error.message}` : 'تعذر نسخ النص.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function shareSelectedText(): Promise<void> {
+    setBusy(true);
+    setErrorMessage(null);
+    try {
       await Share.share({ message: `${selectedText}\n${reference}` });
       clearSelection();
     } catch (error) {
@@ -266,7 +267,7 @@ function SelectionMenu({
     <Modal
       visible
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={() => (editor === 'actions' ? clearSelection() : setEditor('actions'))}
       statusBarTranslucent>
       <View style={styles.overlay}>
@@ -277,67 +278,109 @@ function SelectionMenu({
           onPress={clearSelection}
         />
 
-        {/* ── Main Action Toolbar ── */}
+        {/* ── Main Action Sheet ── */}
         {editor === 'actions' && (
           <View
             style={[
-              styles.pill,
+              styles.sheet,
               {
-                left,
-                top,
-                width: TOOLBAR_WIDTH,
+                width: sheetWidth,
+                maxHeight: Math.max(240, height - insets.top - 20),
+                paddingBottom: sheetBottomPadding,
                 backgroundColor: palette.surface,
                 borderColor: palette.border,
               },
             ]}>
-            {/* Audio */}
-            <ActionIcon
-              icon={isAudioPlaying ? '⏹' : '▶'}
-              label={isAudioPlaying ? 'إيقاف' : 'استماع'}
-              accent={isAudioPlaying ? palette.primary : undefined}
-              disabled={busy}
-              onPress={() => { if (isAudioPlaying) { onStopAudio(); } else { void playAudio(); } }}
-              palette={palette}
-            />
-            {/* Divider */}
-            <View style={[styles.pillDivider, { backgroundColor: palette.border }]} />
-            {/* Highlight */}
-            <ActionIcon
-              icon="◈"
-              label="تمييز"
-              dot={activeHighlightColor ?? undefined}
-              disabled={busy}
-              onPress={() => setEditor('highlights')}
-              palette={palette}
-            />
-            {/* Note */}
-            <ActionIcon
-              icon="✎"
-              label="ملاحظة"
-              badge={notes.length > 0 ? String(notes.length) : undefined}
-              disabled={busy}
-              onPress={() => setEditor('notes')}
-              palette={palette}
-            />
-            {/* Copy/Share */}
-            <ActionIcon
-              icon="⎘"
-              label="نسخ"
-              disabled={busy}
-              onPress={() => void copyOrShare()}
-              palette={palette}
-            />
-            {/* Divider */}
-            <View style={[styles.pillDivider, { backgroundColor: palette.border }]} />
-            {/* Close */}
-            <ActionIcon
-              icon="✕"
-              label="إغلاق"
-              disabled={false}
-              onPress={clearSelection}
-              palette={palette}
-            />
-            <ArrowCaret isAbove={isAbove} arrowLeft={arrowLeft} color={palette.surface} />
+            <View style={[styles.sheetHandle, { backgroundColor: palette.border }]} />
+            <View style={styles.sheetHeader}>
+              <View style={styles.selectionTitleGroup}>
+                <Text style={[styles.selectionEyebrow, { color: palette.textSecondary }]}>
+                  {isWord ? 'الكلمة المحددة' : 'الآية المحددة'}
+                </Text>
+                <Text style={[styles.dialogTitle, { color: palette.text }]} numberOfLines={1}>
+                  {title}
+                </Text>
+                <Text style={[styles.dialogRef, { color: palette.textSecondary }]} numberOfLines={1}>
+                  {reference}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق قائمة التحديد"
+                onPress={clearSelection}
+                style={styles.dialogBack}>
+                <Text style={[styles.dialogBackText, { color: palette.primary }]}>إغلاق</Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              style={styles.actionsScroll}
+              contentContainerStyle={styles.actionsBody}
+              showsVerticalScrollIndicator={false}>
+              <View style={[styles.selectedTextCard, { backgroundColor: palette.background, borderColor: palette.border }]}>
+                <Text style={[styles.selectedText, { color: palette.text }]} numberOfLines={isWord ? 1 : 3}>
+                  {selectedText}
+                </Text>
+              </View>
+              <View style={styles.actionGrid}>
+                <ActionTile
+                  icon={isAudioPlaying ? '⏹' : '▶'}
+                  label={isAudioPlaying ? 'إيقاف التلاوة' : 'استماع'}
+                  detail={isWord ? 'المقطع الصوتي' : 'تلاوة الآية'}
+                  active={isAudioPlaying}
+                  disabled={busy}
+                  onPress={() => { if (isAudioPlaying) { onStopAudio(); } else { void playAudio(); } }}
+                  palette={palette}
+                />
+                <ActionTile
+                  icon="◈"
+                  label="تمييز"
+                  detail={activeHighlightColor ? 'تغيير اللون' : 'إضافة لون'}
+                  dot={activeHighlightColor ?? undefined}
+                  disabled={busy}
+                  onPress={() => setEditor('highlights')}
+                  palette={palette}
+                />
+                <ActionTile
+                  icon="✎"
+                  label="ملاحظة"
+                  detail={notes.length > 0 ? `${toArabicNumbers(notes.length)} محفوظة` : 'أضف ملاحظة'}
+                  disabled={busy}
+                  onPress={() => setEditor('notes')}
+                  palette={palette}
+                />
+                <ActionTile
+                  icon="⧉"
+                  label="نسخ النص"
+                  detail="مع اسم السورة والآية"
+                  disabled={busy}
+                  onPress={() => void copySelectedText()}
+                  palette={palette}
+                />
+                <ActionTile
+                  icon="↗"
+                  label="مشاركة"
+                  detail="إرسال النص والمرجع"
+                  disabled={busy}
+                  onPress={() => void shareSelectedText()}
+                  palette={palette}
+                />
+                {isWord && (
+                  <ActionTile
+                    icon="۞"
+                    label="الآية كاملة"
+                    detail="تحديد الآية بدل الكلمة"
+                    disabled={busy}
+                    onPress={() => selectAyah(selection.surahNumber, selection.ayah, 'full')}
+                    palette={palette}
+                  />
+                )}
+              </View>
+              {successMessage && (
+                <Text accessibilityRole="alert" style={[styles.successMessage, { color: palette.primary }]}>
+                  {successMessage}
+                </Text>
+              )}
+            </ScrollView>
           </View>
         )}
 
@@ -345,12 +388,10 @@ function SelectionMenu({
         {editor === 'highlights' && (
           <View
             style={[
-              styles.pill,
-              styles.pillWide,
+              styles.sheet,
               {
-                left,
-                top,
-                width: TOOLBAR_WIDTH,
+                width: sheetWidth,
+                paddingBottom: sheetBottomPadding,
                 backgroundColor: palette.surface,
                 borderColor: palette.border,
               },
@@ -424,7 +465,6 @@ function SelectionMenu({
                 </Pressable>
               </>
             )}
-            <ArrowCaret isAbove={isAbove} arrowLeft={arrowLeft} color={palette.surface} />
           </View>
         )}
 
@@ -514,7 +554,15 @@ function SelectionMenu({
 
         {/* Error for inline editors */}
         {errorMessage && editor !== 'notes' && (
-          <View style={[styles.errorToast, { left, top: top + TOOLBAR_HEIGHT + 8, backgroundColor: palette.surface, borderColor: '#D32F2F' }]}>
+          <View
+            style={[
+              styles.errorToast,
+              {
+                bottom: sheetBottomPadding + 112,
+                backgroundColor: palette.surface,
+                borderColor: '#D32F2F',
+              },
+            ]}>
             <Text style={styles.error}>{errorMessage}</Text>
           </View>
         )}
@@ -525,21 +573,21 @@ function SelectionMenu({
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ActionIcon({
+function ActionTile({
   icon,
   label,
-  accent,
+  detail,
+  active = false,
   dot,
-  badge,
   onPress,
   disabled,
   palette,
 }: {
   icon: string;
   label: string;
-  accent?: string;
+  detail: string;
+  active?: boolean;
   dot?: string;
-  badge?: string;
   onPress: () => void;
   disabled: boolean;
   palette: ReturnType<typeof useTheme>;
@@ -551,34 +599,21 @@ function ActionIcon({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.iconBtn,
+        styles.actionTile,
+        {
+          backgroundColor: active ? palette.backgroundSelected : palette.background,
+          borderColor: active ? palette.primary : palette.border,
+        },
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
       ]}>
-      <Text style={[styles.iconGlyph, { color: accent ?? palette.primary }]}>{icon}</Text>
-      {dot && <View style={[styles.iconDot, { backgroundColor: dot }]} />}
-      {badge && (
-        <View style={[styles.iconBadge, { backgroundColor: palette.primary }]}>
-          <Text style={[styles.iconBadgeText, { color: palette.background }]}>{badge}</Text>
-        </View>
-      )}
+      <View style={[styles.actionIcon, { backgroundColor: active ? palette.primary : palette.backgroundSelected }]}>
+        <Text style={[styles.actionGlyph, { color: active ? palette.background : palette.primary }]}>{icon}</Text>
+        {dot && <View style={[styles.iconDot, { backgroundColor: dot }]} />}
+      </View>
+      <Text style={[styles.actionLabel, { color: palette.text }]} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.actionDetail, { color: palette.textSecondary }]} numberOfLines={1}>{detail}</Text>
     </Pressable>
-  );
-}
-
-function ArrowCaret({ isAbove, arrowLeft, color }: { isAbove: boolean; arrowLeft: number; color: string }) {
-  return (
-    <View
-      style={[
-        styles.caret,
-        isAbove ? styles.caretDown : styles.caretUp,
-        {
-          left: arrowLeft,
-          borderTopColor: isAbove ? color : 'transparent',
-          borderBottomColor: !isAbove ? color : 'transparent',
-        },
-      ]}
-    />
   );
 }
 
@@ -591,30 +626,124 @@ function toArabicNumbers(value: number): string {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+    justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
   },
-
-  // Floating pill toolbar
-  pill: {
-    position: 'absolute',
+  sheet: {
+    alignSelf: 'center',
+    paddingTop: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    borderWidth: 1,
+    borderRadius: 28,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: -5 },
+    elevation: 18,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 1,
+    marginBottom: Spacing.three,
+    opacity: 0.8,
+  },
+  sheetHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    paddingBottom: Spacing.two,
+  },
+  selectionTitleGroup: {
+    flex: 1,
+    gap: 3,
+  },
+  selectionEyebrow: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  selectedTextCard: {
+    minHeight: 54,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: Spacing.two,
+  },
+  selectedText: {
+    fontSize: 20,
+    lineHeight: 31,
+    textAlign: 'right',
+  },
+  actionGrid: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  actionsScroll: {
+    flexShrink: 1,
+  },
+  actionsBody: {
+    gap: Spacing.two,
+    paddingBottom: 2,
+  },
+  actionTile: {
+    flexBasis: '31%',
+    flexGrow: 1,
+    minWidth: 88,
+    minHeight: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  actionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  actionGlyph: {
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: '600',
+  },
+  actionLabel: {
+    maxWidth: '100%',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  actionDetail: {
+    maxWidth: '100%',
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  successMessage: {
+    paddingTop: Spacing.two,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  actionsRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    height: 52,
-    paddingHorizontal: 6,
-    gap: 2,
-    borderWidth: 1,
-    borderRadius: 26,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 10,
-  },
-  pillWide: {
-    paddingHorizontal: 8,
+    justifyContent: 'space-around',
+    minHeight: 52,
   },
   pillDivider: {
     width: 1,
@@ -623,45 +752,15 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  // Icons inside the pill
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconGlyph: {
-    fontSize: 18,
-    lineHeight: 22,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
   iconDot: {
     position: 'absolute',
-    bottom: 7,
-    right: 7,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    bottom: 3,
+    right: 3,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: '#fff',
-  },
-  iconBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 5,
-    minWidth: 14,
-    height: 14,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
-  iconBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    lineHeight: 12,
   },
 
   // Back button
@@ -741,24 +840,6 @@ const styles = StyleSheet.create({
   },
 
   // Caret / arrow
-  caret: {
-    position: 'absolute',
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-  },
-  caretDown: {
-    bottom: -7,
-    borderTopWidth: 7,
-  },
-  caretUp: {
-    top: -7,
-    borderBottomWidth: 7,
-  },
-
   // Full dialog (notes)
   dialog: {
     alignSelf: 'center',

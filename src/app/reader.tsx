@@ -1,11 +1,12 @@
 import { Link, useLocalSearchParams } from 'expo-router';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,10 +25,7 @@ import {
   quranContentProvider,
 } from '@/features/quran/services/content-provider';
 import type { QuranSurahDirectory } from '@/features/quran/types';
-import {
-  type PageTurnDirection,
-  type SelectionAnchor,
-} from '@/features/reader/components/MushafPageViewer';
+import type { PageTurnDirection } from '@/features/reader/components/MushafPageViewer';
 import { SwipePageViewer } from '@/features/reader/components/SwipePageViewer';
 import { SelectionSheet } from '@/features/reader/components/SelectionSheet';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
@@ -42,6 +40,7 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 
 type NavigationMode = 'page' | 'surah' | 'juz';
+const PAGE_QUERY_RETRY_COUNT = 2;
 
 export default function ReaderScreen() {
   const params = useLocalSearchParams<{
@@ -53,7 +52,6 @@ export default function ReaderScreen() {
   const requestedSurah = Number(rawSurahNumber ?? '1');
   const colors = useTheme();
   const database = useSQLiteContext();
-  const queryClient = useQueryClient();
   const player = useAudioPlayer(null);
   const playerStatus = useAudioPlayerStatus(player);
   const reciterId = useReaderPreferencesStore((state) => state.reciterId);
@@ -63,7 +61,6 @@ export default function ReaderScreen() {
   const [pageNumber, setPageNumber] = useState<number | null>(null);
   const [pageTransitionDirection, setPageTransitionDirection] =
     useState<PageTurnDirection | null>(null);
-  const [selectionAnchor, setSelectionAnchor] = useState<SelectionAnchor | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [highlightRevision, setHighlightRevision] = useState(0);
   const [displaySaveError, setDisplaySaveError] = useState<string | null>(null);
@@ -86,10 +83,19 @@ export default function ReaderScreen() {
       Animated.timing(navAnimation, {
         toValue: next ? 1 : 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }).start();
       return next;
     });
+  }, [navAnimation]);
+
+  const hideNavbar = useCallback(() => {
+    setNavVisible(false);
+    Animated.timing(navAnimation, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
   }, [navAnimation]);
 
   const startLocationQuery = useQuery({
@@ -190,6 +196,8 @@ export default function ReaderScreen() {
     enabled: activePageNumber !== null,
     staleTime: 24 * 60 * 60 * 1000,
     placeholderData: (previousData) => previousData,
+    retry: retryPageQuery,
+    retryDelay: pageQueryRetryDelay,
     queryFn: () => {
       if (activePageNumber === null) {
         throw new Error('لم يُحدد رقم صفحة المصحف.');
@@ -203,6 +211,8 @@ export default function ReaderScreen() {
     queryKey: ['quran', 'mushaf-page', 19, prevPageNumber],
     enabled: prevPageNumber !== null,
     staleTime: 24 * 60 * 60 * 1000,
+    retry: retryPageQuery,
+    retryDelay: pageQueryRetryDelay,
     queryFn: () => new MushafPageCache(database).getPage(prevPageNumber!),
   });
 
@@ -211,6 +221,8 @@ export default function ReaderScreen() {
     queryKey: ['quran', 'mushaf-page', 19, nextPageNumber],
     enabled: nextPageNumber !== null,
     staleTime: 24 * 60 * 60 * 1000,
+    retry: retryPageQuery,
+    retryDelay: pageQueryRetryDelay,
     queryFn: () => new MushafPageCache(database).getPage(nextPageNumber!),
   });
 
@@ -232,30 +244,6 @@ export default function ReaderScreen() {
       );
     });
   }, [activePageNumber, database, page]);
-
-  // Buffer of 5 pages forward and 5 pages backward for seamless page turning without flash or lag
-  useEffect(() => {
-    if (!activePageNumber) return;
-    const cache = new MushafPageCache(database);
-    for (let offset = 1; offset <= 5; offset++) {
-      const forward = activePageNumber + offset;
-      if (forward <= 604) {
-        void queryClient.prefetchQuery({
-          queryKey: ['quran', 'mushaf-page', 19, forward],
-          queryFn: () => cache.getPage(forward),
-          staleTime: 24 * 60 * 60 * 1000,
-        });
-      }
-      const backward = activePageNumber - offset;
-      if (backward >= 1) {
-        void queryClient.prefetchQuery({
-          queryKey: ['quran', 'mushaf-page', 19, backward],
-          queryFn: () => cache.getPage(backward),
-          staleTime: 24 * 60 * 60 * 1000,
-        });
-      }
-    }
-  }, [activePageNumber, database, queryClient]);
 
   useEffect(() => {
     if (!page || page.pageNumber !== activePageNumber || !pageTransitionDirection) {
@@ -316,13 +304,12 @@ export default function ReaderScreen() {
   const onWordPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
-    position: number,
-    anchor: SelectionAnchor,
+    wordId: string,
   ) => {
     const ayah = page?.ayahs.find(
       (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
     );
-    const word = ayah?.words.find((item) => item.position === position);
+    const word = ayah?.words.find((item) => item.id === wordId);
     if (!ayah || !word) {
       setInteractionError('تعذر مطابقة الكلمة مع بيانات صفحة المصحف.');
       return;
@@ -330,14 +317,12 @@ export default function ReaderScreen() {
     audioRequest.current += 1;
     player.pause();
     setInteractionError(null);
-    setSelectionAnchor(anchor);
     selectWord(surahNumber, ayah, word, 'compact');
   }, [page, player, selectWord]);
 
   const onAyahPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
-    anchor: SelectionAnchor,
   ) => {
     const ayah = page?.ayahs.find(
       (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
@@ -349,7 +334,6 @@ export default function ReaderScreen() {
     audioRequest.current += 1;
     player.pause();
     setInteractionError(null);
-    setSelectionAnchor(anchor);
     selectAyah(surahNumber, ayah, 'compact');
   }, [page, player, selectAyah]);
 
@@ -421,7 +405,6 @@ export default function ReaderScreen() {
     audioRequest.current += 1;
     player.pause();
     useReaderSelectionStore.getState().clearSelection();
-    setSelectionAnchor(null);
     setPageTransitionDirection(
       direction ?? (destination >= (page?.pageNumber ?? destination) ? 'next' : 'previous'),
     );
@@ -451,7 +434,7 @@ export default function ReaderScreen() {
 
   const selectedElementId = selection
     ? selection.type === 'word'
-      ? `word-${selection.surahNumber}-${selection.ayah.ayahNumber}-${selection.word.position}`
+      ? `word-${selection.word.id}`
       : `ayah-${selection.surahNumber}-${selection.ayah.ayahNumber}`
     : null;
 
@@ -508,7 +491,7 @@ export default function ReaderScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      {/* Sleek Top Overlay Navbar - Toggles on screen tap */}
+      {/* Reader controls are toggled from the page header or this explicit close button. */}
       <Animated.View
         style={[
           styles.overlayNavbar,
@@ -564,6 +547,18 @@ export default function ReaderScreen() {
         </Pressable>
 
         <View style={styles.navLeftActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إخفاء أدوات القراءة"
+            onPress={hideNavbar}
+            style={({ pressed }) => [
+              styles.navIconBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <Text style={[styles.navIconGlyph, { color: colors.text }]}>⌃</Text>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="فهرس الصفحات والسور"
@@ -634,7 +629,6 @@ export default function ReaderScreen() {
             onAyahPress={onAyahPress}
             onPageTurn={handlePageTurn}
             onInteractionError={setInteractionError}
-            onPageTap={toggleNavbar}
           />
           {playerStatus.playing && (
             <View style={[styles.playingBar, { backgroundColor: colors.primary }]}>
@@ -646,6 +640,19 @@ export default function ReaderScreen() {
           )}
         </>
       ) : null}
+
+      {page && !navVisible && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="إظهار أدوات القراءة"
+          onPress={toggleNavbar}
+          style={[
+            styles.quickControlsToggle,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+          <Text style={[styles.quickControlsGlyph, { color: colors.primary }]}>۞</Text>
+        </Pressable>
+      )}
 
       {displayPreferencesError && (
         <Text accessibilityRole="alert" style={styles.error}>{displayPreferencesError}</Text>
@@ -661,7 +668,6 @@ export default function ReaderScreen() {
 
       <SelectionSheet
         surahName={currentSurahName}
-        anchor={selectionAnchor}
         onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
         onPlayAudio={playSelection}
         onStopAudio={stopAudio}
@@ -846,6 +852,16 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function retryPageQuery(failureCount: number, error: unknown): boolean {
+  return failureCount < PAGE_QUERY_RETRY_COUNT &&
+    error instanceof ContentUnavailableError &&
+    (error.reason === 'network' || error.reason === 'server');
+}
+
+function pageQueryRetryDelay(attemptIndex: number): number {
+  return Math.min(300 * 2 ** attemptIndex, 1_200);
+}
+
 function parseArabicNumber(value: string): number {
   const normalized = value.replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)));
   return Number(normalized.trim());
@@ -890,6 +906,21 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
+  },
+  quickControlsToggle: {
+    position: 'absolute',
+    top: 6,
+    alignSelf: 'center',
+    zIndex: 110,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickControlsGlyph: {
+    fontSize: 13,
   },
   navActionBtn: {
     flexDirection: 'row-reverse',

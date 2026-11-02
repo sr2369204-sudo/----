@@ -1,11 +1,10 @@
 import { createElement, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Platform, StyleSheet, View, type HostInstance } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import type { Highlight } from '@/features/annotations/types';
 import type { MushafPage } from '@/features/quran/types';
 
-export type SelectionAnchor = { x: number; y: number; width: number; height: number };
 export type PageTurnDirection = 'next' | 'previous';
 
 type Props = {
@@ -21,17 +20,15 @@ type Props = {
   onWordPress: (
     surahNumber: number,
     ayahNumber: number,
-    position: number,
-    anchor: SelectionAnchor,
+    wordId: string,
   ) => void;
-  onAyahPress: (surahNumber: number, ayahNumber: number, anchor: SelectionAnchor) => void;
+  onAyahPress: (surahNumber: number, ayahNumber: number) => void;
   onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
   onPanStart?: (x: number, y: number) => void;
   onPanUpdate?: (dx: number, dy: number) => void;
   onPanEnd?: (dx: number, vx: number) => void;
   onPanCancel?: () => void;
-  onPageTap?: () => void;
 };
 
 type PageMessage =
@@ -39,21 +36,18 @@ type PageMessage =
       type: 'word';
       surahNumber: number;
       ayahNumber: number;
-      position: number;
-      anchor: SelectionAnchor;
+      wordId: string;
     }
   | {
       type: 'ayah';
       surahNumber: number;
       ayahNumber: number;
-      anchor: SelectionAnchor;
     }
   | { type: 'turn'; direction: PageTurnDirection }
   | { type: 'pan-start'; x: number; y: number }
   | { type: 'pan-update'; dx: number; dy: number }
   | { type: 'pan-end'; dx: number; vx: number }
-  | { type: 'pan-cancel' }
-  | { type: 'page-tap' };
+  | { type: 'pan-cancel' };
 
 export function MushafPageViewer({
   page,
@@ -73,11 +67,9 @@ export function MushafPageViewer({
   onPanUpdate,
   onPanEnd,
   onPanCancel,
-  onPageTap,
 }: Props) {
   const webViewRef = useRef<WebView<unknown>>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const containerRef = useRef<HostInstance | null>(null);
   const html = useMemo(
     () =>
       createMushafHtml(
@@ -103,11 +95,7 @@ export function MushafPageViewer({
   );
 
   const handleMessage = useCallback(
-    (message: PageMessage, origin: { x: number; y: number }): void => {
-      if (message.type === 'page-tap') {
-        onPageTap?.();
-        return;
-      }
+    (message: PageMessage): void => {
       if (message.type === 'turn') {
         onPageTurn(message.direction);
         return;
@@ -128,11 +116,6 @@ export function MushafPageViewer({
         onPanCancel?.();
         return;
       }
-      const anchor = {
-        ...message.anchor,
-        x: origin.x + message.anchor.x,
-        y: origin.y + message.anchor.y,
-      };
       const ayahExists = page.ayahs.some(
         (ayah) =>
           ayah.surahNumber === message.surahNumber &&
@@ -148,22 +131,21 @@ export function MushafPageViewer({
           (ayah) =>
             ayah.surahNumber === message.surahNumber &&
             ayah.ayahNumber === message.ayahNumber &&
-            ayah.words.some((word) => word.position === message.position),
+            ayah.words.some((word) => word.id === message.wordId),
         );
-        if (!wordExists || message.position === undefined) {
+        if (!wordExists) {
           onInteractionError('تعذر مطابقة الكلمة مع بيانات صفحة المصحف.');
           return;
         }
-        onWordPress(message.surahNumber, message.ayahNumber, message.position, anchor);
+        onWordPress(message.surahNumber, message.ayahNumber, message.wordId);
         return;
       }
 
-      onAyahPress(message.surahNumber, message.ayahNumber, anchor);
+      onAyahPress(message.surahNumber, message.ayahNumber);
     },
     [
       onAyahPress,
       onInteractionError,
-      onPageTap,
       onPageTurn,
       onPanCancel,
       onPanEnd,
@@ -195,18 +177,7 @@ export function MushafPageViewer({
           onInteractionError('وصل تحديد غير صالح من صفحة المصحف.');
           return;
         }
-        if (
-          message.type === 'turn' ||
-          message.type === 'page-tap' ||
-          message.type === 'pan-start' ||
-          message.type === 'pan-update' ||
-          message.type === 'pan-end' ||
-          message.type === 'pan-cancel'
-        ) {
-          handleMessage(message, { x: 0, y: 0 });
-        } else {
-          containerRef.current?.measureInWindow((x, y) => handleMessage(message, { x, y }));
-        }
+        handleMessage(message);
       } catch (error) {
         onInteractionError(
           error instanceof Error
@@ -234,8 +205,7 @@ export function MushafPageViewer({
       ) {
         return;
       }
-      const bounds = iframeRef.current?.getBoundingClientRect();
-      handleMessage(event.data.message, { x: bounds?.left ?? 0, y: bounds?.top ?? 0 });
+      handleMessage(event.data.message);
     }
 
     window.addEventListener('message', onWindowMessage);
@@ -244,7 +214,7 @@ export function MushafPageViewer({
 
   if (Platform.OS === 'web') {
     return (
-      <View ref={containerRef} style={styles.container}>
+      <View style={styles.container}>
         {createElement('iframe', {
           ref: iframeRef,
           title: `صفحة ${page.pageNumber} من المصحف`,
@@ -262,7 +232,7 @@ export function MushafPageViewer({
   }
 
   return (
-    <View ref={containerRef} style={styles.container}>
+    <View style={styles.container}>
       <WebView<unknown>
         ref={webViewRef}
         accessibilityLabel={`صفحة ${page.pageNumber} من المصحف`}
@@ -327,11 +297,11 @@ body {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: 2px 4px 4px;
+  padding: 0;
   background: ${isDark ? '#0c110f' : '#ece7dc'};
 }
 .page {
-  --quran-font-size: ${fontSize}px;
+  --quran-font-size: ${Math.min(Math.round(fontSize * 1.18), 60)}px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -339,7 +309,7 @@ body {
   height: 100%;
   max-width: 640px;
   margin: 0 auto;
-  padding: 4px 8px 4px;
+  padding: 2px 3px;
   container-type: size;
   border: 1.5px solid ${isDark ? '#8a703d' : '#c5a363'};
   border-radius: 6px;
@@ -356,11 +326,11 @@ body {
 }
 @supports (width: 1cqi) {
   .page {
-    --line-row-height: calc((100cqb - 50px) / ${sourceLineCount});
+    --line-row-height: calc((100cqb - 38px) / ${sourceLineCount});
     --quran-font-size: min(
-      ${fontSize}px,
-      calc(var(--line-row-height) * 0.94),
-      10.5cqi
+      ${Math.min(Math.round(fontSize * 1.18), 60)}px,
+      calc(var(--line-row-height) * 0.98),
+      12.5cqi
     );
   }
 }
@@ -405,14 +375,14 @@ body {
 }
 .page-header {
   display: flex;
-  flex: 0 0 24px;
+  flex: 0 0 20px;
   align-items: center;
   justify-content: space-between;
   position: relative;
   z-index: 1;
-  padding: 0 6px 1px;
+  padding: 0 4px;
   border-bottom: 1px solid ${isDark ? 'rgba(138, 112, 61, 0.22)' : 'rgba(197, 163, 99, 0.3)'};
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 .header-label {
   min-width: 0;
@@ -434,7 +404,7 @@ body {
   align-content: stretch;
   width: 100%;
   min-height: 0;
-  padding: 1px 2px;
+  padding: 0;
   overflow: hidden;
 }
 .line {
@@ -736,17 +706,12 @@ pageElement.addEventListener("pointercancel", () => {
 
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-kind]");
-  if (!button) {
-    postPageMessage({ type: "page-tap" });
-    return;
-  }
-  const rect = button.getBoundingClientRect();
+  if (!button) return;
   const message = {
     type: button.dataset.kind,
     surahNumber: Number(button.dataset.surah),
     ayahNumber: Number(button.dataset.ayah),
-    position: Number(button.dataset.position),
-    anchor: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+    wordId: button.dataset.wordId
   };
   selectMushafElement(button.id);
   postPageMessage(message);
@@ -851,7 +816,7 @@ function renderMushafLinesHtml(
             .join(' ');
           const styleAttr = customStyle ? ` style="${customStyle}"` : '';
 
-          return `<button type="button" class="word${hlBg}${hlMarker}" data-surah="${word.surahNumber}" data-ayah="${word.ayahNumber}" id="word-${word.surahNumber}-${word.ayahNumber}-${word.position}" data-kind="word" data-position="${word.position}" data-word-id="${word.id}" aria-label="${escapeHtml(word.textUthmani)}، كلمة ${word.position} من الآية ${word.ayahNumber}"${styleAttr}>${word.codeV2}</button>`;
+          return `<button type="button" class="word${hlBg}${hlMarker}" data-surah="${word.surahNumber}" data-ayah="${word.ayahNumber}" id="word-${word.id}" data-kind="word" data-word-id="${word.id}" aria-label="${escapeHtml(word.textUthmani)}، كلمة ${word.position} من الآية ${word.ayahNumber}"${styleAttr}>${word.codeV2}</button>`;
         } else {
           const markerId = `ayah-${word.surahNumber}-${word.ayahNumber}`;
           const entry = highlightStyles[markerId];
@@ -886,9 +851,6 @@ function isPageMessage(value: unknown): value is PageMessage {
   if (!isRecord(value) || typeof value.type !== 'string') {
     return false;
   }
-  if (value.type === 'page-tap') {
-    return true;
-  }
   if (value.type === 'turn') {
     return value.direction === 'next' || value.direction === 'previous';
   }
@@ -909,28 +871,16 @@ function isPageMessage(value: unknown): value is PageMessage {
     typeof value.surahNumber !== 'number' ||
     !Number.isInteger(value.surahNumber) ||
     typeof value.ayahNumber !== 'number' ||
-    !Number.isInteger(value.ayahNumber) ||
-    !isRecord(value.anchor) ||
-    typeof value.anchor.x !== 'number' ||
-    !Number.isFinite(value.anchor.x) ||
-    typeof value.anchor.y !== 'number' ||
-    !Number.isFinite(value.anchor.y) ||
-    typeof value.anchor.width !== 'number' ||
-    !Number.isFinite(value.anchor.width) ||
-    typeof value.anchor.height !== 'number' ||
-    !Number.isFinite(value.anchor.height)
+    !Number.isInteger(value.ayahNumber)
   ) {
     return false;
   }
   return (
     value.surahNumber > 0 &&
     value.ayahNumber > 0 &&
-    value.anchor.width >= 0 &&
-    value.anchor.height >= 0 &&
     (value.type === 'ayah' ||
-      (typeof value.position === 'number' &&
-        Number.isInteger(value.position) &&
-        value.position > 0))
+      (typeof value.wordId === 'string' &&
+        value.wordId.length > 0))
   );
 }
 

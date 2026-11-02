@@ -18,7 +18,9 @@ Base URL: `https://api.quran.com/api/v4`
 
 The reader uses the Quran.com API's 604-page Mushaf 19 dataset. Page responses supply the page number, verse keys, Uthmani text, Tajweed markup, word IDs, line numbers, and `code_v2` glyphs. The provider checks page/verse/word sequence and rejects malformed or incomplete responses. Verse-end markers remain on their source line but are not treated as selectable words.
 
-Each page is rendered with its corresponding Quran Foundation QCF Tajweed V4 COLRv1 font at `https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{page}.woff2`. Source line numbers determine row placement, source word order determines each row's RTL text flow, and empty source rows remain empty; rows are not centered individually, justified, or stretched vertically to fill the page. A single uniform font size may be reduced for the whole page when needed to prevent the longest line from clipping. Surah names come from the API directory; when a page opens a surah that uses the Basmala, its QCF glyphs and page 1 font are cached with that page.
+Each page is rendered with its corresponding Quran Foundation QCF Tajweed V4 COLRv1 font at `https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{page}.woff2`. Source line numbers determine row placement, source word order determines each row's RTL text flow, and empty source rows remain empty; rows are not centered individually, justified, or stretched vertically to fill the page. A single uniform font size may be reduced for the whole page when needed to prevent the longest line from clipping. Surah names come from the API directory; when a page opens a surah that uses the Basmala, its QCF glyphs and page 1 font are cached with that page. Page loads retry transient network/server failures up to two times with bounded backoff and a request timeout; adjacent pages are prefetched without loading a larger speculative range.
+
+Word hit testing carries the source word ID from the rendered glyph through the native/web message to selection and playback. It does not infer a word from screen coordinates or reconstruct one from verse position.
 
 The API provides line numbers and word order, but no printed horizontal word coordinates or official surah-title frame artwork. The renderer therefore preserves the verified page/line structure and source glyphs without claiming pixel-identical reproduction of the physical Mushaf. Exact x/y placement and title ornamentation require a licensed page-layout dataset or original page assets that are not currently available in the project.
 
@@ -33,6 +35,7 @@ The live chapter 1 endpoint was verified without authentication and returned all
 - Reciter recordings may have separate rights and attribution requirements; verify before publishing, redistributing, or caching audio.
 - Quran Foundation Content APIs use a separate credentialed flow. This app does not call those APIs directly and does not bundle their client secrets.
 - Tajweed tags and page/line metadata are provided by the API. Tafsir and printed page images are not integrated; the app does not bundle page scans.
+- The current source does not provide verified per-reciter word timing metadata. A supplied word clip can be played, but continuous word-by-word highlighting is not synchronized or simulated from verse duration.
 
 ## Optional future services
 

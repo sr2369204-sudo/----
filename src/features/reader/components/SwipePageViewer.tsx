@@ -21,7 +21,6 @@ import type { CachedMushafPage } from '@/features/reader/services/mushaf-page-ca
 import {
   MushafPageViewer,
   type PageTurnDirection,
-  type SelectionAnchor,
 } from './MushafPageViewer';
 
 export type SwipePageViewerProps = {
@@ -36,13 +35,11 @@ export type SwipePageViewerProps = {
   onWordPress: (
     surahNumber: number,
     ayahNumber: number,
-    position: number,
-    anchor: SelectionAnchor,
+    wordId: string,
   ) => void;
-  onAyahPress: (surahNumber: number, ayahNumber: number, anchor: SelectionAnchor) => void;
+  onAyahPress: (surahNumber: number, ayahNumber: number) => void;
   onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
-  onPageTap?: () => void;
 };
 
 const SWIPE_DISTANCE_RATIO = 0.18;
@@ -64,7 +61,6 @@ export function SwipePageViewer({
   onAyahPress,
   onPageTurn,
   onInteractionError,
-  onPageTap,
 }: SwipePageViewerProps) {
   const windowDimensions = useWindowDimensions();
   const [containerWidth, setContainerWidth] = useState(windowDimensions.width || 380);
@@ -354,7 +350,6 @@ export function SwipePageViewer({
             onPanUpdate={handleWebPanUpdate}
             onPanEnd={handleWebPanEnd}
             onPanCancel={handleWebPanCancel}
-            onPageTap={onPageTap}
           />
         </Animated.View>
       </GestureDetector>
