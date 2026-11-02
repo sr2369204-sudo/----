@@ -83,8 +83,6 @@ export default function ReaderScreen() {
   const selectWord = useReaderSelectionStore((state) => state.selectWord);
   const selectAyah = useReaderSelectionStore((state) => state.selectAyah);
   const [pageNumber, setPageNumber] = useState<number | null>(null);
-  const [pageTransitionDirection, setPageTransitionDirection] =
-    useState<PageTurnDirection | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkedAyah[]>([]);
   const [bookmarkRevision, setBookmarkRevision] = useState(0);
@@ -106,7 +104,6 @@ export default function ReaderScreen() {
   const [navigationValue, setNavigationValue] = useState('');
   const [navigationBusy, setNavigationBusy] = useState(false);
   const audioRequest = useRef(0);
-  const lastPageTurn = useRef(0);
   const [navVisible, setNavVisible] = useState(false);
   const [navAnimation] = useState(() => new Animated.Value(0));
 
@@ -239,7 +236,17 @@ export default function ReaderScreen() {
     },
   });
 
-  const prevPageNumber = activePageNumber && activePageNumber > 1 ? activePageNumber - 1 : null;
+  // The page the strip can actually show. While a newly requested page is still
+  // loading `pageQuery` keeps the previous one, so this is the only number that
+  // describes what is on screen.
+  const renderedPageNumber = pageQuery.data?.page.pageNumber ?? null;
+  // Neighbours are resolved around the page on screen, never around the page
+  // still loading. A turn is only accepted once its target is already mounted
+  // and painted, so the strip always has a prepared page in each direction and
+  // never has to fall back to a half-rendered one.
+  const neighbourBaseNumber = renderedPageNumber ?? activePageNumber;
+  const prevPageNumber =
+    neighbourBaseNumber && neighbourBaseNumber > 1 ? neighbourBaseNumber - 1 : null;
   const prevPageQuery = useQuery({
     queryKey: ['quran', 'mushaf-page', 19, prevPageNumber],
     enabled: prevPageNumber !== null,
@@ -249,7 +256,8 @@ export default function ReaderScreen() {
     queryFn: () => new MushafPageCache(database).getPage(prevPageNumber!),
   });
 
-  const nextPageNumber = activePageNumber && activePageNumber < 604 ? activePageNumber + 1 : null;
+  const nextPageNumber =
+    neighbourBaseNumber && neighbourBaseNumber < 604 ? neighbourBaseNumber + 1 : null;
   const nextPageQuery = useQuery({
     queryKey: ['quran', 'mushaf-page', 19, nextPageNumber],
     enabled: nextPageNumber !== null,
@@ -257,6 +265,21 @@ export default function ReaderScreen() {
     retry: retryPageQuery,
     retryDelay: pageQueryRetryDelay,
     queryFn: () => new MushafPageCache(database).getPage(nextPageNumber!),
+  });
+
+  // The page after the next one is fetched but never mounted: its mushaf font
+  // is the slow part, and without this a reader who turns two pages in a row
+  // reaches a page whose download had not even started, so the strip has to
+  // refuse that turn and holds the reader on the same page.
+  const warmNextPageNumber =
+    neighbourBaseNumber && neighbourBaseNumber <= 602 ? neighbourBaseNumber + 2 : null;
+  useQuery({
+    queryKey: ['quran', 'mushaf-page', 19, warmNextPageNumber],
+    enabled: warmNextPageNumber !== null,
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: retryPageQuery,
+    retryDelay: pageQueryRetryDelay,
+    queryFn: () => new MushafPageCache(database).getPage(warmNextPageNumber!),
   });
 
   const directoryQuery = useQuery({
@@ -283,14 +306,6 @@ export default function ReaderScreen() {
       );
     });
   }, [activePageNumber, database, page]);
-
-  useEffect(() => {
-    if (!page || page.pageNumber !== activePageNumber || !pageTransitionDirection) {
-      return;
-    }
-    const timer = setTimeout(() => setPageTransitionDirection(null), 260);
-    return () => clearTimeout(timer);
-  }, [activePageNumber, page, pageTransitionDirection]);
 
   useEffect(() => {
     if (!page) {
@@ -498,18 +513,12 @@ export default function ReaderScreen() {
     player.pause();
   }, [player]);
 
-  const navigateToPage = useCallback((
-    destination: number,
-    direction?: PageTurnDirection,
-  ) => {
+  const navigateToPage = useCallback((destination: number) => {
     audioRequest.current += 1;
     player.pause();
     useReaderSelectionStore.getState().clearSelection();
-    setPageTransitionDirection(
-      direction ?? (destination >= (page?.pageNumber ?? destination) ? 'next' : 'previous'),
-    );
     setPageNumber(destination);
-  }, [page?.pageNumber, player]);
+  }, [player]);
 
   const toggleBookmark = useCallback((surahNumber: number, ayahNumber: number) => {
     const repository = new SqliteAnnotationRepository(database);
@@ -612,25 +621,20 @@ export default function ReaderScreen() {
   }, [recitationPlaylist]);
 
   const handlePageTurn = useCallback((direction: PageTurnDirection) => {
-    if (
-      !page ||
-      page.pageNumber !== activePageNumber ||
-      selection ||
-      navigationOpen
-    ) {
+    // The base is the page the strip is actually showing, never the page still
+    // being loaded: refusing a turn after the strip has already animated would
+    // force it to slide back on its own. Re-issuing the same destination while
+    // a turn is in flight is idempotent, so a repeated gesture can not skip a
+    // page.
+    if (!page || selection || navigationOpen) {
       return;
     }
-    const now = Date.now();
-    if (now - lastPageTurn.current < 300) {
-      return;
-    }
-    lastPageTurn.current = now;
     const destination = page.pageNumber + (direction === 'next' ? 1 : -1);
     if (destination < 1 || destination > 604) {
       return;
     }
-    navigateToPage(destination, direction);
-  }, [activePageNumber, navigateToPage, navigationOpen, page, selection]);
+    navigateToPage(destination);
+  }, [navigateToPage, navigationOpen, page, selection]);
 
   const selectedElementId = selection
     ? selection.type === 'word'
@@ -858,6 +862,7 @@ export default function ReaderScreen() {
           onAyahPress={onAyahPress}
           onPageTurn={handlePageTurn}
           onInteractionError={setInteractionError}
+          loadingColor={colors.primary}
         />
       ) : null}
 

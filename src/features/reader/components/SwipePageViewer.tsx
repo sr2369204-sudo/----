@@ -1,19 +1,16 @@
 /* eslint-disable react-hooks/immutability, react-hooks/refs */
-import { useCallback, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  LayoutChangeEvent,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   Easing,
   runOnJS,
+  runOnUI,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import type { Highlight } from '@/features/annotations/types';
@@ -42,13 +39,46 @@ export type SwipePageViewerProps = {
   onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
   onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
+  /** Tint of the indicator shown until the centred page has finished painting. */
+  loadingColor?: string;
 };
 
 const SWIPE_DISTANCE_RATIO = 0.18;
 const SWIPE_VELOCITY_THRESHOLD = 200;
-const BOUNDARY_RESISTANCE = 0.15;
 const ANIMATION_DURATION_MS = 220;
 const CANCEL_DURATION_MS = 180;
+/**
+ * Upper bound on the number of mounted mushaf pages. The window is always the
+ * current page plus its two direct neighbours, so a swipe in either direction
+ * always lands on an already prepared page.
+ */
+const MAX_MOUNTED_PAGES = 3;
+/**
+ * Safety net only: the host commits every turn the strip accepts, so this must
+ * never fire in normal use. It is deliberately generous because the commit also
+ * waits for the incoming page's annotations to load.
+ */
+const TURN_CONFIRM_TIMEOUT_MS = ANIMATION_DURATION_MS + 2000;
+
+/**
+ * Horizontal pull of the strip for one pointer position.
+ *
+ * A direction without a prepared page behaves like a hard edge: the strip stays
+ * at rest instead of following the finger and springing back on release, which
+ * was read as the reader "going back on its own". The result is always a finite
+ * number, so a blocked gesture can never leave the strip with a corrupted
+ * offset that would break every later turn.
+ */
+function resolvePull(dx: number, canGoPrev: boolean, canGoNext: boolean): number {
+  'worklet';
+  if (!Number.isFinite(dx)) {
+    return 0;
+  }
+  if (dx > 0) {
+    return canGoPrev ? dx : 0;
+  }
+  return canGoNext ? dx : 0;
+}
 
 export function SwipePageViewer({
   currentPage,
@@ -63,147 +93,199 @@ export function SwipePageViewer({
   onAyahPress,
   onPageTurn,
   onInteractionError,
+  loadingColor,
 }: SwipePageViewerProps) {
-  const windowDimensions = useWindowDimensions();
-  const [containerWidth, setContainerWidth] = useState(windowDimensions.width || 380);
-  const containerWidthRef = useRef(containerWidth);
-  containerWidthRef.current = containerWidth;
-
-  const translateX = useSharedValue(0);
-  const isTransitioning = useSharedValue(false);
-  const isGestureActive = useSharedValue(false);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const containerWidthRef = useRef(0);
+  const [readyPages, setReadyPages] = useState<ReadonlySet<number>>(() => new Set<number>());
 
   const currentPageNumber = currentPage.page.pageNumber;
-  // Boundaries of the Holy Quran: Page 1 and Page 604
-  const hasPrev = currentPageNumber > 1;
-  const hasNext = currentPageNumber < 604;
+  const hasPrevNeighbour = prevPage !== null && prevPage.page.pageNumber === currentPageNumber - 1;
+  const hasNextNeighbour = nextPage !== null && nextPage.page.pageNumber === currentPageNumber + 1;
+  const canGoPrev = hasPrevNeighbour && readyPages.has(currentPageNumber - 1);
+  const canGoNext = hasNextNeighbour && readyPages.has(currentPageNumber + 1);
 
-  const hasPrevRef = useRef(hasPrev);
-  hasPrevRef.current = hasPrev;
-  const hasNextRef = useRef(hasNext);
-  hasNextRef.current = hasNext;
+  // Horizontal offset of the whole strip, in pixels. Zero at rest.
+  const pull = useSharedValue(0);
+  // Page number currently centred in the strip, kept on the UI thread so a
+  // committed turn can re-centre the strip in the same frame (no visible jump).
+  const rowIndex = useSharedValue(currentPageNumber);
+  const isTransitioning = useSharedValue(false);
+  const canGoPrevOnUi = useSharedValue(false);
+  const canGoNextOnUi = useSharedValue(false);
+
+  useEffect(() => {
+    canGoPrevOnUi.value = canGoPrev;
+  }, [canGoPrev, canGoPrevOnUi]);
+  useEffect(() => {
+    canGoNextOnUi.value = canGoNext;
+  }, [canGoNext, canGoNextOnUi]);
+
+  const committedPageRef = useRef(currentPageNumber);
+  const turnPendingRef = useRef(false);
+  const turnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onPageTurnRef = useRef(onPageTurn);
+  onPageTurnRef.current = onPageTurn;
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
-    if (width > 0 && Math.abs(width - containerWidthRef.current) > 1) {
-      setContainerWidth(width);
+    if (width <= 0 || Math.abs(width - containerWidthRef.current) <= 1) {
+      return;
     }
+    containerWidthRef.current = width;
+    setContainerWidth(width);
   }, []);
 
-  const finishTransition = useCallback(
-    (direction: PageTurnDirection) => {
-      translateX.value = 0;
-      isTransitioning.value = false;
-      isGestureActive.value = false;
-      onPageTurn(direction);
-    },
-    [isGestureActive, isTransitioning, onPageTurn, translateX],
-  );
+  const markPageReady = useCallback((pageNumber: number) => {
+    setReadyPages((previous) => {
+      if (previous.has(pageNumber)) {
+        return previous;
+      }
+      const next = new Set(previous);
+      next.add(pageNumber);
+      return next;
+    });
+  }, []);
 
   const resetPosition = useCallback(() => {
-    translateX.value = withTiming(0, {
+    pull.value = withTiming(0, {
       duration: CANCEL_DURATION_MS,
       easing: Easing.out(Easing.quad),
-    }, () => {
-      isTransitioning.value = false;
-      isGestureActive.value = false;
     });
-  }, [isGestureActive, isTransitioning, translateX]);
+  }, [pull]);
 
   const completeSwipe = useCallback(
     (dx: number, vx: number) => {
-      if (isTransitioning.value) return;
-
+      if (isTransitioning.value) {
+        return;
+      }
       const width = containerWidthRef.current;
+      if (width <= 0) {
+        return;
+      }
+      if (!Number.isFinite(dx) || !Number.isFinite(vx)) {
+        resetPosition();
+        return;
+      }
       const distanceThreshold = Math.max(50, width * SWIPE_DISTANCE_RATIO);
 
-      // RTL: Moving to next page is swipe from right to left (dx < 0)
-      const shouldTurnNext =
-        hasNextRef.current &&
-        (dx < -distanceThreshold || (dx < -25 && vx < -SWIPE_VELOCITY_THRESHOLD));
+      // RTL: moving to the next page is a swipe from right to left (dx < 0).
+      const wantsNext =
+        dx < -distanceThreshold || (dx < -25 && vx < -SWIPE_VELOCITY_THRESHOLD);
+      const wantsPrev =
+        dx > distanceThreshold || (dx > 25 && vx > SWIPE_VELOCITY_THRESHOLD);
 
-      // RTL: Moving to previous page is swipe from left to right (dx > 0)
-      const shouldTurnPrev =
-        hasPrevRef.current &&
-        (dx > distanceThreshold || (dx > 25 && vx > SWIPE_VELOCITY_THRESHOLD));
+      // A page is only revealed once it has finished laying out, so a swipe can
+      // never expose a half-rendered page or an empty slot.
+      const direction: PageTurnDirection | null =
+        wantsNext && canGoNextOnUi.value
+          ? 'next'
+          : wantsPrev && canGoPrevOnUi.value
+            ? 'previous'
+            : null;
 
-      if (shouldTurnNext) {
-        isTransitioning.value = true;
-        let finishedOnce = false;
-        const finalize = () => {
-          if (finishedOnce) return;
-          finishedOnce = true;
-          finishTransition('next');
-        };
-
-        // Safety fallback timer for Web / Android to ensure transition always settles
-        setTimeout(finalize, ANIMATION_DURATION_MS + 40);
-
-        translateX.value = withTiming(
-          -width,
-          {
-            duration: ANIMATION_DURATION_MS,
-            easing: Easing.out(Easing.cubic),
-          },
-          (finished) => {
-            if (finished) {
-              runOnJS(finalize)();
-            }
-          },
-        );
-      } else if (shouldTurnPrev) {
-        isTransitioning.value = true;
-        let finishedOnce = false;
-        const finalize = () => {
-          if (finishedOnce) return;
-          finishedOnce = true;
-          finishTransition('previous');
-        };
-
-        // Safety fallback timer for Web / Android to ensure transition always settles
-        setTimeout(finalize, ANIMATION_DURATION_MS + 40);
-
-        translateX.value = withTiming(
-          width,
-          {
-            duration: ANIMATION_DURATION_MS,
-            easing: Easing.out(Easing.cubic),
-          },
-          (finished) => {
-            if (finished) {
-              runOnJS(finalize)();
-            }
-          },
-        );
-      } else {
+      if (!direction) {
         resetPosition();
+        return;
       }
+
+      isTransitioning.value = true;
+      turnPendingRef.current = true;
+      turnTimerRef.current = setTimeout(() => {
+        turnTimerRef.current = null;
+        if (!turnPendingRef.current) {
+          return;
+        }
+        // The host refused the turn (selection open, out of range, ...).
+        turnPendingRef.current = false;
+        isTransitioning.value = false;
+        resetPosition();
+      }, TURN_CONFIRM_TIMEOUT_MS);
+
+      pull.value = withTiming(
+        direction === 'next' ? -width : width,
+        { duration: ANIMATION_DURATION_MS, easing: Easing.out(Easing.cubic) },
+        (finished) => {
+          'worklet';
+          if (finished) {
+            runOnJS(onPageTurnRef.current)(direction);
+          }
+        },
+      );
     },
-    [finishTransition, isTransitioning, resetPosition, translateX],
+    [canGoNextOnUi, canGoPrevOnUi, isTransitioning, pull, resetPosition],
   );
 
-  // Gesture Handler for Native (Android / iOS)
+  // The visible page never changes identity while it is on screen: the strip is
+  // re-centred atomically on the UI thread, so the page that slides in is
+  // already laid out and the outgoing page keeps its position off screen.
+  useEffect(() => {
+    if (committedPageRef.current === currentPageNumber) {
+      return;
+    }
+    committedPageRef.current = currentPageNumber;
+    turnPendingRef.current = false;
+    if (turnTimerRef.current !== null) {
+      clearTimeout(turnTimerRef.current);
+      turnTimerRef.current = null;
+    }
+    runOnUI((target: number) => {
+      'worklet';
+      cancelAnimation(pull);
+      rowIndex.value = target;
+      pull.value = 0;
+      isTransitioning.value = false;
+    })(currentPageNumber);
+    // Keep the readiness window bounded to the mounted neighbours.
+    setReadyPages((previous) => {
+      const window = new Set([currentPageNumber - 1, currentPageNumber, currentPageNumber + 1]);
+      const next = new Set<number>();
+      for (const pageNumber of previous) {
+        if (window.has(pageNumber)) {
+          next.add(pageNumber);
+        }
+      }
+      return next.size === previous.size ? previous : next;
+    });
+  }, [currentPageNumber, isTransitioning, pull, rowIndex]);
+
+  useEffect(
+    () => () => {
+      if (turnTimerRef.current !== null) {
+        clearTimeout(turnTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const pages = useMemo(() => {
+    const window: CachedMushafPage[] = [];
+    if (hasPrevNeighbour && prevPage) {
+      window.push(prevPage);
+    }
+    window.push(currentPage);
+    if (hasNextNeighbour && nextPage) {
+      window.push(nextPage);
+    }
+    return window.slice(-MAX_MOUNTED_PAGES);
+  }, [currentPage, hasNextNeighbour, hasPrevNeighbour, nextPage, prevPage]);
+
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
     .failOffsetY([-25, 25])
     .onStart(() => {
       'worklet';
       if (isTransitioning.value) return;
-      isGestureActive.value = true;
     })
     .onUpdate((event) => {
       'worklet';
       if (isTransitioning.value) return;
 
-      let dx = event.translationX;
-      // Boundaries: apply resistance if swiping past page 1 or page 604
-      if (dx > 0 && !hasPrev) {
-        dx *= BOUNDARY_RESISTANCE;
-      } else if (dx < 0 && !hasNext) {
-        dx *= BOUNDARY_RESISTANCE;
-      }
-
-      translateX.value = dx;
+      pull.value = resolvePull(
+        event.translationX,
+        canGoPrevOnUi.value,
+        canGoNextOnUi.value,
+      );
     })
     .onEnd((event) => {
       'worklet';
@@ -211,24 +293,18 @@ export function SwipePageViewer({
       runOnJS(completeSwipe)(event.translationX, event.velocityX);
     });
 
-  // Web iframe pan bridging callbacks
   const handleWebPanStart = useCallback(() => {
-    if (isTransitioning.value) return;
-    isGestureActive.value = true;
-  }, [isGestureActive, isTransitioning]);
+    // Reserved for parity with the native gesture; state is handled in onEnd.
+  }, []);
 
   const handleWebPanUpdate = useCallback(
     (dx: number) => {
-      if (isTransitioning.value) return;
-      let effectiveDx = dx;
-      if (effectiveDx > 0 && !hasPrev) {
-        effectiveDx *= BOUNDARY_RESISTANCE;
-      } else if (effectiveDx < 0 && !hasNext) {
-        effectiveDx *= BOUNDARY_RESISTANCE;
+      if (isTransitioning.value) {
+        return;
       }
-      translateX.value = effectiveDx;
+      pull.value = resolvePull(dx, canGoPrevOnUi.value, canGoNextOnUi.value);
     },
-    [hasNext, hasPrev, isTransitioning, translateX],
+    [canGoNextOnUi, canGoPrevOnUi, isTransitioning, pull],
   );
 
   const handleWebPanEnd = useCallback(
@@ -239,127 +315,150 @@ export function SwipePageViewer({
   );
 
   const handleWebPanCancel = useCallback(() => {
+    if (isTransitioning.value) {
+      return;
+    }
     resetPosition();
-  }, [resetPosition]);
+  }, [isTransitioning, resetPosition]);
 
-  // Animated styles
-  const foregroundStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
-
-  const nextBackgroundStyle = useAnimatedStyle(() => ({
-    opacity: translateX.value < 0 ? 1 : 0,
-    zIndex: translateX.value < 0 ? 1 : 0,
-  }));
-
-  const prevBackgroundStyle = useAnimatedStyle(() => ({
-    opacity: translateX.value > 0 ? 1 : 0,
-    zIndex: translateX.value > 0 ? 1 : 0,
-  }));
-
-  const backgroundColor = isDark ? '#0f172a' : '#fcfbf7';
+  const currentPageReady = readyPages.has(currentPageNumber);
 
   return (
     <View style={styles.container} onLayout={onLayout}>
-      {/* Background layer: Pre-rendered underneath at position 0 */}
-      <View style={[StyleSheet.absoluteFill, styles.backgroundContainer]} pointerEvents="none">
-        {nextPage ? (
-          <Animated.View style={[StyleSheet.absoluteFill, nextBackgroundStyle]}>
-            <MushafPageViewer
-              page={nextPage.page}
-              fontBase64={nextPage.fontBase64}
-              basmalaFontBase64={nextPage.basmalaFontBase64}
-              fontSize={fontSize}
-              showTajweed={showTajweed}
-              isDark={isDark}
-              highlights={[]}
-              selectedElementId={null}
-              transitionDirection={null}
-              onWordPress={noop}
-              onAyahPress={noop}
-              onPageTurn={noop}
-              onInteractionError={noop}
-            />
-          </Animated.View>
-        ) : (
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              nextBackgroundStyle,
-              { backgroundColor, justifyContent: 'center', alignItems: 'center' },
-            ]}
-          >
-            <ActivityIndicator color={isDark ? '#38BDF8' : '#0F766E'} />
-          </Animated.View>
-        )}
-
-        {prevPage ? (
-          <Animated.View style={[StyleSheet.absoluteFill, prevBackgroundStyle]}>
-            <MushafPageViewer
-              page={prevPage.page}
-              fontBase64={prevPage.fontBase64}
-              basmalaFontBase64={prevPage.basmalaFontBase64}
-              fontSize={fontSize}
-              showTajweed={showTajweed}
-              isDark={isDark}
-              highlights={[]}
-              selectedElementId={null}
-              transitionDirection={null}
-              onWordPress={noop}
-              onAyahPress={noop}
-              onPageTurn={noop}
-              onInteractionError={noop}
-            />
-          </Animated.View>
-        ) : (
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              prevBackgroundStyle,
-              { backgroundColor, justifyContent: 'center', alignItems: 'center' },
-            ]}
-          >
-            <ActivityIndicator color={isDark ? '#38BDF8' : '#0F766E'} />
-          </Animated.View>
-        )}
-      </View>
-
-      {/* Foreground layer: Slides horizontally with finger to reveal background */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.foregroundLayer,
-            { backgroundColor },
-            foregroundStyle,
-          ]}
-        >
-          <MushafPageViewer
-            page={currentPage.page}
-            fontBase64={currentPage.fontBase64}
-            basmalaFontBase64={currentPage.basmalaFontBase64}
-            fontSize={fontSize}
-            showTajweed={showTajweed}
-            isDark={isDark}
-            highlights={highlights}
-            selectedElementId={selectedElementId}
-            transitionDirection={null}
-            onWordPress={onWordPress}
-            onAyahPress={onAyahPress}
-            onPageTurn={onPageTurn}
-            onInteractionError={onInteractionError}
-            onPanStart={handleWebPanStart}
-            onPanUpdate={handleWebPanUpdate}
-            onPanEnd={handleWebPanEnd}
-            onPanCancel={handleWebPanCancel}
-          />
+        <Animated.View style={styles.strip}>
+          {containerWidth > 0
+            ? pages.map((entry) => {
+                const pageNumber = entry.page.pageNumber;
+                const isCurrent = pageNumber === currentPageNumber;
+                return (
+                  <PageSlot
+                    key={pageNumber}
+                    data={entry}
+                    width={containerWidth}
+                    rowIndex={rowIndex}
+                    pull={pull}
+                    fontSize={fontSize}
+                    showTajweed={showTajweed}
+                    isDark={isDark}
+                    highlights={isCurrent ? highlights : NO_HIGHLIGHTS}
+                    selectedElementId={isCurrent ? selectedElementId : null}
+                    isInteractive={isCurrent}
+                    onWordPress={onWordPress}
+                    onAyahPress={onAyahPress}
+                    onPageTurn={onPageTurn}
+                    onInteractionError={onInteractionError}
+                    onReady={markPageReady}
+                    onPanStart={isCurrent ? handleWebPanStart : undefined}
+                    onPanUpdate={isCurrent ? handleWebPanUpdate : undefined}
+                    onPanEnd={isCurrent ? handleWebPanEnd : undefined}
+                    onPanCancel={isCurrent ? handleWebPanCancel : undefined}
+                  />
+                );
+              })
+            : null}
         </Animated.View>
       </GestureDetector>
+      {containerWidth > 0 && !currentPageReady ? (
+        // The strip keeps loading underneath, so the page is already laid out by
+        // the time this disappears. Without it an external jump to an unprepared
+        // page would leave an empty box on screen.
+        <View style={styles.pending} pointerEvents="none">
+          <ActivityIndicator color={loadingColor} />
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function noop() {}
+type PageSlotProps = {
+  data: CachedMushafPage;
+  width: number;
+  rowIndex: SharedValue<number>;
+  pull: SharedValue<number>;
+  fontSize: number;
+  showTajweed: boolean;
+  isDark: boolean;
+  highlights: Highlight[];
+  selectedElementId: string | null;
+  isInteractive: boolean;
+  onWordPress: (
+    surahNumber: number,
+    ayahNumber: number,
+    wordId: string,
+    rect: ElementRect,
+  ) => void;
+  onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
+  onPageTurn: (direction: PageTurnDirection) => void;
+  onInteractionError: (message: string) => void;
+  onReady: (pageNumber: number) => void;
+  onPanStart?: (x: number, y: number) => void;
+  onPanUpdate?: (dx: number, dy: number) => void;
+  onPanEnd?: (dx: number, vx: number) => void;
+  onPanCancel?: () => void;
+};
+
+/**
+ * A single pre-rendered mushaf page. The component is keyed by page number for
+ * its whole lifetime, so sliding the strip never reloads a WebView.
+ */
+const PageSlot = memo(function PageSlot({
+  data,
+  width,
+  rowIndex,
+  pull,
+  fontSize,
+  showTajweed,
+  isDark,
+  highlights,
+  selectedElementId,
+  isInteractive,
+  onWordPress,
+  onAyahPress,
+  onPageTurn,
+  onInteractionError,
+  onReady,
+  onPanStart,
+  onPanUpdate,
+  onPanEnd,
+  onPanCancel,
+}: PageSlotProps) {
+  const pageNumber = data.page.pageNumber;
+  const slotStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: (pageNumber - rowIndex.value) * width + pull.value }],
+  }));
+  const handleReady = useCallback(() => {
+    onReady(pageNumber);
+  }, [onReady, pageNumber]);
+
+  return (
+    <Animated.View
+      style={[styles.slot, { width }, slotStyle]}
+      pointerEvents={isInteractive ? 'auto' : 'none'}>
+      <MushafPageViewer
+        page={data.page}
+        fontBase64={data.fontBase64}
+        basmalaFontBase64={data.basmalaFontBase64}
+        fontSize={fontSize}
+        showTajweed={showTajweed}
+        isDark={isDark}
+        highlights={highlights}
+        selectedElementId={selectedElementId}
+        onWordPress={onWordPress}
+        onAyahPress={onAyahPress}
+        onPageTurn={onPageTurn}
+        onInteractionError={onInteractionError}
+        onReady={handleReady}
+        onPanStart={onPanStart}
+        onPanUpdate={onPanUpdate}
+        onPanEnd={onPanEnd}
+        onPanCancel={onPanCancel}
+      />
+    </Animated.View>
+  );
+});
+
+const NO_HIGHLIGHTS: Highlight[] = [];
 
 const styles = StyleSheet.create({
   container: {
@@ -369,15 +468,24 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  backgroundContainer: {
-    zIndex: 1,
+  strip: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  foregroundLayer: {
-    zIndex: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    elevation: 6,
+  slot: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    height: '100%',
+  },
+  pending: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

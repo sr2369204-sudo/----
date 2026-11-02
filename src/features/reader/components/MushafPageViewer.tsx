@@ -1,9 +1,15 @@
-import { createElement, useCallback, useEffect, useMemo, useRef } from 'react';
+import { createElement, memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import type { Highlight } from '@/features/annotations/types';
 import type { MushafPage } from '@/features/quran/types';
+import {
+  buildHighlightElements,
+  renderMushafLinesHtml,
+  toArabicNumberString,
+  type HighlightElementMap,
+} from '@/features/reader/services/mushaf-page-markup';
 
 export type PageTurnDirection = 'next' | 'previous';
 
@@ -24,7 +30,6 @@ type Props = {
   isDark: boolean;
   highlights: Highlight[];
   selectedElementId: string | null;
-  transitionDirection: PageTurnDirection | null;
   onWordPress: (
     surahNumber: number,
     ayahNumber: number,
@@ -38,6 +43,11 @@ type Props = {
   ) => void;
   onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
+  /**
+   * Fired once the page has fully laid out: fonts decoded, line fitting applied
+   * and the first paint committed. The parent must not reveal a page before this.
+   */
+  onReady?: () => void;
   onPanStart?: (x: number, y: number) => void;
   onPanUpdate?: (dx: number, dy: number) => void;
   onPanEnd?: (dx: number, vx: number) => void;
@@ -59,12 +69,13 @@ type PageMessage =
       rect: ElementRect;
     }
   | { type: 'turn'; direction: PageTurnDirection }
+  | { type: 'ready' }
   | { type: 'pan-start'; x: number; y: number }
   | { type: 'pan-update'; dx: number; dy: number }
   | { type: 'pan-end'; dx: number; vx: number }
   | { type: 'pan-cancel' };
 
-export function MushafPageViewer({
+export const MushafPageViewer = memo(function MushafPageViewer({
   page,
   fontBase64,
   basmalaFontBase64,
@@ -73,11 +84,11 @@ export function MushafPageViewer({
   isDark,
   highlights,
   selectedElementId,
-  transitionDirection,
   onWordPress,
   onAyahPress,
   onPageTurn,
   onInteractionError,
+  onReady,
   onPanStart,
   onPanUpdate,
   onPanEnd,
@@ -85,32 +96,37 @@ export function MushafPageViewer({
 }: Props) {
   const webViewRef = useRef<WebView<unknown>>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const readyRef = useRef(false);
+  // Highlights are applied as an overlay, never baked into the document. A page
+  // that is pre-rendered as a neighbour must stay byte-identical once it becomes
+  // the current page, otherwise the WebView would reload mid-transition.
+  const highlightEntries = useMemo(
+    () => buildHighlightElements(page, highlights),
+    [highlights, page],
+  );
   const html = useMemo(
     () =>
-      createMushafHtml(
-        page,
-        fontBase64,
-        basmalaFontBase64,
-        fontSize,
-        showTajweed,
-        isDark,
-        highlights,
-        transitionDirection,
-      ),
-    [
-      basmalaFontBase64,
-      fontBase64,
-      fontSize,
-      highlights,
-      isDark,
-      page,
-      showTajweed,
-      transitionDirection,
-    ],
+      createMushafHtml(page, fontBase64, basmalaFontBase64, fontSize, showTajweed, isDark),
+    [basmalaFontBase64, fontBase64, fontSize, isDark, page, showTajweed],
   );
+  // A stable source object prevents react-native-webview from reloading the
+  // document on unrelated parent re-renders, which would flash and re-fit.
+  const source = useMemo(() => ({ html }), [html]);
+
+  const handleReady = useCallback((): void => {
+    if (readyRef.current) {
+      return;
+    }
+    readyRef.current = true;
+    onReady?.();
+  }, [onReady]);
 
   const handleMessage = useCallback(
     (message: PageMessage): void => {
+      if (message.type === 'ready') {
+        handleReady();
+        return;
+      }
       if (message.type === 'turn') {
         onPageTurn(message.direction);
         return;
@@ -159,6 +175,7 @@ export function MushafPageViewer({
       onAyahPress(message.surahNumber, message.ayahNumber, message.rect);
     },
     [
+      handleReady,
       onAyahPress,
       onInteractionError,
       onPageTurn,
@@ -183,6 +200,28 @@ export function MushafPageViewer({
       );
     }
   }, [selectedElementId]);
+
+  const syncHighlights = useCallback((entries: HighlightElementMap) => {
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(
+        { source: 'mushaf-page-parent', highlights: entries },
+        '*',
+      );
+    } else {
+      webViewRef.current?.injectJavaScript(
+        `window.applyMushafHighlights?.(${JSON.stringify(entries)}); true;`,
+      );
+    }
+  }, []);
+
+  const syncOverlays = useCallback(() => {
+    syncSelectedElement();
+    syncHighlights(highlightEntries);
+  }, [highlightEntries, syncHighlights, syncSelectedElement]);
+
+  useEffect(() => {
+    syncHighlights(highlightEntries);
+  }, [highlightEntries, syncHighlights]);
 
   const onNativeMessage = useCallback(
     (event: WebViewMessageEvent): void => {
@@ -234,7 +273,7 @@ export function MushafPageViewer({
           ref: iframeRef,
           title: `صفحة ${page.pageNumber} من المصحف`,
           srcDoc: html,
-          onLoad: syncSelectedElement,
+          onLoad: syncOverlays,
           style: {
             width: '100%',
             height: '100%',
@@ -252,8 +291,8 @@ export function MushafPageViewer({
         ref={webViewRef}
         accessibilityLabel={`صفحة ${page.pageNumber} من المصحف`}
         originWhitelist={['*']}
-        source={{ html }}
-        onLoad={syncSelectedElement}
+        source={source}
+        onLoad={syncOverlays}
         onMessage={onNativeMessage}
         javaScriptEnabled
         scrollEnabled={false}
@@ -261,7 +300,7 @@ export function MushafPageViewer({
       />
     </View>
   );
-}
+});
 
 function createMushafHtml(
   page: MushafPage,
@@ -270,12 +309,9 @@ function createMushafHtml(
   fontSize: number,
   showTajweed: boolean,
   isDark: boolean,
-  highlights: Highlight[],
-  transitionDirection: PageTurnDirection | null,
 ): string {
   const sourceLineCount = Math.max(...page.lines.map((line) => line.lineNumber), 15);
-  const highlightStyles = buildHighlightStyles(page, highlights);
-  const linesHtml = renderMushafLinesHtml(page, highlightStyles);
+  const linesHtml = renderMushafLinesHtml(page);
   const baseFontSize = Math.min(Math.round(fontSize * 1.5), 120);
 
   const surahName = page.surahs && page.surahs.length > 0 ? page.surahs[0].nameArabic : '';
@@ -337,7 +373,10 @@ body {
     ? '0 10px 34px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.45)'
     : '0 10px 30px rgba(45, 35, 18, 0.14), 0 1px 4px rgba(45, 35, 18, 0.06)'};
   isolation: isolate;
-  ${transitionDirection ? `animation: page-${transitionDirection} 220ms ease-out both;` : ''}
+  opacity: 0;
+}
+.page.is-ready {
+  opacity: 1;
 }
 .page::before {
   content: '';
@@ -357,14 +396,6 @@ body {
       17cqi
     );
   }
-}
-@keyframes page-next {
-  from { opacity: 0.65; transform: translateX(-3%); }
-  to { opacity: 1; transform: translateX(0); }
-}
-@keyframes page-previous {
-  from { opacity: 0.65; transform: translateX(3%); }
-  to { opacity: 1; transform: translateX(0); }
 }
 .frame-corner {
   position: absolute;
@@ -447,6 +478,15 @@ body {
   white-space: nowrap;
   font-size: inherit;
   line-height: inherit;
+}
+/* A Mushaf line whose glyphs already cover the text column is spread over the
+   full column, exactly like the printed page, so every full line ends on the
+   same two margins and the page reads as one even block. Lines that are short
+   in the print (a surah ending, a lone word) stay centred and are never
+   stretched. */
+.line.is-justified .line-inner {
+  width: 100%;
+  justify-content: space-between;
 }
 .surah-title, .opening-basmala {
   display: flex;
@@ -642,6 +682,38 @@ function selectMushafElement(id) {
 }
 window.selectMushafElement = selectMushafElement;
 
+/**
+ * Applies saved highlights without touching the document markup.
+ *
+ * Highlights live outside the generated HTML so that a pre-rendered neighbour
+ * page keeps the exact same document when it becomes the current page. Baking
+ * them into the HTML forced a WebView reload on every transition and on every
+ * highlight change, which is what caused the visible flash.
+ */
+function applyMushafHighlights(entries) {
+  document.querySelectorAll(".hl-bg, .hl-marker").forEach((element) => {
+    element.classList.remove("hl-bg", "hl-marker");
+    element.style.removeProperty("--hl-bg");
+    element.style.removeProperty("--hl-marker-color");
+  });
+  if (!entries || typeof entries !== "object") return;
+  for (const id of Object.keys(entries)) {
+    const element = document.getElementById(id);
+    if (!element) continue;
+    const entry = entries[id];
+    if (!entry) continue;
+    if (entry.bg) {
+      element.classList.add("hl-bg");
+      element.style.setProperty("--hl-bg", entry.bg);
+    }
+    if (entry.marker) {
+      element.classList.add("hl-marker");
+      element.style.setProperty("--hl-marker-color", entry.marker);
+    }
+  }
+}
+window.applyMushafHighlights = applyMushafHighlights;
+
 function postPageMessage(message) {
   if (window.ReactNativeWebView) {
     window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -650,41 +722,161 @@ function postPageMessage(message) {
   }
 }
 
+/**
+ * Share of the text column a line has to cover before it is spread over the
+ * full column. Lines below it are genuinely short in the print.
+ */
+const LINE_JUSTIFY_MIN_RATIO = 0.6;
+
+/**
+ * Fits the page text to the width it was laid out for.
+ *
+ * The per-page QCF font is calibrated so that a Mushaf line fills the text
+ * column at one specific size, so the page is scaled by the ratio between the
+ * widest line and its column instead of only being shrunk when it overflows.
+ * Only the text rows are measured: the surah title and the basmala are their
+ * own rows with their own fonts, and letting one of them drive the ratio would
+ * shrink every text line below the column for the whole page.
+ */
 function fitMushafText() {
+  if (!linesElement || !pageElement) return;
   linesElement.style.removeProperty("--quran-rendered-font-size");
-  const inners = [...linesElement.querySelectorAll(".line-inner")];
+  const rows = [...linesElement.querySelectorAll(".line")];
+  for (const row of rows) row.classList.remove("is-justified");
+  const inners = rows.map((row) => row.querySelector(".line-inner")).filter(Boolean);
   if (inners.length === 0) return;
 
+  const firstRow = inners[0].parentElement;
+  if (!firstRow) return;
   const baseFontSize = Number.parseFloat(getComputedStyle(inners[0]).fontSize);
   if (!Number.isFinite(baseFontSize) || baseFontSize <= 0) return;
 
-  let scale = 1;
+  let widest = 0;
+  let available = 0;
   for (const inner of inners) {
-    const available = inner.parentElement ? inner.parentElement.clientWidth : inner.clientWidth;
-    if (inner.scrollWidth > available && inner.scrollWidth > 0 && available > 0) {
-      scale = Math.min(scale, (available - 1) / inner.scrollWidth);
+    const row = inner.parentElement;
+    if (!row) continue;
+    const rowWidth = row.clientWidth;
+    if (rowWidth <= 0) continue;
+    if (inner.scrollWidth > widest) {
+      widest = inner.scrollWidth;
+      available = rowWidth;
     }
   }
-  if (scale < 0.99) {
+  if (widest <= 0 || available <= 0) return;
+
+  const pageWidth = pageElement.clientWidth;
+  const target = Math.min(
+    baseFontSize * ((available - 1) / widest),
+    firstRow.clientHeight * 1.02,
+    pageWidth > 0 ? pageWidth * 0.17 : Number.POSITIVE_INFINITY,
+  );
+  if (Number.isFinite(target) && target > 0 && Math.abs(target - baseFontSize) >= baseFontSize * 0.01) {
     linesElement.style.setProperty(
       "--quran-rendered-font-size",
-      Math.max(12, baseFontSize * scale * 0.995) + "px",
+      Math.max(12, target) + "px",
     );
+  }
+
+  // Runs last: the line widths are read back at the size the page finally uses.
+  justifyMushafLines(rows);
+  fitOpeningBasmala();
+}
+
+/**
+ * Spreads every line that already covers most of the column over the full
+ * column width.
+ *
+ * The glyphs of a printed Mushaf line are calibrated to end exactly on the
+ * column edge, so a line is only justified when its own width is close to the
+ * column: the extra space stays inside the word gaps and no line is stretched
+ * into a shape the print never had.
+ */
+function justifyMushafLines(rows) {
+  for (const row of rows) {
+    const inner = row.querySelector(".line-inner");
+    if (!inner) continue;
+    const columnWidth = row.clientWidth;
+    if (columnWidth <= 0) continue;
+    if (inner.scrollWidth >= columnWidth * LINE_JUSTIFY_MIN_RATIO) {
+      row.classList.add("is-justified");
+    }
   }
 }
 
-if (document.fonts) {
-  document.fonts.ready.then(() => {
-    fitMushafText();
-    window.addEventListener("resize", fitMushafText);
-  });
-} else {
-  fitMushafText();
-  window.addEventListener("resize", fitMushafText);
+/**
+ * Keeps the opening basmala inside the column on its own.
+ *
+ * It is drawn with a different font than the page text and is not a Mushaf
+ * line, so it is fitted separately instead of being allowed to shrink the whole
+ * page.
+ */
+function fitOpeningBasmala() {
+  const basmala = linesElement.querySelector(".opening-basmala");
+  if (!basmala) return;
+  basmala.style.removeProperty("font-size");
+  const inner = basmala.querySelector(".line-inner");
+  if (!inner) return;
+  const columnWidth = basmala.clientWidth;
+  const naturalWidth = inner.scrollWidth;
+  const size = Number.parseFloat(getComputedStyle(basmala).fontSize);
+  if (columnWidth <= 0 || naturalWidth <= columnWidth) return;
+  if (!Number.isFinite(size) || size <= 0) return;
+  basmala.style.setProperty(
+    "font-size",
+    Math.max(12, size * ((columnWidth - 1) / naturalWidth)) + "px",
+  );
 }
+
+let pageReadySignalled = false;
+
+/** Reveals the page and tells the host that no further layout work is pending. */
+function signalPageReady() {
+  if (pageReadySignalled) return;
+  pageReadySignalled = true;
+  if (pageElement) pageElement.classList.add("is-ready");
+  postPageMessage({ type: "ready" });
+}
+
+// The fit runs once, while the page is still hidden, so the first visible paint
+// already carries the final metrics. Re-fitting after paint is what produced
+// the visible font-size jump during page turns.
+function preparePage() {
+  fitMushafText();
+  signalPageReady();
+}
+
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(preparePage);
+  // Font loading can stall; the page must never stay hidden.
+  setTimeout(() => {
+    if (!pageReadySignalled) preparePage();
+  }, 1200);
+} else {
+  preparePage();
+}
+
+// A viewport change (rotation, split screen) invalidates the fit. The page is
+// hidden for the recalculation so the new metrics are never painted as a jump.
+let refitScheduled = false;
+window.addEventListener("resize", () => {
+  if (refitScheduled) return;
+  refitScheduled = true;
+  requestAnimationFrame(() => {
+    refitScheduled = false;
+    if (pageElement) pageElement.classList.remove("is-ready");
+    fitMushafText();
+    if (pageElement) pageElement.classList.add("is-ready");
+  });
+});
 
 let pointerStart = null;
 let isPanning = false;
+let lastPostedDx = 0;
+
+// Every message crosses the native bridge, so sub-pixel pointer noise is
+// dropped: only a meaningful horizontal change is relayed to the host.
+const PAN_UPDATE_THRESHOLD_PX = 2;
 
 pageElement.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 || event.target.closest("button[data-kind]")) {
@@ -695,6 +887,7 @@ pageElement.addEventListener("pointerdown", (event) => {
   pageElement.setPointerCapture(event.pointerId);
   pointerStart = { x: event.clientX, y: event.clientY, time: Date.now() };
   isPanning = false;
+  lastPostedDx = 0;
 });
 
 pageElement.addEventListener("pointermove", (event) => {
@@ -703,9 +896,13 @@ pageElement.addEventListener("pointermove", (event) => {
   const dy = event.clientY - pointerStart.y;
   if (!isPanning && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) {
     isPanning = true;
+    lastPostedDx = dx;
     postPageMessage({ type: "pan-start", x: event.clientX, y: event.clientY });
+    postPageMessage({ type: "pan-update", dx: dx, dy: dy });
+    return;
   }
-  if (isPanning) {
+  if (isPanning && Math.abs(dx - lastPostedDx) >= PAN_UPDATE_THRESHOLD_PX) {
+    lastPostedDx = dx;
     postPageMessage({ type: "pan-update", dx: dx, dy: dy });
   }
 });
@@ -754,132 +951,17 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("message", (event) => {
   if (event.data && event.data.source === "mushaf-page-parent") {
-    selectMushafElement(event.data.selectedElementId);
+    if (event.data.selectedElementId !== undefined) {
+      selectMushafElement(event.data.selectedElementId);
+    }
+    if (event.data.highlights !== undefined) {
+      applyMushafHighlights(event.data.highlights);
+    }
   }
 });
 </script>
 </body>
 </html>`;
-}
-
-function renderMushafLinesHtml(
-  page: MushafPage,
-  highlightStyles: Record<string, HighlightEntry>,
-): string {
-  const sourceLineNumbers = new Set(page.lines.map((line) => line.lineNumber));
-  const surahTitles: Record<number, string> = {};
-  const basmalas: Record<number, string> = {};
-
-  for (const ayah of page.ayahs) {
-    if (ayah.ayahNumber !== 1) continue;
-    const firstWord = page.lines
-      .flatMap((line) => line.words)
-      .find(
-        (word) =>
-          word.surahNumber === ayah.surahNumber &&
-          word.ayahNumber === 1 &&
-          word.charType === 'word',
-      );
-    if (!firstWord) continue;
-    const surah = page.surahs.find((item) => item.surahNumber === ayah.surahNumber);
-    const surahName = surah ? surah.nameArabic : '';
-    const titleRow =
-      firstWord.surahNumber === 1 || firstWord.surahNumber === 9
-        ? firstWord.lineNumber - 1
-        : firstWord.lineNumber - 2;
-    const basmalaRow = firstWord.lineNumber - 1;
-
-    if (titleRow >= 1 && !sourceLineNumbers.has(titleRow)) {
-      surahTitles[titleRow] = `
-        <div class="surah-title" style="grid-row: ${titleRow};" aria-label="سورة ${escapeHtml(surahName)}">
-          <span class="surah-title-rule" aria-hidden="true"></span>
-          <span class="surah-title-box">
-            <span class="surah-ornament start" aria-hidden="true">۞</span>
-            <span class="surah-title-text">سورة ${escapeHtml(surahName)}</span>
-            <span class="surah-ornament end" aria-hidden="true">۞</span>
-          </span>
-          <span class="surah-title-rule" aria-hidden="true"></span>
-        </div>`;
-    }
-
-    if (
-      firstWord.surahNumber !== 9 &&
-      firstWord.surahNumber !== 1 &&
-      basmalaRow >= 1 &&
-      !sourceLineNumbers.has(basmalaRow) &&
-      Array.isArray(page.basmalaWords) &&
-      page.basmalaWords.length > 0
-    ) {
-      const basmalaWordsHtml = page.basmalaWords
-        .map(
-          (word) =>
-            `<span class="basmala-word" aria-label="${escapeHtml(word.textUthmani)}">${word.codeV2}</span>`,
-        )
-        .join(' ');
-      basmalas[basmalaRow] = `
-        <div class="opening-basmala" style="grid-row: ${basmalaRow};">
-          <span class="line-inner">${basmalaWordsHtml}</span>
-        </div>`;
-    }
-  }
-
-  const renderedRows: string[] = [];
-  const maxLine = Math.max(...page.lines.map((l) => l.lineNumber), 15);
-
-  for (let r = 1; r <= maxLine; r++) {
-    if (surahTitles[r]) {
-      renderedRows.push(surahTitles[r]);
-    }
-    if (basmalas[r]) {
-      renderedRows.push(basmalas[r]);
-    }
-
-    const line = page.lines.find((l) => l.lineNumber === r);
-    if (!line) continue;
-
-    const wordsHtml = line.words
-      .map((word) => {
-        if (word.charType === 'word') {
-          const entry = highlightStyles[word.id];
-          const hlBg = entry && entry.bg ? ' hl-bg' : '';
-          const hlMarker = entry && entry.marker ? ' hl-marker' : '';
-          const customStyle = [
-            entry && entry.bg ? `--hl-bg: ${entry.bg};` : '',
-            entry && entry.marker ? `--hl-marker-color: ${entry.marker};` : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
-          const styleAttr = customStyle ? ` style="${customStyle}"` : '';
-
-          return `<button type="button" class="word${hlBg}${hlMarker}" data-surah="${word.surahNumber}" data-ayah="${word.ayahNumber}" id="word-${word.id}" data-kind="word" data-word-id="${word.id}" aria-label="${escapeHtml(word.textUthmani)}، كلمة ${word.position} من الآية ${word.ayahNumber}"${styleAttr}>${word.codeV2}</button>`;
-        } else {
-          const markerId = `ayah-${word.surahNumber}-${word.ayahNumber}`;
-          const entry = highlightStyles[markerId];
-          const hlBg = entry && entry.bg ? ' hl-bg' : '';
-          const styleAttr = entry && entry.bg ? ` style="--hl-bg: ${entry.bg};"` : '';
-          return `<button type="button" class="ayah-marker${hlBg}" id="${markerId}" data-surah="${word.surahNumber}" data-ayah="${word.ayahNumber}" data-kind="ayah" aria-label="إجراءات الآية ${word.ayahNumber}"${styleAttr}>${word.codeV2}</button>`;
-        }
-      })
-      .join(' ');
-
-    renderedRows.push(
-      `<div class="line" style="grid-row: ${line.lineNumber};" aria-label="السطر ${line.lineNumber}"><span class="line-inner">${wordsHtml}</span></div>`,
-    );
-  }
-
-  return renderedRows.join('\n');
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function toArabicNumberString(value: number): string {
-  return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
 }
 
 function isPageMessage(value: unknown): value is PageMessage {
@@ -899,6 +981,9 @@ function isPageMessage(value: unknown): value is PageMessage {
     return typeof value.dx === 'number' && typeof value.vx === 'number';
   }
   if (value.type === 'pan-cancel') {
+    return true;
+  }
+  if (value.type === 'ready') {
     return true;
   }
   if (
@@ -932,73 +1017,6 @@ function isElementRect(value: unknown): value is ElementRect {
     typeof value.height === 'number' &&
     Number.isFinite(value.height)
   );
-}
-
-type HighlightEntry = { bg: string; marker?: string };
-
-function buildHighlightStyles(
-  page: MushafPage,
-  highlights: Highlight[],
-): Record<string, HighlightEntry> {
-  const styles: Record<string, HighlightEntry> = {};
-  for (const ayah of page.ayahs) {
-    const ayahHighlight = highlights.find(
-      (highlight) =>
-        highlight.target.type === 'ayah' &&
-        highlight.target.surahNumber === ayah.surahNumber &&
-        highlight.target.ayahNumber === ayah.ayahNumber,
-    );
-
-    for (const word of ayah.words) {
-      const wordIndex = ayah.words.findIndex((item) => item.id === word.id);
-      const wordHighlight = highlights.find((item) => {
-        const target = item.target;
-        if (
-          target.surahNumber !== ayah.surahNumber ||
-          target.ayahNumber !== ayah.ayahNumber
-        ) {
-          return false;
-        }
-        if (target.type === 'word') {
-          return target.wordId === word.id;
-        }
-        if (target.type === 'range') {
-          const start = ayah.words.findIndex((item) => item.id === target.startWordId);
-          const end = ayah.words.findIndex((item) => item.id === target.endWordId);
-          return start >= 0 && end >= start && wordIndex >= start && wordIndex <= end;
-        }
-        return false;
-      });
-
-      const entry: HighlightEntry = { bg: '' };
-      if (ayahHighlight) {
-        entry.bg = toRgba(ayahHighlight.color, ayahHighlight.opacity * 0.55);
-      }
-      if (wordHighlight) {
-        entry.marker = toRgba(wordHighlight.color, wordHighlight.opacity);
-      }
-      if (entry.bg || entry.marker) {
-        styles[word.id] = entry;
-      }
-    }
-
-    if (ayahHighlight) {
-      styles[`ayah-${ayah.surahNumber}-${ayah.ayahNumber}`] = {
-        bg: toRgba(ayahHighlight.color, ayahHighlight.opacity * 0.4),
-      };
-    }
-  }
-  return styles;
-}
-
-function toRgba(color: string, opacity: number): string {
-  if (!/^#[0-9a-f]{6}$/i.test(color)) {
-    return 'transparent';
-  }
-  const red = Number.parseInt(color.slice(1, 3), 16);
-  const green = Number.parseInt(color.slice(3, 5), 16);
-  const blue = Number.parseInt(color.slice(5, 7), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, opacity))})`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
