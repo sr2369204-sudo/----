@@ -26,6 +26,10 @@ type Props = {
   onAyahPress: (surahNumber: number, ayahNumber: number, anchor: SelectionAnchor) => void;
   onPageTurn: (direction: PageTurnDirection) => void;
   onInteractionError: (message: string) => void;
+  onPanStart?: (x: number, y: number) => void;
+  onPanUpdate?: (dx: number, dy: number) => void;
+  onPanEnd?: (dx: number, vx: number) => void;
+  onPanCancel?: () => void;
 };
 
 type PageMessage =
@@ -42,7 +46,11 @@ type PageMessage =
       ayahNumber: number;
       anchor: SelectionAnchor;
     }
-  | { type: 'turn'; direction: PageTurnDirection };
+  | { type: 'turn'; direction: PageTurnDirection }
+  | { type: 'pan-start'; x: number; y: number }
+  | { type: 'pan-update'; dx: number; dy: number }
+  | { type: 'pan-end'; dx: number; vx: number }
+  | { type: 'pan-cancel' };
 
 export function MushafPageViewer({
   page,
@@ -58,6 +66,10 @@ export function MushafPageViewer({
   onAyahPress,
   onPageTurn,
   onInteractionError,
+  onPanStart,
+  onPanUpdate,
+  onPanEnd,
+  onPanCancel,
 }: Props) {
   const webViewRef = useRef<WebView<unknown>>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -82,6 +94,22 @@ export function MushafPageViewer({
   ): void => {
     if (message.type === 'turn') {
       onPageTurn(message.direction);
+      return;
+    }
+    if (message.type === 'pan-start') {
+      onPanStart?.(message.x, message.y);
+      return;
+    }
+    if (message.type === 'pan-update') {
+      onPanUpdate?.(message.dx, message.dy);
+      return;
+    }
+    if (message.type === 'pan-end') {
+      onPanEnd?.(message.dx, message.vx);
+      return;
+    }
+    if (message.type === 'pan-cancel') {
+      onPanCancel?.();
       return;
     }
     const anchor = {
@@ -117,7 +145,7 @@ export function MushafPageViewer({
     }
 
     onAyahPress(message.surahNumber, message.ayahNumber, anchor);
-  }, [onAyahPress, onInteractionError, onPageTurn, onWordPress, page.ayahs]);
+  }, [onAyahPress, onInteractionError, onPageTurn, onPanCancel, onPanEnd, onPanStart, onPanUpdate, onWordPress, page.ayahs]);
 
   const syncSelectedElement = useCallback(() => {
     if (Platform.OS === 'web') {
@@ -139,7 +167,7 @@ export function MushafPageViewer({
         onInteractionError('وصل تحديد غير صالح من صفحة المصحف.');
         return;
       }
-      if (message.type === 'turn') {
+      if (message.type === 'turn' || message.type === 'pan-start' || message.type === 'pan-update' || message.type === 'pan-end' || message.type === 'pan-cancel') {
         handleMessage(message, { x: 0, y: 0 });
       } else {
         containerRef.current?.measureInWindow((x, y) => handleMessage(message, { x, y }));
@@ -765,70 +793,66 @@ function toArabicNumber(value) {
 }
 window.selectMushafElement = selectMushafElement;
 
-function postPageTurn(direction) {
-  const message = { type: "turn", direction };
+function postPageMessage(message) {
   if (window.ReactNativeWebView) {
     window.ReactNativeWebView.postMessage(JSON.stringify(message));
   } else {
-    window.parent.postMessage({ source: "mushaf-page", message }, "*");
+    window.parent.postMessage({ source: "mushaf-page", message: message }, "*");
   }
 }
 
+function postPageTurn(direction) {
+  postPageMessage({ type: "turn", direction: direction });
+}
+
 let pointerStart = null;
-let swipeDeltaX = 0;
+let isPanning = false;
 const pageElement = document.querySelector(".page");
-const turnThreshold = 38;
-const edgeZone = 32;
 
 pageElement.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 || event.target.closest("button[data-kind]")) {
     pointerStart = null;
+    isPanning = false;
     return;
   }
   pageElement.setPointerCapture(event.pointerId);
-  pointerStart = { x: event.clientX, y: event.clientY };
-  swipeDeltaX = 0;
+  pointerStart = { x: event.clientX, y: event.clientY, time: Date.now() };
+  isPanning = false;
 });
 
 pageElement.addEventListener("pointermove", (event) => {
   if (!pointerStart) return;
   const dx = event.clientX - pointerStart.x;
   const dy = event.clientY - pointerStart.y;
-  if (Math.abs(dx) > Math.abs(dy) * 1.1 && !event.target.closest("button[data-kind]")) {
-    swipeDeltaX = dx;
-    const clampedDx = Math.sign(dx) * Math.min(Math.abs(dx) * 0.35, 28);
-    pageElement.style.transform = "translateX(" + clampedDx + "px)";
-    pageElement.style.transition = "none";
+  if (!isPanning && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+    isPanning = true;
+    postPageMessage({ type: "pan-start", x: event.clientX, y: event.clientY });
+  }
+  if (isPanning) {
+    postPageMessage({ type: "pan-update", dx: dx, dy: dy });
   }
 });
 
 pageElement.addEventListener("pointerup", (event) => {
   if (!pointerStart) return;
-  const deltaX = event.clientX - pointerStart.x;
-  const deltaY = event.clientY - pointerStart.y;
-  const start = pointerStart;
+  const dx = event.clientX - pointerStart.x;
+  const dy = event.clientY - pointerStart.y;
+  const dt = Math.max(1, Date.now() - pointerStart.time);
+  const vx = (dx / dt) * 1000;
+  const wasPanning = isPanning;
   pointerStart = null;
-  pageElement.style.transition = "transform 180ms cubic-bezier(0.25, 0.46, 0.45, 0.94)";
-  pageElement.style.transform = "translateX(0)";
-  setTimeout(function() { pageElement.style.transform = ""; pageElement.style.transition = ""; }, 200);
-  if (Math.abs(deltaX) >= turnThreshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-    postPageTurn(deltaX < 0 ? "next" : "previous");
-    return;
-  }
-  if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) return;
-  const bounds = pageElement.getBoundingClientRect();
-  if (start.x - bounds.left <= edgeZone) {
-    postPageTurn("next");
-  } else if (bounds.right - start.x <= edgeZone) {
-    postPageTurn("previous");
+  isPanning = false;
+  if (wasPanning) {
+    postPageMessage({ type: "pan-end", dx: dx, vx: vx });
   }
 });
 
-pageElement.addEventListener("pointercancel", function() {
+pageElement.addEventListener("pointercancel", () => {
+  if (isPanning) {
+    postPageMessage({ type: "pan-cancel" });
+  }
   pointerStart = null;
-  pageElement.style.transition = "transform 180ms ease";
-  pageElement.style.transform = "translateX(0)";
-  setTimeout(function() { pageElement.style.transform = ""; pageElement.style.transition = ""; }, 200);
+  isPanning = false;
 });
 
 document.addEventListener("click", (event) => {
@@ -869,6 +893,18 @@ function isPageMessage(value: unknown): value is PageMessage {
   }
   if (value.type === 'turn') {
     return value.direction === 'next' || value.direction === 'previous';
+  }
+  if (value.type === 'pan-start') {
+    return typeof value.x === 'number' && typeof value.y === 'number';
+  }
+  if (value.type === 'pan-update') {
+    return typeof value.dx === 'number' && typeof value.dy === 'number';
+  }
+  if (value.type === 'pan-end') {
+    return typeof value.dx === 'number' && typeof value.vx === 'number';
+  }
+  if (value.type === 'pan-cancel') {
+    return true;
   }
   if (
     (value.type !== 'word' && value.type !== 'ayah') ||

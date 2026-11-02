@@ -25,10 +25,10 @@ import {
 } from '@/features/quran/services/content-provider';
 import type { QuranSurahDirectory } from '@/features/quran/types';
 import {
-  MushafPageViewer,
   type PageTurnDirection,
   type SelectionAnchor,
 } from '@/features/reader/components/MushafPageViewer';
+import { SwipePageViewer } from '@/features/reader/components/SwipePageViewer';
 import { SelectionSheet } from '@/features/reader/components/SelectionSheet';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
 import {
@@ -76,7 +76,7 @@ export default function ReaderScreen() {
   const [navigationBusy, setNavigationBusy] = useState(false);
   const audioRequest = useRef(0);
   const lastPageTurn = useRef(0);
-  const controlsOpacity = useRef(new Animated.Value(0)).current;
+  const [controlsOpacity] = useState(() => new Animated.Value(0));
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showControls = useCallback(() => {
@@ -203,6 +203,22 @@ export default function ReaderScreen() {
       }
       return new MushafPageCache(database).getPage(activePageNumber);
     },
+  });
+
+  const prevPageNumber = activePageNumber && activePageNumber > 1 ? activePageNumber - 1 : null;
+  const prevPageQuery = useQuery({
+    queryKey: ['quran', 'mushaf-page', 19, prevPageNumber],
+    enabled: prevPageNumber !== null,
+    staleTime: 24 * 60 * 60 * 1000,
+    queryFn: () => new MushafPageCache(database).getPage(prevPageNumber!),
+  });
+
+  const nextPageNumber = activePageNumber && activePageNumber < 604 ? activePageNumber + 1 : null;
+  const nextPageQuery = useQuery({
+    queryKey: ['quran', 'mushaf-page', 19, nextPageNumber],
+    enabled: nextPageNumber !== null,
+    staleTime: 24 * 60 * 60 * 1000,
+    queryFn: () => new MushafPageCache(database).getPage(nextPageNumber!),
   });
 
   const directoryQuery = useQuery({
@@ -536,16 +552,15 @@ export default function ReaderScreen() {
         </View>
       ) : page && pageQuery.data ? (
         <>
-          <MushafPageViewer
-            page={page}
-            fontBase64={pageQuery.data.fontBase64}
-            basmalaFontBase64={pageQuery.data.basmalaFontBase64}
+          <SwipePageViewer
+            currentPage={pageQuery.data}
+            prevPage={prevPageQuery.data ?? null}
+            nextPage={nextPageQuery.data ?? null}
             fontSize={fontSize}
             showTajweed={showTajweed}
             isDark={colors.background === Colors.dark.background}
             highlights={highlights}
             selectedElementId={selectedElementId}
-            transitionDirection={pageTransitionDirection}
             onWordPress={onWordPress}
             onAyahPress={onAyahPress}
             onPageTurn={handlePageTurn}
