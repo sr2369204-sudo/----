@@ -79,7 +79,9 @@ export function SelectionToolbar(props: Props) {
   const selectionKey =
     selection.type === 'word'
       ? `word:${selection.surahNumber}:${selection.ayah.ayahNumber}:${selection.word.id}`
-      : `ayah:${selection.surahNumber}:${selection.ayah.ayahNumber}`;
+      : selection.type === 'range'
+        ? `range:${selection.surahNumber}:${selection.startAyah}:${selection.endAyah}`
+        : `ayah:${selection.surahNumber}:${selection.ayah.ayahNumber}`;
 
   return <Toolbar key={selectionKey} {...props} selection={selection} />;
 }
@@ -128,24 +130,34 @@ function Toolbar({
   }, [animation]);
 
   const isWord = selection.type === 'word';
-  const target = useMemo<AnnotationTarget>(
-    () =>
-      isWord
-        ? {
-            type: 'word',
-            surahNumber: selection.surahNumber,
-            ayahNumber: selection.ayah.ayahNumber,
-            wordId: selection.word.id,
-          }
-        : {
-            type: 'ayah',
-            surahNumber: selection.surahNumber,
-            ayahNumber: selection.ayah.ayahNumber,
-          },
-    [isWord, selection],
-  );
+  const isRange = selection.type === 'range';
+  // A range covers several ayahs at once, so it has no single target to
+  // annotate: the annotation panels are only offered for one word or one ayah.
+  const target = useMemo<AnnotationTarget | null>(() => {
+    if (selection.type === 'range') {
+      return null;
+    }
+    if (selection.type === 'word') {
+      return {
+        type: 'word',
+        surahNumber: selection.surahNumber,
+        ayahNumber: selection.ayah.ayahNumber,
+        wordId: selection.word.id,
+      };
+    }
+    return {
+      type: 'ayah',
+      surahNumber: selection.surahNumber,
+      ayahNumber: selection.ayah.ayahNumber,
+    };
+  }, [selection]);
 
   useEffect(() => {
+    if (!target) {
+      // A range has no single annotation target. The toolbar is remounted per
+      // selection key, so its panels already start empty — nothing to reset.
+      return;
+    }
     let active = true;
     Promise.all([
       repository.listHighlightsForTarget(target),
@@ -165,18 +177,36 @@ function Toolbar({
     };
   }, [repository, target]);
 
-  const selectedText = isWord
+  const rangeAyahs = selection.type === 'range' ? selection.ayahs : null;
+  const startAyah = selection.type === 'range' ? selection.startAyah : selection.ayah.ayahNumber;
+  const endAyah = selection.type === 'range' ? selection.endAyah : selection.ayah.ayahNumber;
+
+  const selectedText = selection.type === 'word'
     ? selection.word.textUthmani
-    : selection.ayah.words.map((word) => word.textUthmani).join(' ');
-  const reference = `${surahName} · الآية ${toArabicNumbers(selection.ayah.ayahNumber)}`;
-  const wordMeaning = isWord ? selection.word.translationText : null;
-  const searchQuery = isWord
+    : selection.type === 'ayah'
+      ? selection.ayah.words.map((word) => word.textUthmani).join(' ')
+      : (rangeAyahs ?? []).map((ayah) => ayah.words.map((word) => word.textUthmani).join(' ')).join(' ');
+  const reference =
+    startAyah === endAyah
+      ? `${surahName} · الآية ${toArabicNumbers(startAyah)}`
+      : `${surahName} · الآيات ${toArabicNumbers(startAyah)}–${toArabicNumbers(endAyah)}`;
+  const wordMeaning = selection.type === 'word' ? selection.word.translationText : null;
+  const searchQuery = selection.type === 'word'
     ? selection.word.textUthmani
-    : selection.ayah.words.slice(0, 3).map((word) => word.textUthmani).join(' ');
+    : selection.type === 'ayah'
+      ? selection.ayah.words.slice(0, 3).map((word) => word.textUthmani).join(' ')
+      : (rangeAyahs ?? [])
+          .slice(0, 2)
+          .flatMap((ayah) => ayah.words.slice(0, 2))
+          .map((word) => word.textUthmani)
+          .join(' ');
 
   const activeColor = highlightColors[0]?.color ?? null;
 
   async function refreshSavedItems(): Promise<void> {
+    if (!target) {
+      return;
+    }
     const [savedHighlights, savedNotes] = await Promise.all([
       repository.listHighlightsForTarget(target),
       repository.listNotesForTarget(target),
@@ -186,6 +216,9 @@ function Toolbar({
   }
 
   async function saveHighlight(color: string): Promise<void> {
+    if (!target) {
+      return;
+    }
     const trimmed = color.trim().toLowerCase();
     if (!/^#[0-9a-f]{6}$/.test(trimmed)) {
       setError('أدخل رمز لون صحيح بالصيغة #RRGGBB');
@@ -221,6 +254,9 @@ function Toolbar({
   }
 
   async function saveNote(): Promise<void> {
+    if (!target) {
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -288,7 +324,14 @@ function Toolbar({
 
   function saveWordOrAyah(): void {
     setError(null);
-    if (isWord) {
+    if (selection.type === 'range') {
+      for (let ayahNumber = selection.startAyah; ayahNumber <= selection.endAyah; ayahNumber += 1) {
+        onToggleBookmark(selection.surahNumber, ayahNumber);
+      }
+      setMessage(isBookmarked ? 'تمت إزالة حفظ الآيات.' : 'تم حفظ الآيات.');
+      return;
+    }
+    if (selection.type === 'word') {
       onToggleSaveWord(
         selection.surahNumber,
         selection.ayah.ayahNumber,
@@ -296,10 +339,10 @@ function Toolbar({
         selection.word.textUthmani,
       );
       setMessage(isWordSaved ? 'تمت إزالة الكلمة من المحفوظات.' : 'تم حفظ الكلمة.');
-    } else {
-      onToggleBookmark(selection.surahNumber, selection.ayah.ayahNumber);
-      setMessage(isBookmarked ? 'تمت إزالة حفظ الآية.' : 'تم حفظ الآية.');
+      return;
     }
+    onToggleBookmark(selection.surahNumber, selection.ayah.ayahNumber);
+    setMessage(isBookmarked ? 'تمت إزالة حفظ الآية.' : 'تم حفظ الآية.');
   }
 
   type Action = {
@@ -333,47 +376,69 @@ function Toolbar({
     });
   }
 
-  actions.push(
-    {
-      key: 'tafsir',
-      icon: 'reader-outline',
-      label: 'تفسير الآية',
-      onPress: () => {
-        setError(null);
-        setMessage(null);
-        setPanel('tafsir');
+  // A range has no single target, so the panels that annotate one target are
+  // not offered for it: playback, saving the run and sharing are.
+  if (!isRange) {
+    actions.push(
+      {
+        key: 'tafsir',
+        icon: 'reader-outline',
+        label: 'تفسير الآية',
+        onPress: () => {
+          setError(null);
+          setMessage(null);
+          setPanel('tafsir');
+        },
       },
-    },
-    {
-      key: 'highlight',
-      icon: 'color-palette-outline',
-      label: 'تمييز',
-      active: activeColor !== null,
-      onPress: () => {
-        setError(null);
-        setMessage(null);
-        setPanel('highlight');
+      {
+        key: 'highlight',
+        icon: 'color-palette-outline',
+        label: 'تمييز',
+        active: activeColor !== null,
+        onPress: () => {
+          setError(null);
+          setMessage(null);
+          setPanel('highlight');
+        },
       },
-    },
-    {
-      key: 'note',
-      icon: 'create-outline',
-      label: 'ملاحظة',
-      active: notes.length > 0,
-      onPress: () => {
-        setError(null);
-        setMessage(null);
-        setPanel('notes');
+      {
+        key: 'note',
+        icon: 'create-outline',
+        label: 'ملاحظة',
+        active: notes.length > 0,
+        onPress: () => {
+          setError(null);
+          setMessage(null);
+          setPanel('notes');
+        },
       },
-    },
-    {
-      key: 'save',
-      icon: isWord ? (isWordSaved ? 'bookmark' : 'bookmark-outline') : isBookmarked ? 'bookmark' : 'bookmark-outline',
-      label: isWord ? (isWordSaved ? 'إزالة الحفظ' : 'حفظ الكلمة') : isBookmarked ? 'إزالة الحفظ' : 'حفظ الآية',
-      active: isWord ? isWordSaved : isBookmarked,
-      onPress: saveWordOrAyah,
-    },
-    {
+    );
+  }
+
+  actions.push({
+    key: 'save',
+    icon: isWord
+      ? isWordSaved
+        ? 'bookmark'
+        : 'bookmark-outline'
+      : isBookmarked
+        ? 'bookmark'
+        : 'bookmark-outline',
+    label: isWord
+      ? isWordSaved
+        ? 'إزالة الحفظ'
+        : 'حفظ الكلمة'
+      : isBookmarked
+        ? 'إزالة الحفظ'
+        : isRange
+          ? 'حفظ الآيات'
+          : 'حفظ الآية',
+    active: isWord ? isWordSaved : isBookmarked,
+    onPress: saveWordOrAyah,
+  });
+
+  if (!isRange) {
+    actions.push({
       key: 'search',
       icon: 'search',
       label: 'بحث في المصحف',
@@ -382,7 +447,10 @@ function Toolbar({
         setMessage(null);
         setPanel('search');
       },
-    },
+    });
+  }
+
+  actions.push(
     {
       key: 'copy',
       icon: 'copy-outline',
@@ -428,7 +496,7 @@ function Toolbar({
       : panel === 'meaning'
         ? 'معنى الكلمة'
         : panel === 'tafsir'
-          ? `تفسير الآية ${toArabicNumbers(selection.ayah.ayahNumber)}`
+          ? `تفسير الآية ${toArabicNumbers(startAyah)}`
           : panel === 'highlight'
             ? 'تمييز النص'
             : 'نتائج البحث';
@@ -651,7 +719,7 @@ function Toolbar({
             {panel === 'tafsir' && (
               <TafsirPanel
                 surahNumber={selection.surahNumber}
-                ayahNumber={selection.ayah.ayahNumber}
+                ayahNumber={startAyah}
                 palette={palette}
               />
             )}

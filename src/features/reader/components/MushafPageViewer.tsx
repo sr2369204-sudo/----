@@ -29,7 +29,12 @@ type Props = {
   showTajweed: boolean;
   isDark: boolean;
   highlights: Highlight[];
-  selectedElementId: string | null;
+  /**
+   * Document ids of the currently selected elements. A single word id renders a
+   * word outline; one or more `ayah-*` ids draw a box around every ayah in the
+   * selection, so a range of ayahs reads as one continuous frame.
+   */
+  selectedElementIds: string[] | null;
   onWordPress: (
     surahNumber: number,
     ayahNumber: number,
@@ -81,7 +86,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   showTajweed,
   isDark,
   highlights,
-  selectedElementId,
+  selectedElementIds,
   onWordPress,
   onAyahPress,
   onInteractionError,
@@ -183,15 +188,15 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   const syncSelectedElement = useCallback(() => {
     if (Platform.OS === 'web') {
       iframeRef.current?.contentWindow?.postMessage(
-        { source: 'mushaf-page-parent', selectedElementId },
+        { source: 'mushaf-page-parent', selectedElementIds },
         '*',
       );
     } else {
       webViewRef.current?.injectJavaScript(
-        `window.selectMushafElement?.(${JSON.stringify(selectedElementId)}); true;`,
+        `window.selectMushafElements?.(${JSON.stringify(selectedElementIds)}); true;`,
       );
     }
-  }, [selectedElementId]);
+  }, [selectedElementIds]);
 
   const syncHighlights = useCallback((entries: HighlightElementMap) => {
     if (Platform.OS === 'web') {
@@ -331,9 +336,17 @@ ${basmalaFontBase64 ? `@font-face {
   font-family: "QcfTajweedPage";
   base-palette: 0;
 }
+@font-palette-values --QcfDark {
+  font-family: "QcfTajweedPage";
+  base-palette: 1;
+}
 @font-palette-values --QcfBasmalaLight {
   font-family: "QcfBasmala";
   base-palette: 0;
+}
+@font-palette-values --QcfBasmalaDark {
+  font-family: "QcfBasmala";
+  base-palette: 1;
 }
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
@@ -342,7 +355,7 @@ body {
   align-items: stretch;
   justify-content: center;
   padding: 0;
-  background: ${isDark ? '#0c110f' : '#ece7dc'};
+  background: ${isDark ? '#100d08' : '#ece7dc'};
 }
 .page {
   --quran-font-size: ${baseFontSize}px;
@@ -357,9 +370,9 @@ body {
   container-type: size;
   border: 1px solid ${isDark ? 'rgba(158, 128, 70, 0.6)' : 'rgba(197, 163, 99, 0.62)'};
   border-radius: 16px;
-  color: ${isDark ? '#e4ddcf' : '#1e3026'};
+  color: ${isDark ? '#f2ead8' : '#1e3026'};
   background: ${isDark
-    ? 'linear-gradient(180deg, #161d1a 0%, #131917 55%, #101614 100%)'
+    ? 'linear-gradient(180deg, #1d1710 0%, #191309 55%, #140f07 100%)'
     : 'radial-gradient(ellipse at 50% 28%, #fffefb 0%, #fffdf7 65%, #fbf5e9 100%)'};
   box-shadow: ${isDark
     ? '0 10px 34px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.45)'
@@ -415,6 +428,7 @@ body {
 }
 .lines {
   display: grid;
+  position: relative;
   flex: 1 1 auto;
   grid-template-rows: repeat(${sourceLineCount}, minmax(0, 1fr));
   align-content: stretch;
@@ -555,9 +569,9 @@ body {
   text-shadow: 0 1px 1px rgba(0,0,0,0.1);
 }
 .opening-basmala {
-  color: ${isDark ? '#e4ddcf' : '#263a30'};
+  color: ${isDark ? '#f2ead8' : '#263a30'};
   font-family: "QcfTajweedPage";
-  font-palette: --QcfLight;
+  font-palette: ${isDark ? '--QcfDark' : '--QcfLight'};
   font-size: calc(var(--quran-rendered-font-size, var(--quran-font-size)) * 1.05);
   min-height: 0;
   padding: 14px 0 10px;
@@ -576,7 +590,7 @@ body {
 }
 .word {
   font-family: "QcfTajweedPage";
-  font-palette: --QcfLight;
+  font-palette: ${isDark ? '--QcfDark' : '--QcfLight'};
   font-size: var(--quran-rendered-font-size, var(--quran-font-size));
   line-height: 1.15;
   direction: rtl;
@@ -585,33 +599,39 @@ body {
 .ayah-marker {
   min-width: 1em;
   min-height: 1em;
-  color: ${isDark ? '#c5b690' : '#514327'};
+  color: ${isDark ? '#e3d5ab' : '#514327'};
   font-family: "QcfTajweedPage";
-  font-palette: --QcfLight;
+  font-palette: ${isDark ? '--QcfDark' : '--QcfLight'};
   font-size: 0.88em;
   line-height: inherit;
   vertical-align: baseline;
 }
 .basmala-word {
   font-family: "QcfBasmala";
-  font-palette: --QcfBasmalaLight;
+  font-palette: ${isDark ? '--QcfBasmalaDark' : '--QcfBasmalaLight'};
   font-size: inherit;
   line-height: 1.2;
 }
-.selected, .ayah-selected {
-  background: rgba(86, 125, 78, 0.25);
-  outline: none;
-}
 .selected {
   border-radius: 4px;
-  box-shadow: 0 0 0 1.5px rgba(75, 110, 67, 0.65);
+  background: ${isDark ? 'rgba(217, 169, 74, 0.22)' : 'rgba(86, 125, 78, 0.2)'};
+  box-shadow: 0 0 0 1.5px ${isDark ? 'rgba(217, 169, 74, 0.9)' : 'rgba(75, 110, 67, 0.7)'};
+  outline: none;
 }
-.ayah-selected {
-  /* Unified box look: no individual rounding or shadow */
-  border-radius: 0;
+/* The ayah selection is drawn as an overlay box, never as a class on the
+   words themselves: the frame then reads as one continuous rectangle around a
+   whole ayah (or a run of ayahs) instead of a per-word highlight. */
+#selection-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
 }
-.ayah-selected.ayah-marker {
-  border-radius: 4px;
+.selection-box {
+  position: absolute;
+  border: 2px solid ${isDark ? 'rgba(217, 169, 74, 0.95)' : 'rgba(163, 122, 38, 0.9)'};
+  background: ${isDark ? 'rgba(217, 169, 74, 0.14)' : 'rgba(217, 169, 74, 0.16)'};
+  border-radius: 8px;
 }
 .hl-bg {
   border-radius: 4px;
@@ -666,7 +686,7 @@ body {
     <span class="header-ornament">۞</span>
     <span class="header-label" id="header-juz-label">${juzHeaderLabel}</span>
   </header>
-  <section class="lines" id="mushaf-lines">${linesHtml}</section>
+  <section class="lines" id="mushaf-lines">${linesHtml}<div id="selection-layer"></div></section>
   <footer class="page-footer">
     <div class="page-number-ornament">
       <span class="page-num-bracket">۞</span>
@@ -679,25 +699,79 @@ body {
 const linesElement = document.getElementById("mushaf-lines");
 const pageElement = document.querySelector(".page");
 
-function selectMushafElement(id) {
-  document.querySelectorAll(".selected, .ayah-selected").forEach((element) => {
-    element.classList.remove("selected", "ayah-selected");
-  });
-  if (!id) return;
-  const element = document.getElementById(id);
-  if (!element) return;
+const SELECTION_BOX_PADDING = 2;
 
-  if (element.classList.contains("ayah-marker")) {
-    const surah = element.dataset.surah;
-    const ayah = element.dataset.ayah;
-    document.querySelectorAll('[data-surah="' + surah + '"][data-ayah="' + ayah + '"]').forEach((el) => {
-      el.classList.add("ayah-selected");
-    });
-  } else {
-    element.classList.add("selected");
+/** Smallest rectangle that contains every given element, in viewport pixels. */
+function unionRect(elements) {
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  elements.forEach((element) => {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 && rect.height <= 0) return;
+    if (rect.left < left) left = rect.left;
+    if (rect.top < top) top = rect.top;
+    if (rect.right > right) right = rect.right;
+    if (rect.bottom > bottom) bottom = rect.bottom;
+  });
+  if (!Number.isFinite(left) || right <= left || bottom <= top) return null;
+  return { left: left, top: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * Ids of the elements currently selected, kept so the frames can be redrawn
+ * whenever the page is re-fitted (font load, rotation, split screen).
+ */
+let selectedIds = [];
+
+/**
+ * Applies the current selection to the page.
+ *
+ * A word keeps an inline outline. An ayah — or a run of ayahs — is drawn as a
+ * frame on the overlay layer instead of outlining every word, so the selection
+ * reads as one box around the ayah rather than a highlight smeared over its
+ * text.
+ */
+function selectMushafElements(ids) {
+  selectedIds = Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
+  document.querySelectorAll(".selected").forEach((element) => {
+    element.classList.remove("selected");
+  });
+  const layer = document.getElementById("selection-layer");
+  if (layer) layer.innerHTML = "";
+  if (selectedIds.length === 0) return;
+
+  const boxes = [];
+  for (const id of selectedIds) {
+    const element = document.getElementById(id);
+    if (!element) continue;
+    if (element.classList.contains("ayah-marker")) {
+      const surah = element.dataset.surah;
+      const ayah = element.dataset.ayah;
+      const members = document.querySelectorAll(
+        '[data-surah="' + surah + '"][data-ayah="' + ayah + '"]',
+      );
+      const rect = unionRect([...members]);
+      if (rect) boxes.push(rect);
+    } else {
+      element.classList.add("selected");
+    }
+  }
+  if (!layer || boxes.length === 0) return;
+
+  const layerRect = layer.getBoundingClientRect();
+  for (const rect of boxes) {
+    const box = document.createElement("div");
+    box.className = "selection-box";
+    box.style.left = rect.left - layerRect.left - SELECTION_BOX_PADDING + "px";
+    box.style.top = rect.top - layerRect.top - SELECTION_BOX_PADDING + "px";
+    box.style.width = rect.width + SELECTION_BOX_PADDING * 2 + "px";
+    box.style.height = rect.height + SELECTION_BOX_PADDING * 2 + "px";
+    layer.appendChild(box);
   }
 }
-window.selectMushafElement = selectMushafElement;
+window.selectMushafElements = selectMushafElements;
 
 /**
  * Applies saved highlights without touching the document markup.
@@ -860,6 +934,9 @@ function signalPageReady() {
 // the visible font-size jump during page turns.
 function preparePage() {
   fitMushafText();
+  // The frames are measured against the final metrics of the page, so they are
+  // redrawn once the fit has settled instead of tracking the intermediate ones.
+  selectMushafElements(selectedIds);
   signalPageReady();
 }
 
@@ -883,6 +960,7 @@ window.addEventListener("resize", () => {
     refitScheduled = false;
     if (pageElement) pageElement.classList.remove("is-ready");
     fitMushafText();
+    selectMushafElements(selectedIds);
     if (pageElement) pageElement.classList.add("is-ready");
   });
 });
@@ -977,14 +1055,14 @@ document.addEventListener("click", (event) => {
       height: rect.height
     }
   };
-  selectMushafElement(button.id);
+  selectMushafElements([button.id]);
   postPageMessage(message);
 });
 
 window.addEventListener("message", (event) => {
   if (event.data && event.data.source === "mushaf-page-parent") {
-    if (event.data.selectedElementId !== undefined) {
-      selectMushafElement(event.data.selectedElementId);
+    if (event.data.selectedElementIds !== undefined) {
+      selectMushafElements(event.data.selectedElementIds);
     }
     if (event.data.highlights !== undefined) {
       applyMushafHighlights(event.data.highlights);

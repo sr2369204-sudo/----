@@ -10,6 +10,7 @@ import {
  */
 export type RecitationScope =
   | { type: 'ayah'; surahNumber: number; ayahNumber: number }
+  | { type: 'ayahRange'; surahNumber: number; fromAyah: number; toAyah: number }
   | { type: 'surah'; surahNumber: number }
   | { type: 'juz'; juzNumber: number }
   | { type: 'pageRange'; fromPage: number; toPage: number };
@@ -25,6 +26,10 @@ export function describeRecitationScope(scope: RecitationScope): string {
   switch (scope.type) {
     case 'ayah':
       return `الآية ${scope.surahNumber}:${scope.ayahNumber}`;
+    case 'ayahRange':
+      return scope.fromAyah === scope.toAyah
+        ? `الآية ${scope.surahNumber}:${scope.fromAyah}`
+        : `الآيات ${scope.surahNumber}:${scope.fromAyah}–${scope.toAyah}`;
     case 'surah':
       return `سورة ${scope.surahNumber}`;
     case 'juz':
@@ -103,6 +108,14 @@ export async function buildRecitationQueue(
       label,
       tracks: await quranContentProvider.getChapterRecitation(reciterId, scope.surahNumber),
     };
+  }
+
+  if (scope.type === 'ayahRange') {
+    const verseKeys: string[] = [];
+    for (let ayahNumber = scope.fromAyah; ayahNumber <= scope.toAyah; ayahNumber += 1) {
+      verseKeys.push(`${scope.surahNumber}:${ayahNumber}`);
+    }
+    return { scope, label, tracks: await resolveVerseKeyTracks(reciterId, verseKeys) };
   }
 
   if (scope.type === 'juz') {

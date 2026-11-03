@@ -19,14 +19,14 @@ export const Colors = {
     border: '#E6E7DF',
   },
   dark: {
-    text: '#F1F4F0',
-    background: '#111A16',
-    backgroundElement: '#1A2620',
-    backgroundSelected: '#263A30',
-    textSecondary: '#A8B5AC',
-    primary: '#76B99B',
-    surface: '#1A2620',
-    border: '#314138',
+    text: '#F4EFE2',
+    background: '#131109',
+    backgroundElement: '#1F1A11',
+    backgroundSelected: '#2F2717',
+    textSecondary: '#B7A98B',
+    primary: '#D9A94A',
+    surface: '#1F1A11',
+    border: '#3B3220',
   },
 } as const;
 

@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,17 +18,6 @@ const themeOptions: { value: ThemePreference; label: string }[] = [
   { value: 'light', label: 'فاتح' },
   { value: 'dark', label: 'داكن' },
 ];
-
-const fontSizePresets: { value: number; label: string }[] = [
-  { value: 32, label: 'صغير' },
-  { value: 44, label: 'عادي' },
-  { value: 56, label: 'كبير' },
-  { value: 68, label: 'كبير جداً' },
-  { value: 80, label: 'أقصى ملء' },
-];
-
-const FONT_SIZE_MIN = 20;
-const FONT_SIZE_MAX = 80;
 
 const ArabicReciterNames: Record<number, string> = {
   1: 'عبد الباسط عبد الصمد · مجوّد',
@@ -49,7 +38,6 @@ const ArabicReciterNames: Record<number, string> = {
 export default function SettingsScreen() {
   const colors = useTheme();
   const database = useSQLiteContext();
-  const queryClient = useQueryClient();
   const themePreference = useReaderPreferencesStore((state) => state.themePreference);
   const reciterId = useReaderPreferencesStore((state) => state.reciterId);
   const savedError = useReaderPreferencesStore((state) => state.error);
@@ -61,42 +49,6 @@ export default function SettingsScreen() {
     queryFn: () => quranContentProvider.getReciters(),
     staleTime: 24 * 60 * 60 * 1000,
   });
-
-  const fontSizeQuery = useQuery({
-    queryKey: ['settings', 'font-size'],
-    queryFn: async () => {
-      const row = await database.getFirstAsync<{ value: string }>(
-        "SELECT value FROM app_settings WHERE key = 'reader.fontSize'",
-      );
-      const parsed = row ? Number(row.value) : 44;
-      return Number.isInteger(parsed) && parsed >= FONT_SIZE_MIN && parsed <= FONT_SIZE_MAX
-        ? parsed
-        : 44;
-    },
-  });
-
-  const currentFontSize = fontSizeQuery.data ?? 44;
-
-  async function saveFontSize(size: number): Promise<void> {
-    const clamped = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, size));
-    setSaving(true);
-    try {
-      await database.runAsync(
-        `INSERT INTO app_settings (key, value, updated_at) VALUES ('reader.fontSize', ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        String(clamped),
-        new Date().toISOString(),
-      );
-      await queryClient.invalidateQueries({ queryKey: ['reader', 'display-preferences'] });
-      await queryClient.invalidateQueries({ queryKey: ['settings', 'font-size'] });
-    } catch (error) {
-      setPreferenceError(
-        error instanceof Error ? `تعذر حفظ حجم الخط: ${error.message}` : 'تعذر حفظ حجم الخط.',
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function savePreference(key: 'theme' | 'reciterId', value: string): Promise<void> {
     setSaving(true);
@@ -171,90 +123,6 @@ export default function SettingsScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>حجم خط المصحف واستغلال المساحة</Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>
-            اضبط حجم الخط لملء مساحة الشاشة أفقياً ورأسياً وتقليل الفراغات البيضاء.
-          </Text>
-
-          <View style={styles.fontSizeStepperRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="تقليل حجم الخط"
-              disabled={saving || currentFontSize <= FONT_SIZE_MIN}
-              onPress={() => void saveFontSize(currentFontSize - 2)}
-              style={[
-                styles.stepperButton,
-                { backgroundColor: colors.background, borderColor: colors.border },
-                currentFontSize <= FONT_SIZE_MIN && { opacity: 0.4 },
-              ]}
-            >
-              <Text style={[styles.stepperGlyph, { color: colors.text }]}>−</Text>
-            </Pressable>
-
-            <View style={styles.fontSizeValueBox}>
-              <Text style={[styles.fontSizeValueText, { color: colors.primary }]}>
-                {toArabicSettingDigits(currentFontSize)}
-              </Text>
-              <Text style={[styles.fontSizeUnitText, { color: colors.textSecondary }]}>مستوى</Text>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="زيادة حجم الخط"
-              disabled={saving || currentFontSize >= FONT_SIZE_MAX}
-              onPress={() => void saveFontSize(currentFontSize + 2)}
-              style={[
-                styles.stepperButton,
-                { backgroundColor: colors.background, borderColor: colors.border },
-                currentFontSize >= FONT_SIZE_MAX && { opacity: 0.4 },
-              ]}
-            >
-              <Text style={[styles.stepperGlyph, { color: colors.text }]}>+</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.optionRow}>
-            {fontSizePresets.map((preset) => {
-              const selected = Math.abs(currentFontSize - preset.value) <= 1;
-              return (
-                <Pressable
-                  key={preset.value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  disabled={saving}
-                  onPress={() => void saveFontSize(preset.value)}
-                  style={[
-                    styles.option,
-                    {
-                      backgroundColor: selected ? colors.backgroundSelected : colors.background,
-                      borderColor: selected ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.optionText, { color: selected ? colors.primary : colors.text }]}>
-                    {preset.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={[styles.fontPreviewCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <Text
-              style={[
-                styles.fontPreviewText,
-                {
-                  color: colors.text,
-                  fontSize: Math.min(28, Math.max(16, currentFontSize * 0.76)),
-                },
-              ]}
-            >
-              بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
-            </Text>
-          </View>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>القارئ المفضّل</Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>
             تظهر هنا أسماء القرّاء الذين تتوفر لهم تسجيلات آيات من المصدر. تسجيل الكلمة متاح من المقاطع التي يوفرها المصدر.
@@ -301,23 +169,6 @@ export default function SettingsScreen() {
               })}
             </View>
           )}
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>مصدر المحتوى</Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>
-            صفحات المصحف وخطوطها تُحمّل عند فتحها من Quran.com وتُحفظ على الجهاز. الصفحات غير المفتوحة والتلاوات تحتاج إلى الإنترنت.
-          </Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>
-            الألوان مستمدة من علامات التجويد التي يرفقها مصدر النص.
-          </Text>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>الخصوصية والتخزين</Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>
-            المظهر والقارئ والملاحظات محفوظة محليًا على الجهاز. لا يوجد حساب أو مزامنة سحابية.
-          </Text>
         </View>
 
         {(savedError || !recitersQuery.data?.some((reciter) => reciter.id === reciterId)) && (
@@ -435,53 +286,4 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'right',
   },
-  fontSizeStepperRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.three,
-    marginTop: Spacing.two,
-    marginBottom: Spacing.one,
-  },
-  stepperButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperGlyph: {
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 26,
-  },
-  fontSizeValueBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 70,
-  },
-  fontSizeValueText: {
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  fontSizeUnitText: {
-    fontSize: 12,
-  },
-  fontPreviewCard: {
-    padding: Spacing.three,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: Spacing.two,
-  },
-  fontPreviewText: {
-    fontFamily: 'Noto Naskh Arabic',
-    textAlign: 'center',
-  },
 });
-
-function toArabicSettingDigits(value: number): string {
-  return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
-}

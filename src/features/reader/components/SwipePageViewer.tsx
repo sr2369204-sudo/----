@@ -29,7 +29,8 @@ export type SwipePageViewerProps = {
   showTajweed: boolean;
   isDark: boolean;
   highlights: Highlight[];
-  selectedElementId: string | null;
+  /** Document ids of the selected elements: one word, or a run of ayahs. */
+  selectedElementIds: string[] | null;
   onWordPress: (
     surahNumber: number,
     ayahNumber: number,
@@ -87,7 +88,7 @@ export function SwipePageViewer({
   showTajweed,
   isDark,
   highlights,
-  selectedElementId,
+  selectedElementIds,
   onWordPress,
   onAyahPress,
   onPageTurn,
@@ -349,7 +350,7 @@ export function SwipePageViewer({
                     showTajweed={showTajweed}
                     isDark={isDark}
                     highlights={isCurrent ? highlights : NO_HIGHLIGHTS}
-                    selectedElementId={isCurrent ? selectedElementId : null}
+                    selectedElementIds={isCurrent ? selectedElementIds : null}
                     isInteractive={isCurrent}
                     onWordPress={onWordPress}
                     onAyahPress={onAyahPress}
@@ -386,7 +387,8 @@ type PageSlotProps = {
   showTajweed: boolean;
   isDark: boolean;
   highlights: Highlight[];
-  selectedElementId: string | null;
+  /** Document ids of the selected elements: one word, or a run of ayahs. */
+  selectedElementIds: string[] | null;
   isInteractive: boolean;
   onWordPress: (
     surahNumber: number,
@@ -416,7 +418,7 @@ const PageSlot = memo(function PageSlot({
   showTajweed,
   isDark,
   highlights,
-  selectedElementId,
+  selectedElementIds,
   isInteractive,
   onWordPress,
   onAyahPress,
@@ -447,7 +449,7 @@ const PageSlot = memo(function PageSlot({
         showTajweed={showTajweed}
         isDark={isDark}
         highlights={highlights}
-        selectedElementId={selectedElementId}
+        selectedElementIds={selectedElementIds}
         onWordPress={onWordPress}
         onAyahPress={onAyahPress}
         onInteractionError={onInteractionError}

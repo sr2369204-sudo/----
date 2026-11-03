@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/immutability -- expo-audio exposes `loop` and
+   `playbackRate` on AudioPlayer/AudioPlaylist only as mutable properties. */
 import { Link, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -8,7 +10,7 @@ import {
   setAudioModeAsync,
 } from 'expo-audio';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -36,6 +38,8 @@ import type { ElementRect } from '@/features/reader/components/MushafPageViewer'
 import {
   RecitationPlayer,
   RecitationScopeDialog,
+  nextPlaybackRate,
+  type RepeatMode,
 } from '@/features/reader/components/RecitationPlayer';
 import { SwipePageViewer } from '@/features/reader/components/SwipePageViewer';
 import { SelectionToolbar } from '@/features/reader/components/SelectionToolbar';
@@ -58,8 +62,8 @@ import { useTheme } from '@/hooks/use-theme';
 type NavigationMode = 'page' | 'surah' | 'juz';
 type BookmarkedAyah = { surahNumber: number; ayahNumber: number };
 const PAGE_QUERY_RETRY_COUNT = 2;
-/** Vertical offset for the floating recitation player, just below the top navbar. */
-const RECITATION_PLAYER_TOP = 62;
+/** Gap between the floating recitation player and the bottom safe area. */
+const RECITATION_PLAYER_BOTTOM_GAP = 10;
 
 export default function ReaderScreen() {
   const params = useLocalSearchParams<{
@@ -80,6 +84,7 @@ export default function ReaderScreen() {
   const selection = useReaderSelectionStore((state) => state.selection);
   const selectWord = useReaderSelectionStore((state) => state.selectWord);
   const selectAyah = useReaderSelectionStore((state) => state.selectAyah);
+  const selectAyahRange = useReaderSelectionStore((state) => state.selectAyahRange);
   const [pageNumber, setPageNumber] = useState<number | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkedAyah[]>([]);
@@ -105,6 +110,12 @@ export default function ReaderScreen() {
   const [navVisible, setNavVisible] = useState(false);
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [navAnimation] = useState(() => new Animated.Value(0));
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
+  const [playbackRate, setPlaybackRate] = useState(1);
+  // True when the floating player was started from a word/ayah selection, so
+  // it is dismissed together with the selection exactly like the navbar. A
+  // recitation started from the navbar scope dialog keeps playing instead.
+  const [selectionBoundPlayer, setSelectionBoundPlayer] = useState(false);
 
   // The reader controls are no longer opened from a floating button: they come
   // up together with the word tools, so revealing the ring always reveals the
@@ -414,6 +425,18 @@ export default function ReaderScreen() {
     };
   }, [player, recitationPlaylist]);
 
+  // Repeat and speed are properties of the native players, applied whenever the
+  // reader changes them so the next track inherits the current setting.
+  useEffect(() => {
+    recitationPlaylist.loop = repeatMode;
+    player.loop = repeatMode === 'single';
+  }, [player, recitationPlaylist, repeatMode]);
+
+  useEffect(() => {
+    recitationPlaylist.playbackRate = playbackRate;
+    player.setPlaybackRate(playbackRate);
+  }, [playbackRate, player, recitationPlaylist]);
+
   const onWordPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
@@ -452,11 +475,73 @@ export default function ReaderScreen() {
     player.pause();
     setInteractionError(null);
     setSelectionAnchor(rect);
+
+    // A second tap on another ayah of the same surah stretches the selection
+    // into a range, so ayah 3 followed by ayah 5 selects 3–5 as one frame.
+    const current = useReaderSelectionStore.getState().selection;
+    const anchorAyah =
+      current && current.surahNumber === surahNumber && current.type !== 'word'
+        ? current.type === 'ayah'
+          ? current.ayah.ayahNumber
+          : current.startAyah
+        : null;
+    if (anchorAyah !== null && anchorAyah !== ayahNumber && page) {
+      const start = Math.min(anchorAyah, ayahNumber);
+      const end = Math.max(anchorAyah, ayahNumber);
+      const rangeAyahs = page.ayahs
+        .filter(
+          (item) =>
+            item.surahNumber === surahNumber &&
+            item.ayahNumber >= start &&
+            item.ayahNumber <= end,
+        )
+        .sort((first, second) => first.ayahNumber - second.ayahNumber);
+      if (rangeAyahs.length > 1) {
+        selectAyahRange(surahNumber, rangeAyahs, 'compact');
+        showNavbar();
+        return;
+      }
+    }
+
     selectAyah(surahNumber, ayah, 'compact');
     showNavbar();
-  }, [page, player, selectAyah, showNavbar]);
+  }, [page, player, selectAyah, selectAyahRange, showNavbar]);
+
+  /**
+   * Loads a scope into the recitation playlist and starts it. Shared by the
+   * duration picker and by playing a selected run of ayahs straight from the
+   * word/ayah tools.
+   */
+  const runRecitation = useCallback(async (scope: RecitationScope) => {
+    audioRequest.current += 1;
+    player.pause();
+    const queue = await buildRecitationQueue(reciterId, scope);
+    recitationPlaylist.pause();
+    recitationPlaylist.clear();
+    for (const track of queue.tracks) {
+      // The playlist bridge expects a source object; a bare URL string reaches
+      // the native side as a raw value and is rejected.
+      recitationPlaylist.add({ uri: track.url });
+    }
+    recitationPlaylist.loop = repeatMode;
+    recitationPlaylist.playbackRate = playbackRate;
+    recitationPlaylist.play();
+    setRecitationQueue(queue);
+  }, [playbackRate, player, recitationPlaylist, reciterId, repeatMode]);
 
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
+    if (currentSelection.type === 'range') {
+      // A run of ayahs is a playlist, not a single file: it is loaded into the
+      // recitation player so it can be browsed, repeated and sped up.
+      setSelectionBoundPlayer(true);
+      await runRecitation({
+        type: 'ayahRange',
+        surahNumber: currentSelection.surahNumber,
+        fromAyah: currentSelection.startAyah,
+        toAyah: currentSelection.endAyah,
+      });
+      return;
+    }
     const requestId = ++audioRequest.current;
     setAudioError(null);
     recitationPlaylist.pause();
@@ -513,9 +598,9 @@ export default function ReaderScreen() {
     if (!audioUrl) {
       throw new Error('لا يتوفر تسجيل صوتي لهذه الكلمة من المصدر.');
     }
-    player.replace(audioUrl);
+    player.replace({ uri: audioUrl });
     player.play();
-  }, [database, player, recitationPlaylist, reciterId]);
+  }, [database, player, recitationPlaylist, reciterId, runRecitation]);
 
   const stopAudio = useCallback(() => {
     audioRequest.current += 1;
@@ -611,16 +696,10 @@ export default function ReaderScreen() {
     setRecitationBusy(true);
     setRecitationError(null);
     try {
-      audioRequest.current += 1;
-      player.pause();
-      const queue = await buildRecitationQueue(reciterId, scope);
-      recitationPlaylist.pause();
-      recitationPlaylist.clear();
-      for (const track of queue.tracks) {
-        recitationPlaylist.add(track.url);
-      }
-      recitationPlaylist.play();
-      setRecitationQueue(queue);
+      // A recitation picked from the navbar is not tied to a selection, so it
+      // keeps its player after the selection is dismissed.
+      setSelectionBoundPlayer(false);
+      await runRecitation(scope);
       setScopeDialogOpen(false);
     } catch (error) {
       setRecitationError(
@@ -629,13 +708,14 @@ export default function ReaderScreen() {
     } finally {
       setRecitationBusy(false);
     }
-  }, [player, recitationPlaylist, reciterId]);
+  }, [runRecitation]);
 
   const closeRecitation = useCallback(() => {
     recitationPlaylist.pause();
     recitationPlaylist.clear();
     setRecitationQueue(null);
     setRecitationError(null);
+    setSelectionBoundPlayer(false);
   }, [recitationPlaylist]);
 
   const handlePageTurn = useCallback((targetPageNumber: number) => {
@@ -653,18 +733,32 @@ export default function ReaderScreen() {
     navigateToPage(targetPageNumber);
   }, [navigateToPage, navigationOpen]);
 
-  const selectedElementId = selection
-    ? selection.type === 'word'
-      ? `word-${selection.word.id}`
-      : `ayah-${selection.surahNumber}-${selection.ayah.ayahNumber}`
-    : null;
+  const selectedElementIds = useMemo<string[] | null>(() => {
+    if (!selection) {
+      return null;
+    }
+    if (selection.type === 'word') {
+      return [`word-${selection.word.id}`];
+    }
+    if (selection.type === 'ayah') {
+      return [`ayah-${selection.surahNumber}-${selection.ayah.ayahNumber}`];
+    }
+    return selection.ayahs.map((ayah) => `ayah-${selection.surahNumber}-${ayah.ayahNumber}`);
+  }, [selection]);
 
   const isBookmarked = selection
-    ? bookmarks.some(
-        (bookmark) =>
-          bookmark.surahNumber === selection.surahNumber &&
-          bookmark.ayahNumber === selection.ayah.ayahNumber,
-      )
+    ? selection.type === 'range'
+      ? bookmarks.some(
+          (bookmark) =>
+            bookmark.surahNumber === selection.surahNumber &&
+            bookmark.ayahNumber >= selection.startAyah &&
+            bookmark.ayahNumber <= selection.endAyah,
+        )
+      : bookmarks.some(
+          (bookmark) =>
+            bookmark.surahNumber === selection.surahNumber &&
+            bookmark.ayahNumber === selection.ayah.ayahNumber,
+        )
     : false;
 
   const isWordSaved =
@@ -681,6 +775,12 @@ export default function ReaderScreen() {
     page?.surahs.find((surah) => surah.surahNumber === selection?.surahNumber)?.nameArabic ??
     page?.surahs[0]?.nameArabic ??
     'المصحف';
+
+  const currentAyahNumber = selection
+    ? selection.type === 'range'
+      ? selection.startAyah
+      : selection.ayah.ayahNumber
+    : page?.ayahs[0]?.ayahNumber ?? 1;
 
   const navigateTo = useCallback(async (mode: NavigationMode, rawValue: string) => {
     const value = parseArabicNumber(rawValue);
@@ -730,6 +830,18 @@ export default function ReaderScreen() {
     }
   }, [selection, navVisible, hideNavbar]);
 
+  useEffect(() => {
+    // The player opened from the word/ayah tools belongs to the selection, so
+    // clearing the selection takes it away with the ring and the navbar.
+    if (selection || !selectionBoundPlayer || !recitationQueue) {
+      return;
+    }
+    const task = requestAnimationFrame(() => {
+      closeRecitation();
+    });
+    return () => cancelAnimationFrame(task);
+  }, [closeRecitation, recitationQueue, selection, selectionBoundPlayer]);
+
   const initialError = startLocationQuery.error;
   const pageError = pageQuery.error;
   const pageLoading = startLocationQuery.isPending || activePageNumber === null || pageQuery.isPending;
@@ -748,21 +860,19 @@ export default function ReaderScreen() {
         style={[
           styles.overlayNavbar,
           {
-            top: insets.top,
-            backgroundColor:
-              colors.background === Colors.dark.background
-                ? 'rgba(15, 23, 42, 0.94)'
-                : 'rgba(253, 251, 247, 0.96)',
-            borderBottomColor:
-              colors.background === Colors.dark.background
-                ? 'rgba(255, 255, 255, 0.08)'
-                : 'rgba(0, 0, 0, 0.06)',
+            // The bar starts at the top of the window and pads past the safe
+            // area, so it paints the status bar region too: the system status
+            // bar then reads as the same colour and shade as the navbar.
+            top: 0,
+            paddingTop: insets.top + 10,
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.border,
             opacity: navAnimation,
             transform: [
               {
                 translateY: navAnimation.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [-80 - insets.top, 0],
+                  outputRange: [-220, 0],
                 }),
               },
             ],
@@ -811,18 +921,6 @@ export default function ReaderScreen() {
             ]}
           >
             <Ionicons name="headset-outline" size={18} color={colors.text} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="إخفاء أدوات القراءة"
-            onPress={hideNavbar}
-            style={({ pressed }) => [
-              styles.navIconBtn,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-              pressed && { opacity: 0.75 },
-            ]}
-          >
-            <Ionicons name="chevron-up" size={18} color={colors.text} />
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -888,7 +986,7 @@ export default function ReaderScreen() {
           showTajweed={showTajweed}
           isDark={colors.background === Colors.dark.background}
           highlights={highlights}
-          selectedElementId={selectedElementId}
+          selectedElementIds={selectedElementIds}
           onWordPress={onWordPress}
           onAyahPress={onAyahPress}
           onPageTurn={handlePageTurn}
@@ -900,7 +998,7 @@ export default function ReaderScreen() {
       {recitationQueue && (
         <RecitationPlayer
           label={recitationQueue.label}
-          offsetTop={RECITATION_PLAYER_TOP}
+          offsetBottom={insets.bottom + RECITATION_PLAYER_BOTTOM_GAP}
           colors={colors}
           status={{
             playing: recitationStatus.playing,
@@ -910,6 +1008,14 @@ export default function ReaderScreen() {
             currentTime: recitationStatus.currentTime,
             duration: recitationStatus.duration,
           }}
+          repeatMode={repeatMode}
+          onCycleRepeat={() =>
+            setRepeatMode((mode) =>
+              mode === 'none' ? 'all' : mode === 'all' ? 'single' : 'none',
+            )
+          }
+          playbackRate={playbackRate}
+          onCycleRate={() => setPlaybackRate((rate) => nextPlaybackRate(rate))}
           onTogglePlay={() =>
             recitationStatus.playing ? recitationPlaylist.pause() : recitationPlaylist.play()
           }
@@ -980,7 +1086,7 @@ export default function ReaderScreen() {
           currentSurahNumber={selection?.surahNumber ?? page?.surahs[0]?.surahNumber ?? 1}
           currentJuzNumber={page?.juzNumber ?? 1}
           currentPageNumber={activePageNumber ?? 1}
-          currentAyahNumber={selection?.ayah.ayahNumber ?? page?.ayahs[0]?.ayahNumber ?? 1}
+          currentAyahNumber={currentAyahNumber}
           busy={recitationBusy}
           error={recitationError}
           onSelectReciter={selectReciter}
