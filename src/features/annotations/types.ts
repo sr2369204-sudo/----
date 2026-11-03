@@ -68,3 +68,23 @@ export type CreateSavedWordInput = {
   wordId: string;
   wordText: string;
 };
+
+/** A voice note the reader recorded for one word of the Mushaf. */
+export type WordVoiceNote = {
+  id: string;
+  surahNumber: number;
+  ayahNumber: number;
+  wordId: string;
+  /** Persistent location of the recorded audio file on the device. */
+  fileUri: string;
+  durationMs: number;
+  createdAt: string;
+};
+
+export type CreateWordVoiceNoteInput = {
+  surahNumber: number;
+  ayahNumber: number;
+  wordId: string;
+  fileUri: string;
+  durationMs: number;
+};

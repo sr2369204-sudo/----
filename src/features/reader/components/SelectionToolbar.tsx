@@ -2,6 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
+import { Directory, File, Paths } from 'expo-file-system';
+import {
   ActivityIndicator,
   Animated,
   Modal,
@@ -16,13 +26,20 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { Spacing } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
-import type { AnnotationTarget, Highlight, Note } from '@/features/annotations/types';
+import type {
+  AnnotationTarget,
+  Highlight,
+  Note,
+  WordVoiceNote,
+} from '@/features/annotations/types';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
 import type { AyahWordMeaning } from '@/features/quran/services/content-provider';
+import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult } from '@/features/quran/types';
 import {
@@ -47,6 +64,8 @@ const BUTTON_SIZE = 46;
 const CLOSE_SIZE = 30;
 const RING_MARGIN = 8;
 const LABEL_GAP = 8;
+/** Folder inside the document directory that keeps the recorded voice notes. */
+const VOICE_NOTES_DIRECTORY = 'voice-notes';
 
 type Panel = 'toolbar' | 'notes' | 'meaning' | 'tafsir' | 'search' | 'highlight';
 
@@ -114,11 +133,18 @@ function Toolbar({
   const [panel, setPanel] = useState<Panel>('toolbar');
   const [highlightColors, setHighlightColors] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [voiceNotes, setVoiceNotes] = useState<WordVoiceNote[]>([]);
+  const [playingVoiceUri, setPlayingVoiceUri] = useState<string | null>(null);
   const [noteBody, setNoteBody] = useState('');
   const [customColor, setCustomColor] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder, 200);
+  const voicePlayer = useAudioPlayer();
+  const voiceStatus = useAudioPlayerStatus(voicePlayer);
 
   const [animation] = useState(() => new Animated.Value(0));
   useEffect(() => {
@@ -179,6 +205,30 @@ function Toolbar({
     };
   }, [repository, target]);
 
+  // Voice notes belong to a single word, so they are only offered when one is
+  // selected; an ayah or a range has no word to attach a recording to.
+  const wordTarget = target?.type === 'word' ? target : null;
+
+  useEffect(() => {
+    if (!wordTarget) {
+      return;
+    }
+    let active = true;
+    repository
+      .listVoiceNotesForWord(wordTarget.surahNumber, wordTarget.ayahNumber, wordTarget.wordId)
+      .then((saved) => {
+        if (active) {
+          setVoiceNotes(saved);
+        }
+      })
+      .catch(() => {
+        /* non-fatal: the panel simply shows no recordings */
+      });
+    return () => {
+      active = false;
+    };
+  }, [repository, wordTarget]);
+
   const rangeAyahs = selection.type === 'range' ? selection.ayahs : null;
   const startAyah = selection.type === 'range' ? selection.startAyah : selection.ayah.ayahNumber;
   const endAyah = selection.type === 'range' ? selection.endAyah : selection.ayah.ayahNumber;
@@ -214,6 +264,15 @@ function Toolbar({
     ]);
     setHighlightColors(savedHighlights);
     setNotes(savedNotes);
+    if (wordTarget) {
+      setVoiceNotes(
+        await repository.listVoiceNotesForWord(
+          wordTarget.surahNumber,
+          wordTarget.ayahNumber,
+          wordTarget.wordId,
+        ),
+      );
+    }
   }
 
   async function saveHighlight(color: string): Promise<void> {
@@ -280,6 +339,115 @@ function Toolbar({
       await refreshSavedItems();
     } catch (deleteError) {
       setError(deleteError instanceof Error ? `تعذر حذف الملاحظة: ${deleteError.message}` : 'تعذر حذف الملاحظة.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startVoiceNote(): Promise<void> {
+    setError(null);
+    setMessage(null);
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setError('لم يتم منح إذن الميكروفون، ولا يمكن تسجيل الملاحظة.');
+        return;
+      }
+      // The session has to allow recording before the recorder is prepared,
+      // otherwise the first frames of the note are lost.
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+    } catch (recordError) {
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {
+        /* the session keeps working; only the recording failed */
+      });
+      setError(
+        recordError instanceof Error ? `تعذر بدء التسجيل: ${recordError.message}` : 'تعذر بدء التسجيل.',
+      );
+    }
+  }
+
+  async function stopVoiceNote(): Promise<void> {
+    if (!wordTarget) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const durationMs = recorderState.durationMillis;
+      await recorder.stop();
+      const recordedUri = recorder.uri;
+      // Recording routes audio to the earpiece on iOS, so the session has to be
+      // handed back to plain playback as soon as the microphone is released.
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      if (!recordedUri) {
+        setError('تعذر إنشاء ملف التسجيل.');
+        return;
+      }
+
+      const voiceNotesDirectory = new Directory(Paths.document, VOICE_NOTES_DIRECTORY);
+      if (!voiceNotesDirectory.exists) {
+        voiceNotesDirectory.create({ intermediates: true, idempotent: true });
+      }
+      const destination = new File(
+        voiceNotesDirectory,
+        `voice-note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}${
+          RecordingPresets.HIGH_QUALITY.extension ?? '.m4a'
+        }`,
+      );
+      // Recordings live in the cache directory, which the system is free to
+      // clear; moving the file keeps the note for as long as the app is installed.
+      await new File(recordedUri).move(destination);
+
+      await repository.createVoiceNote({
+        surahNumber: wordTarget.surahNumber,
+        ayahNumber: wordTarget.ayahNumber,
+        wordId: wordTarget.wordId,
+        fileUri: destination.uri,
+        durationMs,
+      });
+      await refreshSavedItems();
+      setMessage('تم حفظ الملاحظة الصوتية.');
+    } catch (recordError) {
+      setError(
+        recordError instanceof Error ? `تعذر حفظ التسجيل: ${recordError.message}` : 'تعذر حفظ التسجيل.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleVoiceNote(note: WordVoiceNote): void {
+    setError(null);
+    if (playingVoiceUri === note.fileUri && voiceStatus.playing) {
+      voicePlayer.pause();
+      setPlayingVoiceUri(null);
+      return;
+    }
+    voicePlayer.replace({ uri: note.fileUri });
+    voicePlayer.play();
+    setPlayingVoiceUri(note.fileUri);
+  }
+
+  async function removeVoiceNote(note: WordVoiceNote): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      if (playingVoiceUri === note.fileUri) {
+        voicePlayer.pause();
+        setPlayingVoiceUri(null);
+      }
+      await repository.deleteVoiceNote(note.id);
+      const file = new File(note.fileUri);
+      if (file.exists) {
+        file.delete();
+      }
+      await refreshSavedItems();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? `تعذر حذف التسجيل: ${deleteError.message}` : 'تعذر حذف التسجيل.',
+      );
     } finally {
       setBusy(false);
     }
@@ -720,6 +888,124 @@ function Toolbar({
 
             {panel === 'notes' && (
               <ScrollView contentContainerStyle={styles.dialogBody} keyboardShouldPersistTaps="handled">
+                {wordTarget && (
+                  <View
+                    style={[
+                      styles.recorderCard,
+                      { backgroundColor: palette.backgroundSelected, borderColor: palette.border },
+                    ]}>
+                    <View style={styles.recorderHead}>
+                      <View
+                        style={[
+                          styles.recorderBadge,
+                          {
+                            backgroundColor: recorderState.isRecording
+                              ? 'rgba(198, 40, 40, 0.14)'
+                              : palette.surface,
+                          },
+                        ]}>
+                        <Ionicons
+                          name="mic"
+                          size={17}
+                          color={recorderState.isRecording ? '#C62828' : palette.primary}
+                        />
+                      </View>
+                      <View style={styles.recorderText}>
+                        <Text style={[styles.recorderTitle, { color: palette.text }]}>
+                          ملاحظة صوتية على الكلمة
+                        </Text>
+                        <Text style={[styles.recorderHint, { color: palette.textSecondary }]}>
+                          {recorderState.isRecording
+                            ? 'جارٍ التسجيل الآن…'
+                            : 'سجّل تلاوتك أو تعليقك ثم احفظه'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={recorderState.isRecording ? 'إيقاف التسجيل' : 'بدء التسجيل'}
+                      disabled={busy}
+                      onPress={() =>
+                        recorderState.isRecording ? void stopVoiceNote() : void startVoiceNote()
+                      }
+                      style={({ pressed }) => [
+                        styles.recordOrb,
+                        {
+                          backgroundColor: recorderState.isRecording ? '#C62828' : palette.primary,
+                        },
+                        busy && styles.disabled,
+                        pressed && styles.pressed,
+                      ]}>
+                      <Ionicons
+                        name={recorderState.isRecording ? 'stop' : 'mic'}
+                        size={30}
+                        color={palette.background}
+                      />
+                    </Pressable>
+                    <Text
+                      style={[
+                        styles.recordTimer,
+                        { color: recorderState.isRecording ? '#C62828' : palette.textSecondary },
+                      ]}>
+                      {recorderState.isRecording
+                        ? formatDuration(recorderState.durationMillis)
+                        : 'اضغط للتسجيل'}
+                    </Text>
+                  </View>
+                )}
+
+                {voiceNotes.length > 0 && (
+                  <View style={styles.savedList}>
+                    <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
+                      تسجيلاتي على هذه الكلمة
+                    </Text>
+                    {voiceNotes.map((voiceNote) => {
+                      const playing = playingVoiceUri === voiceNote.fileUri && voiceStatus.playing;
+                      return (
+                        <View
+                          key={voiceNote.id}
+                          style={[
+                            styles.voiceRow,
+                            { backgroundColor: palette.backgroundSelected, borderColor: palette.border },
+                          ]}>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={playing ? 'إيقاف التسجيل مؤقتًا' : 'تشغيل التسجيل'}
+                            onPress={() => toggleVoiceNote(voiceNote)}
+                            style={({ pressed }) => [
+                              styles.voicePlay,
+                              { backgroundColor: palette.primary },
+                              pressed && styles.pressed,
+                            ]}>
+                            <Ionicons
+                              name={playing ? 'pause' : 'play'}
+                              size={16}
+                              color={palette.background}
+                            />
+                          </Pressable>
+                          <View style={styles.voiceInfo}>
+                            <Text style={[styles.voiceDuration, { color: palette.text }]}>
+                              {formatDuration(voiceNote.durationMs)}
+                            </Text>
+                            <Text style={[styles.voiceMeta, { color: palette.textSecondary }]}>
+                              {playing ? 'قيد التشغيل…' : 'تسجيل صوتي'}
+                            </Text>
+                          </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="حذف التسجيل"
+                            disabled={busy}
+                            onPress={() => void removeVoiceNote(voiceNote)}
+                            style={({ pressed }) => [styles.voiceDelete, pressed && styles.pressed]}>
+                            <Ionicons name="trash-outline" size={16} color="#B24C4C" />
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>ملاحظة مكتوبة</Text>
                 <TextInput
                   accessibilityLabel="نص الملاحظة"
                   multiline
@@ -744,6 +1030,7 @@ function Toolbar({
                     (busy || noteBody.trim().length === 0) && styles.disabled,
                     pressed && styles.pressed,
                   ]}>
+                  <Ionicons name="checkmark-circle-outline" size={17} color={palette.background} />
                   <Text style={[styles.primaryButtonText, { color: palette.background }]}>
                     {busy ? 'جارٍ الحفظ…' : 'حفظ الملاحظة'}
                   </Text>
@@ -756,16 +1043,21 @@ function Toolbar({
                       <View
                         key={note.id}
                         style={[
-                          styles.savedCard,
+                          styles.noteCard,
                           { backgroundColor: palette.backgroundSelected, borderColor: palette.border },
                         ]}>
                         <Text style={[styles.bodyText, { color: palette.text }]}>{note.body}</Text>
-                        <Pressable
-                          accessibilityRole="button"
-                          disabled={busy}
-                          onPress={() => void removeNote(note.id)}>
-                          <Text style={styles.deleteText}>حذف</Text>
-                        </Pressable>
+                        <View style={styles.noteFooter}>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="حذف الملاحظة"
+                            disabled={busy}
+                            onPress={() => void removeNote(note.id)}
+                            style={({ pressed }) => [styles.noteDelete, pressed && styles.pressed]}>
+                            <Ionicons name="trash-outline" size={13} color="#B24C4C" />
+                            <Text style={styles.noteDeleteText}>حذف</Text>
+                          </Pressable>
+                        </View>
                       </View>
                     ))}
                   </View>
@@ -1084,6 +1376,7 @@ function SearchPanel({
   palette: ReturnType<typeof useTheme>;
   onOpenAyah: (surahNumber: number, ayahNumber: number) => void;
 }) {
+  const database = useSQLiteContext();
   const [query, setQuery] = useState(initialQuery);
   const [submitted, setSubmitted] = useState(initialQuery.trim());
   const [reloadKey, setReloadKey] = useState(0);
@@ -1092,6 +1385,21 @@ function SearchPanel({
     results: AyahSearchResult[];
     error: string | null;
   } | null>(null);
+
+  // The directory is shared with the home screen query, and like there it is
+  // read from the on-device index so surah names resolve without the network.
+  const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
+  const surahDirectory = useQuery({
+    queryKey: ['quran', 'surah-directory'],
+    queryFn: () => quranCache.loadSurahDirectory(),
+  });
+  const surahNames = useMemo(() => {
+    const names = new Map<number, string>();
+    for (const surah of surahDirectory.data?.surahs ?? []) {
+      names.set(surah.surahNumber, surah.nameArabic);
+    }
+    return names;
+  }, [surahDirectory.data]);
 
   // The field stays editable, so typing settles before it hits the source.
   useEffect(() => {
@@ -1211,9 +1519,12 @@ function SearchPanel({
                   pressed && styles.pressed,
                 ]}>
                 <View style={styles.resultHead}>
+                  <Text style={[styles.resultSurah, { color: palette.text }]} numberOfLines={1}>
+                    {surahNames.get(result.surahNumber) ?? `سورة ${toArabicNumbers(result.surahNumber)}`}
+                  </Text>
                   <View style={[styles.refChip, { backgroundColor: palette.backgroundSelected }]}>
                     <Text style={[styles.refChipText, { color: palette.primary }]}>
-                      {`${toArabicNumbers(result.surahNumber)}:${toArabicNumbers(result.ayahNumber)}`}
+                      {`آية ${toArabicNumbers(result.ayahNumber)}`}
                     </Text>
                   </View>
                   <Ionicons name="open-outline" size={15} color={palette.textSecondary} />
@@ -1234,6 +1545,13 @@ function SearchPanel({
 
 function toArabicNumbers(value: number): string {
   return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
+}
+
+/** Recording length as `م:ثث`, written with Arabic-Indic digits like the dates above. */
+function formatDuration(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const seconds = toArabicNumbers(totalSeconds % 60).padStart(2, '٠');
+  return `${toArabicNumbers(Math.floor(totalSeconds / 60))}:${seconds}`;
 }
 
 /**
@@ -1386,7 +1704,13 @@ const styles = StyleSheet.create({
   resultHead: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  resultSurah: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'right',
   },
   refChip: {
     borderRadius: 9,
@@ -1517,12 +1841,97 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     textAlignVertical: 'top',
   },
-  primaryButton: {
-    minHeight: 44,
-    borderRadius: 13,
-    paddingHorizontal: Spacing.three,
+  recorderCard: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: Spacing.three,
+  },
+  recorderHead: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    alignSelf: 'stretch',
+  },
+  recorderBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  recorderText: {
+    flex: 1,
+    gap: 1,
+  },
+  recorderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  recorderHint: {
+    fontSize: 12,
+    textAlign: 'right',
+  },
+  recordOrb: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.one,
+  },
+  recordTimer: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  voiceRow: {
+    minHeight: 56,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: Spacing.two,
+  },
+  voicePlay: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceInfo: {
+    flex: 1,
+    gap: 1,
+  },
+  voiceDuration: {
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  voiceMeta: {
+    fontSize: 11,
+    textAlign: 'right',
+  },
+  voiceDelete: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(178, 76, 76, 0.1)',
+  },
+  primaryButton: {
+    minHeight: 44,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    borderRadius: 13,
+    paddingHorizontal: Spacing.three,
   },
   primaryButtonText: {
     fontSize: 14,
@@ -1534,20 +1943,31 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'right',
   },
-  savedCard: {
-    padding: Spacing.two,
-    borderRadius: 12,
+  noteCard: {
+    padding: Spacing.three,
+    borderRadius: 16,
     borderWidth: 1,
-    gap: Spacing.one,
+    gap: Spacing.two,
   },
-  deleteText: {
+  noteFooter: {
+    flexDirection: 'row-reverse',
+  },
+  noteDelete: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 5,
+    borderRadius: 9,
+    backgroundColor: 'rgba(178, 76, 76, 0.1)',
+  },
+  noteDeleteText: {
     color: '#B24C4C',
     fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'right',
+    fontWeight: '700',
   },
   errorText: {
     color: '#B42318',

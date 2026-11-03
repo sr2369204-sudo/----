@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -27,6 +27,13 @@ const filters: { key: RevelationFilter; label: string }[] = [
   { key: 'all', label: 'الكل' },
   { key: 'makkah', label: 'مكية' },
   { key: 'madinah', label: 'مدنية' },
+];
+
+/** Fixed facts about the Mushaf the reader opens, shown as a quick summary. */
+const mushafFacts = [
+  { value: '١١٤', label: 'سورة' },
+  { value: '٣٠', label: 'جزءًا' },
+  { value: '٦٠٤', label: 'صفحة' },
 ];
 
 export default function HomeScreen() {
@@ -55,7 +62,7 @@ export default function HomeScreen() {
   }, [revelationFilter, search, surahDirectory.data]);
 
   return (
-    <SafeAreaView style={StyleSheet.flatten([styles.safeArea, { backgroundColor: colors.background }])}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <FlatList
         data={visibleSurahs}
         keyExtractor={(item) => String(item.surahNumber)}
@@ -65,42 +72,74 @@ export default function HomeScreen() {
             <View style={styles.topBar}>
               <View style={styles.brand}>
                 <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.brandMarkText}>م</Text>
+                  <Text style={[styles.brandMarkText, { color: colors.background }]}>م</Text>
                 </View>
-                <View>
+                <View style={styles.brandText}>
                   <Text style={[styles.brandName, { color: colors.text }]}>مصحف</Text>
-                  <Text style={[styles.brandCaption, { color: colors.textSecondary }]}>رفيق وردك اليومي</Text>
+                  <Text style={[styles.brandCaption, { color: colors.textSecondary }]}>
+                    رفيق وردك اليومي
+                  </Text>
                 </View>
               </View>
               <Link href="/settings" asChild>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="الإعدادات"
-                  style={StyleSheet.flatten([
-                    styles.settingsButton,
+                  style={({ pressed }) => [
+                    styles.iconButton,
                     { backgroundColor: colors.surface, borderColor: colors.border },
-                  ])}>
-                  <Text style={[styles.settingsGlyph, { color: colors.primary }]}>☼</Text>
+                    pressed && styles.pressed,
+                  ]}>
+                  <Ionicons name="settings-outline" size={20} color={colors.primary} />
                 </Pressable>
               </Link>
             </View>
 
-            <View style={[styles.hero, { backgroundColor: colors.primary }]}>
-              <Text style={styles.heroEyebrow}>رحلتك مع القرآن</Text>
-              <Text style={styles.heroTitle}>مساحة هادئة لقراءتك</Text>
-              <Text style={styles.heroBody}>
+            <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text pointerEvents="none" style={[styles.heroWatermark, { color: `${colors.primary}14` }]}>
+                ۞
+              </Text>
+
+              <View style={styles.heroEyebrowRow}>
+                <View style={[styles.heroAccent, { backgroundColor: colors.primary }]} />
+                <Text style={[styles.heroEyebrow, { color: colors.textSecondary }]}>
+                  رحلتك مع القرآن
+                </Text>
+              </View>
+              <Text style={[styles.heroTitle, { color: colors.text }]}>مساحة هادئة لقراءتك</Text>
+              <Text style={[styles.heroBody, { color: colors.textSecondary }]}>
                 تابع من آخر موضع وصلت إليه، أو ابحث عن السورة التي تريدها.
               </Text>
+
               <Link href="/reader" asChild>
                 <Pressable
                   accessibilityRole="button"
-                  style={StyleSheet.flatten([styles.startButton])}>
-                  <Text style={[styles.startButtonText, { color: colors.primary }]}>متابعة القراءة</Text>
-                  <Text style={[styles.startArrow, { color: colors.primary }]}>←</Text>
+                  style={({ pressed }) => [
+                    styles.startButton,
+                    { backgroundColor: colors.primary },
+                    pressed && styles.pressed,
+                  ]}>
+                  <Text style={[styles.startButtonText, { color: colors.background }]}>
+                    متابعة القراءة
+                  </Text>
+                  <Ionicons name="chevron-back" size={16} color={colors.background} />
                 </Pressable>
               </Link>
-              <View pointerEvents="none" style={styles.heroDecoration}>
-                <Text style={styles.heroDecorationText}>۞</Text>
+
+              <View style={[styles.heroStats, { borderTopColor: colors.border }]}>
+                {mushafFacts.map((fact, index) => (
+                  <Fragment key={fact.label}>
+                    {index > 0 && (
+                      <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+                    )}
+                    <View style={styles.stat}>
+                      <Text style={[styles.statValue, { color: colors.text }]}>{fact.value}</Text>
+                      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                        {fact.label}
+                      </Text>
+                    </View>
+                  </Fragment>
+                ))}
               </View>
             </View>
 
@@ -108,12 +147,13 @@ export default function HomeScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="الكلمات المحفوظة"
-                style={StyleSheet.flatten([
+                style={({ pressed }) => [
                   styles.savedWordsCard,
                   { backgroundColor: colors.surface, borderColor: colors.border },
-                ])}>
+                  pressed && styles.pressed,
+                ]}>
                 <View style={[styles.savedWordsIcon, { backgroundColor: colors.backgroundSelected }]}>
-                  <Ionicons name="bookmark" size={20} color={colors.primary} />
+                  <Ionicons name="bookmark" size={19} color={colors.primary} />
                 </View>
                 <View style={styles.savedWordsInfo}>
                   <Text style={[styles.savedWordsTitle, { color: colors.text }]}>الكلمات المحفوظة</Text>
@@ -121,12 +161,12 @@ export default function HomeScreen() {
                     راجع كل الكلمات التي حفظتها من المصحف
                   </Text>
                 </View>
-                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+                <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
               </Pressable>
             </Link>
 
             <View style={styles.sectionHeading}>
-              <View>
+              <View style={styles.sectionHeadingText}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>سور القرآن</Text>
                 <Text style={[styles.sectionCaption, { color: colors.textSecondary }]}>
                   {surahDirectory.data
@@ -134,11 +174,14 @@ export default function HomeScreen() {
                     : 'ابحث عن سورة أو رقمها'}
                 </Text>
               </View>
-              <Text style={[styles.surahTotal, { color: colors.primary }]}>١١٤</Text>
+              <View style={[styles.sectionPill, { backgroundColor: colors.backgroundSelected }]}>
+                <Ionicons name="book-outline" size={13} color={colors.primary} />
+                <Text style={[styles.sectionPillText, { color: colors.primary }]}>١١٤</Text>
+              </View>
             </View>
 
             <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.searchIcon, { color: colors.textSecondary }]}>⌕</Text>
+              <Ionicons name="search" size={18} color={colors.textSecondary} />
               <TextInput
                 accessibilityLabel="ابحث عن سورة"
                 placeholder="ابحث باسم السورة أو رقمها"
@@ -149,6 +192,14 @@ export default function HomeScreen() {
                 returnKeyType="search"
                 style={[styles.searchInput, { color: colors.text }]}
               />
+              {search.length > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="مسح البحث"
+                  onPress={() => setSearch('')}>
+                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                </Pressable>
+              )}
             </View>
 
             <View style={styles.filterRow}>
@@ -160,14 +211,19 @@ export default function HomeScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
                     onPress={() => setRevelationFilter(filter.key)}
-                    style={[
+                    style={({ pressed }) => [
                       styles.filterChip,
                       {
-                        backgroundColor: active ? colors.backgroundSelected : colors.surface,
+                        backgroundColor: active ? colors.primary : colors.surface,
                         borderColor: active ? colors.primary : colors.border,
                       },
+                      pressed && styles.pressed,
                     ]}>
-                    <Text style={[styles.filterText, { color: active ? colors.primary : colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.filterText,
+                        { color: active ? colors.background : colors.textSecondary },
+                      ]}>
                       {filter.label}
                     </Text>
                   </Pressable>
@@ -220,10 +276,11 @@ function SurahRow({ surah }: { surah: QuranSurahSummary }) {
       asChild>
       <Pressable
         accessibilityRole="button"
-        style={StyleSheet.flatten([
+        style={({ pressed }) => [
           styles.surahRow,
           { backgroundColor: colors.surface, borderColor: colors.border },
-        ])}>
+          pressed && styles.pressed,
+        ]}>
         <View style={[styles.surahNumberBadge, { backgroundColor: colors.backgroundSelected }]}>
           <Text style={[styles.surahNumber, { color: colors.primary }]}>
             {toArabicNumbers(surah.surahNumber)}
@@ -231,11 +288,19 @@ function SurahRow({ surah }: { surah: QuranSurahSummary }) {
         </View>
         <View style={styles.surahInfo}>
           <Text style={[styles.surahName, { color: colors.text }]}>{surah.nameArabic}</Text>
-          <Text style={[styles.surahDetails, { color: colors.textSecondary }]}>
-            {surah.revelationPlace === 'makkah' ? 'مكية' : 'مدنية'} · {toArabicNumbers(surah.ayahCount)} آية
-          </Text>
+          <View style={styles.surahMeta}>
+            <Ionicons
+              name={surah.revelationPlace === 'makkah' ? 'location-outline' : 'business-outline'}
+              size={12}
+              color={colors.textSecondary}
+            />
+            <Text style={[styles.surahDetails, { color: colors.textSecondary }]}>
+              {surah.revelationPlace === 'makkah' ? 'مكية' : 'مدنية'} ·{' '}
+              {toArabicNumbers(surah.ayahCount)} آية
+            </Text>
+          </View>
         </View>
-        <Text style={[styles.chevron, { color: colors.textSecondary }]}>‹</Text>
+        <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
       </Pressable>
     </Link>
   );
@@ -251,7 +316,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.five,
   },
   headerContent: {
@@ -265,24 +330,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.two,
   },
   brand: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 10,
   },
+  brandText: {
+    gap: 2,
+  },
   brandMark: {
     width: 44,
     height: 44,
-    borderRadius: 15,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandMarkText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 23,
+    fontWeight: '800',
   },
   brandName: {
     fontSize: 17,
@@ -290,46 +356,51 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   brandCaption: {
-    marginTop: 2,
     fontSize: 12,
     textAlign: 'right',
   },
-  settingsButton: {
+  iconButton: {
     width: 44,
     height: 44,
     borderWidth: 1,
-    borderRadius: 15,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  settingsGlyph: {
-    fontSize: 23,
-    fontWeight: '700',
-  },
   hero: {
     overflow: 'hidden',
-    minHeight: 224,
-    borderRadius: 28,
+    borderWidth: 1,
+    borderRadius: 26,
     padding: Spacing.four,
-    justifyContent: 'center',
     gap: Spacing.two,
   },
+  heroWatermark: {
+    position: 'absolute',
+    top: -26,
+    left: -14,
+    fontSize: 150,
+  },
+  heroEyebrowRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  heroAccent: {
+    width: 22,
+    height: 3,
+    borderRadius: 2,
+  },
   heroEyebrow: {
-    color: 'rgba(255,255,255,0.78)',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'right',
   },
   heroTitle: {
-    maxWidth: '80%',
-    color: '#FFFFFF',
-    fontSize: 25,
+    fontSize: 24,
     fontWeight: '800',
     textAlign: 'right',
   },
   heroBody: {
-    maxWidth: '82%',
-    color: 'rgba(255,255,255,0.82)',
     fontSize: 14,
     lineHeight: 23,
     textAlign: 'right',
@@ -338,32 +409,41 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 10,
+    gap: Spacing.two,
     marginTop: Spacing.one,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingVertical: 11,
     borderRadius: 14,
-    backgroundColor: '#FFFFFF',
   },
   startButtonText: {
     fontSize: 14,
     fontWeight: '800',
   },
-  startArrow: {
-    fontSize: 18,
-    fontWeight: '700',
+  heroStats: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginTop: Spacing.three,
+    paddingTop: Spacing.three,
+    borderTopWidth: 1,
   },
-  heroDecoration: {
-    position: 'absolute',
-    left: -12,
-    bottom: -42,
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
   },
-  heroDecorationText: {
-    color: 'rgba(255,255,255,0.08)',
-    fontSize: 170,
+  statValue: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  statLabel: {
+    fontSize: 11,
+  },
+  statDivider: {
+    width: 1,
+    height: 26,
   },
   savedWordsCard: {
-    minHeight: 72,
+    minHeight: 70,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.three,
@@ -398,31 +478,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: Spacing.one,
   },
+  sectionHeadingText: {
+    gap: 3,
+  },
   sectionTitle: {
     fontSize: 21,
     fontWeight: '800',
     textAlign: 'right',
   },
   sectionCaption: {
-    marginTop: 3,
     fontSize: 13,
     textAlign: 'right',
   },
-  surahTotal: {
-    fontSize: 17,
+  sectionPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  sectionPillText: {
+    fontSize: 13,
     fontWeight: '800',
   },
   searchBox: {
-    minHeight: 54,
+    minHeight: 52,
     flexDirection: 'row-reverse',
     alignItems: 'center',
+    gap: Spacing.two,
     borderWidth: 1,
-    borderRadius: 17,
+    borderRadius: 16,
     paddingHorizontal: Spacing.three,
-  },
-  searchIcon: {
-    fontSize: 24,
-    paddingLeft: Spacing.two,
   },
   searchInput: {
     flex: 1,
@@ -446,7 +533,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   surahRow: {
-    minHeight: 72,
+    minHeight: 70,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.three,
@@ -456,9 +543,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   surahNumberBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -475,13 +562,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'right',
   },
+  surahMeta: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+  },
   surahDetails: {
     fontSize: 12,
     textAlign: 'right',
-  },
-  chevron: {
-    fontSize: 26,
-    lineHeight: 30,
   },
   rowSeparator: {
     height: Spacing.two,
@@ -516,5 +604,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.four,
     fontSize: 14,
     textAlign: 'center',
+  },
+  pressed: {
+    opacity: 0.72,
   },
 });

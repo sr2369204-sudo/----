@@ -7,9 +7,11 @@ import type {
   CreateHighlightInput,
   CreateNoteInput,
   CreateSavedWordInput,
+  CreateWordVoiceNoteInput,
   Highlight,
   Note,
   SavedWord,
+  WordVoiceNote,
 } from '../types';
 
 type AnnotationRow = {
@@ -45,6 +47,16 @@ type SavedWordRow = {
   ayah_number: number;
   word_id: string;
   word_text: string;
+  created_at: string;
+};
+
+type WordVoiceNoteRow = {
+  id: string;
+  surah_number: number;
+  ayah_number: number;
+  word_id: string;
+  file_uri: string;
+  duration_ms: number;
   created_at: string;
 };
 
@@ -275,6 +287,72 @@ export class SqliteAnnotationRepository {
       wordId,
     );
   }
+
+  async listVoiceNotesForWord(
+    surahNumber: number,
+    ayahNumber: number,
+    wordId: string,
+  ): Promise<WordVoiceNote[]> {
+    const rows = await this.database.getAllAsync<WordVoiceNoteRow>(
+      `SELECT * FROM word_voice_notes
+       WHERE surah_number = ? AND ayah_number = ? AND word_id = ?
+       ORDER BY created_at ASC, id ASC`,
+      surahNumber,
+      ayahNumber,
+      wordId,
+    );
+    return rows.map(toWordVoiceNote);
+  }
+
+  async createVoiceNote(input: CreateWordVoiceNoteInput): Promise<WordVoiceNote> {
+    if (
+      !Number.isInteger(input.surahNumber) ||
+      input.surahNumber < 1 ||
+      input.surahNumber > 114 ||
+      !Number.isInteger(input.ayahNumber) ||
+      input.ayahNumber < 1 ||
+      input.wordId.trim().length === 0
+    ) {
+      throw new Error('Voice notes require a valid surah, ayah, and word reference.');
+    }
+    const fileUri = input.fileUri.trim();
+    if (fileUri.length === 0) {
+      throw new Error('Voice notes require the recorded file.');
+    }
+    if (!Number.isFinite(input.durationMs) || input.durationMs < 0) {
+      throw new Error('Voice notes require a non-negative duration.');
+    }
+
+    const id = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    const durationMs = Math.round(input.durationMs);
+    await this.database.runAsync(
+      `INSERT INTO word_voice_notes (
+        id, surah_number, ayah_number, word_id, file_uri, duration_ms, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      input.surahNumber,
+      input.ayahNumber,
+      input.wordId.trim(),
+      fileUri,
+      durationMs,
+      now,
+    );
+
+    return {
+      id,
+      surahNumber: input.surahNumber,
+      ayahNumber: input.ayahNumber,
+      wordId: input.wordId.trim(),
+      fileUri,
+      durationMs,
+      createdAt: now,
+    };
+  }
+
+  async deleteVoiceNote(id: string): Promise<void> {
+    await this.database.runAsync('DELETE FROM word_voice_notes WHERE id = ?', id);
+  }
 }
 
 function validateHighlight(input: CreateHighlightInput): void {
@@ -426,6 +504,18 @@ function toSavedWord(row: SavedWordRow): SavedWord {
     ayahNumber: row.ayah_number,
     wordId: row.word_id,
     wordText: row.word_text,
+    createdAt: row.created_at,
+  };
+}
+
+function toWordVoiceNote(row: WordVoiceNoteRow): WordVoiceNote {
+  return {
+    id: row.id,
+    surahNumber: row.surah_number,
+    ayahNumber: row.ayah_number,
+    wordId: row.word_id,
+    fileUri: row.file_uri,
+    durationMs: row.duration_ms,
     createdAt: row.created_at,
   };
 }

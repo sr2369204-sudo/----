@@ -80,7 +80,7 @@ function AppLayout() {
 
   return (
     <ThemeProvider value={theme}>
-      <StatusBar style={dark ? 'light' : 'dark'} />
+      <StatusBar hidden />
       <Stack screenOptions={{ headerShown: false }} />
     </ThemeProvider>
   );
@@ -101,7 +101,7 @@ export default function RootLayout() {
 
     return (
       <View style={errorStyles.container}>
-        <StatusBar style="light" />
+        <StatusBar hidden />
         <View style={errorStyles.card}>
           <Text style={errorStyles.icon}>⚠️</Text>
           <Text style={errorStyles.title}>
