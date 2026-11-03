@@ -31,6 +31,10 @@ export type SwipePageViewerProps = {
   highlights: Highlight[];
   /** Document ids of the selected elements: one word, or a run of ayahs. */
   selectedElementIds: string[] | null;
+  /** Document id of the ayah being recited right now, if any. */
+  activeAyahId: string | null;
+  /** True while a recitation is running: only its frame is drawn. */
+  recitationFocus: boolean;
   onWordPress: (
     surahNumber: number,
     ayahNumber: number,
@@ -38,6 +42,8 @@ export type SwipePageViewerProps = {
     rect: ElementRect,
   ) => void;
   onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
+  /** Fired when a tap on the page misses every word and ayah. */
+  onBackgroundPress: () => void;
   /**
    * Fired once the strip has finished turning. The page number is the prepared
    * page it turned to, so the host commits exactly what is already on screen
@@ -89,8 +95,11 @@ export function SwipePageViewer({
   isDark,
   highlights,
   selectedElementIds,
+  activeAyahId,
+  recitationFocus,
   onWordPress,
   onAyahPress,
+  onBackgroundPress,
   onPageTurn,
   onInteractionError,
   loadingColor,
@@ -351,9 +360,12 @@ export function SwipePageViewer({
                     isDark={isDark}
                     highlights={isCurrent ? highlights : NO_HIGHLIGHTS}
                     selectedElementIds={isCurrent ? selectedElementIds : null}
+                    activeAyahId={isCurrent ? activeAyahId : null}
+                    recitationFocus={isCurrent ? recitationFocus : false}
                     isInteractive={isCurrent}
                     onWordPress={onWordPress}
                     onAyahPress={onAyahPress}
+                    onBackgroundPress={isCurrent ? onBackgroundPress : undefined}
                     onInteractionError={onInteractionError}
                     onReady={markPageReady}
                     onPanStart={isCurrent ? handleWebPanStart : undefined}
@@ -389,6 +401,10 @@ type PageSlotProps = {
   highlights: Highlight[];
   /** Document ids of the selected elements: one word, or a run of ayahs. */
   selectedElementIds: string[] | null;
+  /** Document id of the ayah being recited right now, if any. */
+  activeAyahId: string | null;
+  /** True while a recitation is running: only its frame is drawn. */
+  recitationFocus: boolean;
   isInteractive: boolean;
   onWordPress: (
     surahNumber: number,
@@ -397,6 +413,7 @@ type PageSlotProps = {
     rect: ElementRect,
   ) => void;
   onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
+  onBackgroundPress?: () => void;
   onInteractionError: (message: string) => void;
   onReady: (pageNumber: number) => void;
   onPanStart?: (x: number, y: number) => void;
@@ -419,9 +436,12 @@ const PageSlot = memo(function PageSlot({
   isDark,
   highlights,
   selectedElementIds,
+  activeAyahId,
+  recitationFocus,
   isInteractive,
   onWordPress,
   onAyahPress,
+  onBackgroundPress,
   onInteractionError,
   onReady,
   onPanStart,
@@ -450,8 +470,11 @@ const PageSlot = memo(function PageSlot({
         isDark={isDark}
         highlights={highlights}
         selectedElementIds={selectedElementIds}
+        activeAyahId={activeAyahId}
+        recitationFocus={recitationFocus}
         onWordPress={onWordPress}
         onAyahPress={onAyahPress}
+        onBackgroundPress={onBackgroundPress}
         onInteractionError={onInteractionError}
         onReady={handleReady}
         onPanStart={onPanStart}

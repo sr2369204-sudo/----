@@ -504,16 +504,6 @@ function Toolbar({
   return (
     <>
       <View style={styles.overlay} pointerEvents="box-none">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="إغلاق شريط الإجراءات"
-          // Stops at the navbar: the controls that were just revealed with the
-          // ring have to stay reachable, so this dismiss layer must not cover
-          // them.
-          style={[StyleSheet.absoluteFill, { top: insets.top + navbarHeight }]}
-          onPress={clearSelection}
-        />
-
         <Animated.View
           style={[styles.ring, { opacity: animation }]}
           pointerEvents="box-none">

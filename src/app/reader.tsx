@@ -32,8 +32,9 @@ import type { Highlight, SavedWord } from '@/features/annotations/types';
 import {
   ContentUnavailableError,
   quranContentProvider,
+  type RecitationTrack,
 } from '@/features/quran/services/content-provider';
-import type { QuranSurahDirectory } from '@/features/quran/types';
+import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
 import {
   RecitationPlayer,
@@ -310,6 +311,69 @@ export default function ReaderScreen() {
 
   const page = pageQuery.data?.page;
 
+  // The ayah the reciter is on right now. It drives the frame drawn around the
+  // ayah on the page as well as the automatic page turn that keeps the reader
+  // in step with the recitation.
+  const activeTrack = recitationQueue?.tracks[recitationStatus.currentIndex] ?? null;
+  const activeAyahId = activeTrack
+    ? `ayah-${activeTrack.surahNumber}-${activeTrack.ayahNumber}`
+    : null;
+
+  // Focus mode: while the recitation is actually playing, the reader keeps the
+  // chrome out of the way and follows the reciting ayah alone.
+  const isReciting = recitationStatus.playing;
+
+  // The page of the recited ayah is almost always already mounted (the reader
+  // follows one ayah at a time through the current page and its two preloaded
+  // neighbours), so it is resolved locally and the source is only asked when
+  // the reader has browsed somewhere further away.
+  const localAyahPage = useMemo(() => {
+    if (!activeTrack) {
+      return null;
+    }
+    return findAyahPage(
+      [page, prevPageQuery.data?.page, nextPageQuery.data?.page],
+      activeTrack.surahNumber,
+      activeTrack.ayahNumber,
+    );
+  }, [activeTrack, nextPageQuery.data, page, prevPageQuery.data]);
+
+  const localAyahPageQuery = useQuery({
+    queryKey: [
+      'quran',
+      'ayah-page',
+      activeTrack?.surahNumber ?? 0,
+      activeTrack?.ayahNumber ?? 0,
+    ],
+    enabled: activeTrack !== null && localAyahPage === null,
+    staleTime: Infinity,
+    queryFn: () => {
+      if (!activeTrack) {
+        throw new Error('لا توجد آية جارية.');
+      }
+      return quranContentProvider.getPageNumberForAyah(
+        activeTrack.surahNumber,
+        activeTrack.ayahNumber,
+      );
+    },
+  });
+
+  const recitationFollowPage = localAyahPage ?? localAyahPageQuery.data ?? null;
+
+  // The reader is pulled to the recited ayah's page only when the ayah itself
+  // changes, never when the page changes, so turning away by hand is allowed
+  // until the reciter moves on.
+  const activePageRef = useRef<number | null>(activePageNumber);
+  useEffect(() => {
+    activePageRef.current = activePageNumber;
+  }, [activePageNumber]);
+  useEffect(() => {
+    if (recitationFollowPage === null || activePageRef.current === recitationFollowPage) {
+      return;
+    }
+    setPageNumber(recitationFollowPage);
+  }, [recitationFollowPage]);
+
   useEffect(() => {
     if (!page || page.pageNumber !== activePageNumber) {
       return;
@@ -508,14 +572,14 @@ export default function ReaderScreen() {
   }, [page, player, selectAyah, selectAyahRange, showNavbar]);
 
   /**
-   * Loads a scope into the recitation playlist and starts it. Shared by the
-   * duration picker and by playing a selected run of ayahs straight from the
-   * word/ayah tools.
+   * Swaps the playlist contents for a freshly built queue and starts it. When
+   * `resumeTrack` is given playback picks up from that same ayah, which is how
+   * a mid-recitation reciter change keeps the reader on the same verse.
    */
-  const runRecitation = useCallback(async (scope: RecitationScope) => {
-    audioRequest.current += 1;
-    player.pause();
-    const queue = await buildRecitationQueue(reciterId, scope);
+  const loadRecitationQueue = useCallback((
+    queue: RecitationQueue,
+    resumeTrack: RecitationTrack | null,
+  ) => {
     recitationPlaylist.pause();
     recitationPlaylist.clear();
     for (const track of queue.tracks) {
@@ -525,9 +589,31 @@ export default function ReaderScreen() {
     }
     recitationPlaylist.loop = repeatMode;
     recitationPlaylist.playbackRate = playbackRate;
-    recitationPlaylist.play();
     setRecitationQueue(queue);
-  }, [playbackRate, player, recitationPlaylist, reciterId, repeatMode]);
+    const resumeIndex = resumeTrack
+      ? queue.tracks.findIndex(
+          (track) =>
+            track.surahNumber === resumeTrack.surahNumber &&
+            track.ayahNumber === resumeTrack.ayahNumber,
+        )
+      : -1;
+    if (resumeIndex > 0) {
+      recitationPlaylist.skipTo(resumeIndex);
+    }
+    recitationPlaylist.play();
+  }, [playbackRate, recitationPlaylist, repeatMode]);
+
+  /**
+   * Loads a scope into the recitation playlist and starts it. Shared by the
+   * duration picker and by playing a selected run of ayahs straight from the
+   * word/ayah tools.
+   */
+  const runRecitation = useCallback(async (scope: RecitationScope) => {
+    audioRequest.current += 1;
+    player.pause();
+    const queue = await buildRecitationQueue(reciterId, scope);
+    loadRecitationQueue(queue, null);
+  }, [loadRecitationQueue, player, reciterId]);
 
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
     if (currentSelection.type === 'range') {
@@ -690,7 +776,33 @@ export default function ReaderScreen() {
         error instanceof Error ? `تعذر حفظ القارئ المختار: ${error.message}` : 'تعذر حفظ القارئ المختار.',
       );
     });
-  }, [database]);
+    // A recitation that is already running is rebuilt with the new reciter and
+    // picks up from the same ayah, so choosing another voice does not restart
+    // the passage from its beginning.
+    if (!recitationQueue) {
+      return;
+    }
+    const resumeTrack = recitationQueue.tracks[recitationStatus.currentIndex] ?? null;
+    setRecitationBusy(true);
+    buildRecitationQueue(nextReciterId, recitationQueue.scope)
+      .then((queue) => {
+        loadRecitationQueue(queue, resumeTrack);
+        setRecitationError(null);
+      })
+      .catch((error: unknown) => {
+        setRecitationError(
+          error instanceof Error ? `تعذر تغيير القارئ: ${error.message}` : 'تعذر تغيير القارئ.',
+        );
+      })
+      .finally(() => {
+        setRecitationBusy(false);
+      });
+  }, [
+    database,
+    loadRecitationQueue,
+    recitationQueue,
+    recitationStatus.currentIndex,
+  ]);
 
   const startRecitation = useCallback(async (scope: RecitationScope) => {
     setRecitationBusy(true);
@@ -717,6 +829,14 @@ export default function ReaderScreen() {
     setRecitationError(null);
     setSelectionBoundPlayer(false);
   }, [recitationPlaylist]);
+
+  // Reported by the page itself when a tap misses every word and ayah. The
+  // tools opened from the page are dismissed here; because the report comes
+  // from inside the page, a tap on another ayah is never read as a dismissal
+  // and can still stretch the selection into a range.
+  const handleBackgroundPress = useCallback(() => {
+    useReaderSelectionStore.getState().clearSelection();
+  }, []);
 
   const handlePageTurn = useCallback((targetPageNumber: number) => {
     // The strip only turns to a page that is mounted and painted, and it has
@@ -820,7 +940,7 @@ export default function ReaderScreen() {
   }, [navigateToPage]);
 
   useEffect(() => {
-    if (!selection && navVisible) {
+    if ((!selection || isReciting) && navVisible) {
       // Avoid calling setState synchronously during render/effect to satisfy
       // strict lint rules, especially since hideNavbar starts an animation.
       const task = requestAnimationFrame(() => {
@@ -828,7 +948,7 @@ export default function ReaderScreen() {
       });
       return () => cancelAnimationFrame(task);
     }
-  }, [selection, navVisible, hideNavbar]);
+  }, [selection, isReciting, navVisible, hideNavbar]);
 
   useEffect(() => {
     // The player opened from the word/ayah tools belongs to the selection, so
@@ -987,8 +1107,11 @@ export default function ReaderScreen() {
           isDark={colors.background === Colors.dark.background}
           highlights={highlights}
           selectedElementIds={selectedElementIds}
+          activeAyahId={activeAyahId}
+          recitationFocus={isReciting}
           onWordPress={onWordPress}
           onAyahPress={onAyahPress}
+          onBackgroundPress={handleBackgroundPress}
           onPageTurn={handlePageTurn}
           onInteractionError={setInteractionError}
           loadingColor={colors.primary}
@@ -1023,6 +1146,9 @@ export default function ReaderScreen() {
           onPrevious={() => recitationPlaylist.previous()}
           onClose={closeRecitation}
           onOpenPicker={() => setScopeDialogOpen(true)}
+          reciters={recitersQuery.data ?? []}
+          reciterId={reciterId}
+          onSelectReciter={selectReciter}
         />
       )}
 
@@ -1038,20 +1164,22 @@ export default function ReaderScreen() {
         <Text accessibilityRole="alert" style={styles.error}>{navigationError}</Text>
       )}
 
-      <SelectionToolbar
-        surahName={currentSurahName}
-        anchorRect={selectionAnchor}
-        navbarHeight={navbarHeight}
-        isBookmarked={isBookmarked}
-        isWordSaved={isWordSaved}
-        isAudioPlaying={playerStatus.playing}
-        onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
-        onToggleBookmark={toggleBookmark}
-        onToggleSaveWord={toggleSaveWord}
-        onPlayAudio={playSelection}
-        onStopAudio={stopAudio}
-        onOpenAyah={openAyah}
-      />
+      {!isReciting && (
+        <SelectionToolbar
+          surahName={currentSurahName}
+          anchorRect={selectionAnchor}
+          navbarHeight={navbarHeight}
+          isBookmarked={isBookmarked}
+          isWordSaved={isWordSaved}
+          isAudioPlaying={playerStatus.playing}
+          onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
+          onToggleBookmark={toggleBookmark}
+          onToggleSaveWord={toggleSaveWord}
+          onPlayAudio={playSelection}
+          onStopAudio={stopAudio}
+          onOpenAyah={openAyah}
+        />
+      )}
 
       <NavigationDialog
         visible={navigationOpen}
@@ -1283,6 +1411,24 @@ function formatContentError(error: unknown): string {
 
 function toArabicNumbers(value: number): string {
   return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
+}
+
+/** Page number of an ayah among the pages already loaded, or null if absent. */
+function findAyahPage(
+  pages: (MushafPage | undefined)[],
+  surahNumber: number,
+  ayahNumber: number,
+): number | null {
+  for (const entry of pages) {
+    if (
+      entry?.ayahs.some(
+        (ayah) => ayah.surahNumber === surahNumber && ayah.ayahNumber === ayahNumber,
+      )
+    ) {
+      return entry.pageNumber;
+    }
+  }
+  return null;
 }
 
 const styles = StyleSheet.create({

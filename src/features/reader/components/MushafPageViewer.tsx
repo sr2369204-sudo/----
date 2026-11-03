@@ -35,6 +35,17 @@ type Props = {
    * selection, so a range of ayahs reads as one continuous frame.
    */
   selectedElementIds: string[] | null;
+  /**
+   * Document id of the ayah being recited right now, drawn as its own frame so
+   * the reader can follow the reciter without opening the word/ayah tools.
+   */
+  activeAyahId?: string | null;
+  /**
+   * True while a recitation is running. The page then draws only the frame that
+   * travels with the reciting ayah: the reader's own selection is kept but left
+   * unpainted, and taps no longer open the word/ayah tools.
+   */
+  recitationFocus?: boolean;
   onWordPress: (
     surahNumber: number,
     ayahNumber: number,
@@ -47,6 +58,12 @@ type Props = {
     rect: ElementRect,
   ) => void;
   onInteractionError: (message: string) => void;
+  /**
+   * Fired when a tap lands on the page without hitting a word or an ayah. The
+   * tools opened from the page are dismissed from here: the page itself reports
+   * the tap, so a tap on another ayah is never mistaken for a dismissal.
+   */
+  onBackgroundPress?: () => void;
   /**
    * Fired once the page has fully laid out: fonts decoded, line fitting applied
    * and the first paint committed. The parent must not reveal a page before this.
@@ -72,6 +89,7 @@ type PageMessage =
       ayahNumber: number;
       rect: ElementRect;
     }
+  | { type: 'background' }
   | { type: 'ready' }
   | { type: 'pan-start'; x: number; y: number }
   | { type: 'pan-update'; dx: number; dy: number }
@@ -87,9 +105,12 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   isDark,
   highlights,
   selectedElementIds,
+  activeAyahId,
+  recitationFocus = false,
   onWordPress,
   onAyahPress,
   onInteractionError,
+  onBackgroundPress,
   onReady,
   onPanStart,
   onPanUpdate,
@@ -145,6 +166,10 @@ export const MushafPageViewer = memo(function MushafPageViewer({
         onPanCancel?.();
         return;
       }
+      if (message.type === 'background') {
+        onBackgroundPress?.();
+        return;
+      }
       const ayahExists = page.ayahs.some(
         (ayah) =>
           ayah.surahNumber === message.surahNumber &&
@@ -175,6 +200,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     [
       handleReady,
       onAyahPress,
+      onBackgroundPress,
       onInteractionError,
       onPanCancel,
       onPanEnd,
@@ -198,6 +224,32 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     }
   }, [selectedElementIds]);
 
+  const syncRecitationAyah = useCallback(() => {
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(
+        { source: 'mushaf-page-parent', activeAyahId },
+        '*',
+      );
+    } else {
+      webViewRef.current?.injectJavaScript(
+        `window.selectRecitationAyah?.(${JSON.stringify(activeAyahId)}); true;`,
+      );
+    }
+  }, [activeAyahId]);
+
+  const syncRecitationFocus = useCallback(() => {
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(
+        { source: 'mushaf-page-parent', recitationFocus },
+        '*',
+      );
+    } else {
+      webViewRef.current?.injectJavaScript(
+        `window.setRecitationFocus?.(${JSON.stringify(recitationFocus)}); true;`,
+      );
+    }
+  }, [recitationFocus]);
+
   const syncHighlights = useCallback((entries: HighlightElementMap) => {
     if (Platform.OS === 'web') {
       iframeRef.current?.contentWindow?.postMessage(
@@ -213,8 +265,16 @@ export const MushafPageViewer = memo(function MushafPageViewer({
 
   const syncOverlays = useCallback(() => {
     syncSelectedElement();
+    syncRecitationAyah();
+    syncRecitationFocus();
     syncHighlights(highlightEntries);
-  }, [highlightEntries, syncHighlights, syncSelectedElement]);
+  }, [
+    highlightEntries,
+    syncHighlights,
+    syncRecitationAyah,
+    syncRecitationFocus,
+    syncSelectedElement,
+  ]);
 
   useEffect(() => {
     syncHighlights(highlightEntries);
@@ -241,6 +301,10 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   );
 
   useEffect(syncSelectedElement, [syncSelectedElement]);
+
+  useEffect(syncRecitationAyah, [syncRecitationAyah]);
+
+  useEffect(syncRecitationFocus, [syncRecitationFocus]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') {
@@ -621,17 +685,23 @@ body {
 /* The ayah selection is drawn as an overlay box, never as a class on the
    words themselves: the frame then reads as one continuous rectangle around a
    whole ayah (or a run of ayahs) instead of a per-word highlight. */
-#selection-layer {
+#selection-layer,
+#recitation-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 6;
 }
-.selection-box {
+.selection-box,
+.recitation-box {
   position: absolute;
   border: 2px solid ${isDark ? 'rgba(217, 169, 74, 0.95)' : 'rgba(163, 122, 38, 0.9)'};
   background: ${isDark ? 'rgba(217, 169, 74, 0.14)' : 'rgba(217, 169, 74, 0.16)'};
   border-radius: 8px;
+}
+.recitation-box {
+  border-color: ${isDark ? 'rgba(122, 180, 235, 0.95)' : 'rgba(41, 98, 158, 0.85)'};
+  background: ${isDark ? 'rgba(122, 180, 235, 0.16)' : 'rgba(41, 98, 158, 0.12)'};
 }
 .hl-bg {
   border-radius: 4px;
@@ -686,7 +756,7 @@ body {
     <span class="header-ornament">۞</span>
     <span class="header-label" id="header-juz-label">${juzHeaderLabel}</span>
   </header>
-  <section class="lines" id="mushaf-lines">${linesHtml}<div id="selection-layer"></div></section>
+  <section class="lines" id="mushaf-lines">${linesHtml}<div id="selection-layer"></div><div id="recitation-layer"></div></section>
   <footer class="page-footer">
     <div class="page-number-ornament">
       <span class="page-num-bracket">۞</span>
@@ -726,44 +796,52 @@ function unionRect(elements) {
 let selectedIds = [];
 
 /**
- * Applies the current selection to the page.
- *
- * A word keeps an inline outline. An ayah — or a run of ayahs — is drawn as a
- * frame on the overlay layer instead of outlining every word, so the selection
- * reads as one box around the ayah rather than a highlight smeared over its
- * text.
+ * True while a recitation is running. The reader's own frames are then held
+ * back so the only box on the page is the one travelling with the reciting
+ * ayah, which is what makes the recitation readable without any chrome.
  */
-function selectMushafElements(ids) {
-  selectedIds = Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
-  document.querySelectorAll(".selected").forEach((element) => {
-    element.classList.remove("selected");
-  });
-  const layer = document.getElementById("selection-layer");
-  if (layer) layer.innerHTML = "";
-  if (selectedIds.length === 0) return;
+let recitationFocus = false;
 
-  const boxes = [];
-  for (const id of selectedIds) {
+/**
+ * Frames to draw for a set of ayah ids, one rectangle per printed line.
+ *
+ * The words of one ayah are grouped by the line they were printed on, so an
+ * ayah that runs over more than one line is boxed line by line. A single
+ * rectangle around the whole ayah would be tall enough to swallow the ayahs
+ * printed beside it on the lines it crosses.
+ */
+function ayahFrameRects(ids) {
+  const byLine = new Map();
+  for (const id of ids) {
     const element = document.getElementById(id);
-    if (!element) continue;
-    if (element.classList.contains("ayah-marker")) {
-      const surah = element.dataset.surah;
-      const ayah = element.dataset.ayah;
-      const members = document.querySelectorAll(
-        '[data-surah="' + surah + '"][data-ayah="' + ayah + '"]',
-      );
-      const rect = unionRect([...members]);
-      if (rect) boxes.push(rect);
-    } else {
-      element.classList.add("selected");
-    }
+    if (!element || !element.classList.contains("ayah-marker")) continue;
+    const members = document.querySelectorAll(
+      '[data-surah="' + element.dataset.surah + '"][data-ayah="' + element.dataset.ayah + '"]',
+    );
+    members.forEach((member) => {
+      const line = member.closest(".line");
+      if (!line) return;
+      if (!byLine.has(line)) byLine.set(line, []);
+      byLine.get(line).push(member);
+    });
   }
-  if (!layer || boxes.length === 0) return;
+  const rects = [];
+  for (const members of byLine.values()) {
+    const rect = unionRect(members);
+    if (rect) rects.push(rect);
+  }
+  return rects;
+}
 
+/** Paints the given rectangles onto an overlay layer, replacing its content. */
+function renderFrameBoxes(layer, rects, className) {
+  if (!layer) return;
+  layer.innerHTML = "";
+  if (rects.length === 0) return;
   const layerRect = layer.getBoundingClientRect();
-  for (const rect of boxes) {
+  for (const rect of rects) {
     const box = document.createElement("div");
-    box.className = "selection-box";
+    box.className = className;
     box.style.left = rect.left - layerRect.left - SELECTION_BOX_PADDING + "px";
     box.style.top = rect.top - layerRect.top - SELECTION_BOX_PADDING + "px";
     box.style.width = rect.width + SELECTION_BOX_PADDING * 2 + "px";
@@ -771,7 +849,63 @@ function selectMushafElements(ids) {
     layer.appendChild(box);
   }
 }
+
+/**
+ * Applies the current selection to the page.
+ *
+ * A word keeps an inline outline. An ayah — or a run of ayahs — is drawn as a
+ * frame on the overlay layer instead of outlining every word, so the selection
+ * reads as a box around the ayah rather than a highlight smeared over its text.
+ */
+function selectMushafElements(ids) {
+  selectedIds = Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
+  document.querySelectorAll(".selected").forEach((element) => {
+    element.classList.remove("selected");
+  });
+  const ayahIds = [];
+  // While the recitation runs the selection is kept but never painted: the
+  // page shows the reciting ayah's frame alone, so nothing competes with it.
+  if (!recitationFocus) {
+    for (const id of selectedIds) {
+      const element = document.getElementById(id);
+      if (!element) continue;
+      if (element.classList.contains("ayah-marker")) {
+        ayahIds.push(id);
+      } else {
+        element.classList.add("selected");
+      }
+    }
+  }
+  renderFrameBoxes(
+    document.getElementById("selection-layer"),
+    recitationFocus ? [] : ayahFrameRects(ayahIds),
+    "selection-box",
+  );
+}
 window.selectMushafElements = selectMushafElements;
+
+/** Turns the recitation focus on or off and repaints the frames accordingly. */
+function setRecitationFocus(value) {
+  recitationFocus = value === true;
+  selectMushafElements(selectedIds);
+}
+window.setRecitationFocus = setRecitationFocus;
+
+/**
+ * Frame for the ayah being recited right now, drawn on its own layer so it is
+ * kept apart from the reader's selection and never opens the word/ayah tools.
+ */
+let recitationAyahId = null;
+
+function selectRecitationAyah(id) {
+  recitationAyahId = typeof id === "string" ? id : null;
+  renderFrameBoxes(
+    document.getElementById("recitation-layer"),
+    recitationAyahId ? ayahFrameRects([recitationAyahId]) : [],
+    "recitation-box",
+  );
+}
+window.selectRecitationAyah = selectRecitationAyah;
 
 /**
  * Applies saved highlights without touching the document markup.
@@ -937,6 +1071,7 @@ function preparePage() {
   // The frames are measured against the final metrics of the page, so they are
   // redrawn once the fit has settled instead of tracking the intermediate ones.
   selectMushafElements(selectedIds);
+  selectRecitationAyah(recitationAyahId);
   signalPageReady();
 }
 
@@ -961,6 +1096,7 @@ window.addEventListener("resize", () => {
     if (pageElement) pageElement.classList.remove("is-ready");
     fitMushafText();
     selectMushafElements(selectedIds);
+    selectRecitationAyah(recitationAyahId);
     if (pageElement) pageElement.classList.add("is-ready");
   });
 });
@@ -1040,8 +1176,19 @@ document.addEventListener("click", (event) => {
     swallowClick = false;
     return;
   }
+  // While the recitation runs the page is in focus mode: a tap changes nothing
+  // on the page, so the only frame in view stays the one following the reciter.
+  if (recitationFocus) {
+    return;
+  }
   const button = event.target.closest("button[data-kind]");
-  if (!button) return;
+  if (!button) {
+    // Nothing on the page was hit: the reader is dismissing the open tools. It
+    // has to be reported from inside the page, because a dismiss layer drawn
+    // over the page in the host would swallow the taps meant for other ayahs.
+    postPageMessage({ type: "background" });
+    return;
+  }
   const rect = button.getBoundingClientRect();
   const message = {
     type: button.dataset.kind,
@@ -1063,6 +1210,12 @@ window.addEventListener("message", (event) => {
   if (event.data && event.data.source === "mushaf-page-parent") {
     if (event.data.selectedElementIds !== undefined) {
       selectMushafElements(event.data.selectedElementIds);
+    }
+    if (event.data.activeAyahId !== undefined) {
+      selectRecitationAyah(event.data.activeAyahId);
+    }
+    if (event.data.recitationFocus !== undefined) {
+      setRecitationFocus(event.data.recitationFocus);
     }
     if (event.data.highlights !== undefined) {
       applyMushafHighlights(event.data.highlights);
