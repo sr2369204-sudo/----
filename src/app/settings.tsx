@@ -1,12 +1,36 @@
 import { Link } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { Spacing } from '@/constants/theme';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
+import type { QuranSurahSummary } from '@/features/quran/types';
+import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
+import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
+import {
+  OfflineLibrary,
+  type OfflineStatus,
+} from '@/features/reader/services/offline-library';
+import { useOfflineDownloadStore } from '@/features/reader/state/offline-download-store';
 import {
   useReaderPreferencesStore,
   type ThemePreference,
@@ -44,10 +68,34 @@ export default function SettingsScreen() {
   const setPreferences = useReaderPreferencesStore((state) => state.setPreferences);
   const setPreferenceError = useReaderPreferencesStore((state) => state.setError);
   const [saving, setSaving] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [statusRevision, setStatusRevision] = useState(0);
+
+  const offlineRevision = useOfflineDownloadStore((state) => state.revision);
+  const offlineRunning = useOfflineDownloadStore((state) => state.running);
+  const offlineCancelling = useOfflineDownloadStore((state) => state.cancelling);
+  const offlineDone = useOfflineDownloadStore((state) => state.done);
+  const offlineTotal = useOfflineDownloadStore((state) => state.total);
+  const offlineError = useOfflineDownloadStore((state) => state.error);
+  const startDownload = useOfflineDownloadStore((state) => state.start);
+  const cancelDownload = useOfflineDownloadStore((state) => state.cancel);
+
+  const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
   const recitersQuery = useQuery({
     queryKey: ['quran', 'reciters'],
     queryFn: () => quranContentProvider.getReciters(),
     staleTime: 24 * 60 * 60 * 1000,
+  });
+  const directoryQuery = useQuery({
+    queryKey: ['quran', 'offline-directory'],
+    queryFn: () => quranCache.loadSurahDirectory(),
+    staleTime: Infinity,
+  });
+  const offlineStatusQuery = useQuery({
+    queryKey: ['offline', 'status', offlineRevision, statusRevision],
+    queryFn: () => new OfflineLibrary(database).getStatus(),
+    staleTime: 0,
   });
 
   async function savePreference(key: 'theme' | 'reciterId', value: string): Promise<void> {
@@ -74,6 +122,21 @@ export default function SettingsScreen() {
       setSaving(false);
     }
   }
+
+  async function deleteStoredPages(): Promise<void> {
+    setConfirmingDelete(false);
+    try {
+      await new OfflineLibrary(database).deleteAll();
+      setStatusRevision((revision) => revision + 1);
+    } catch (error) {
+      setPreferenceError(
+        error instanceof Error ? `تعذر حذف الصفحات المحفوظة: ${error.message}` : 'تعذر حذف الصفحات المحفوظة.',
+      );
+    }
+  }
+
+  const status = offlineStatusQuery.data;
+  const progress = offlineTotal > 0 ? offlineDone / offlineTotal : 0;
 
   return (
     <SafeAreaView style={StyleSheet.flatten([styles.safeArea, { backgroundColor: colors.background }])}>
@@ -120,6 +183,134 @@ export default function SettingsScreen() {
               );
             })}
           </View>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIcon, { backgroundColor: colors.backgroundSelected }]}>
+              <Ionicons name="cloud-download-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.sectionHeading}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>القراءة بلا إنترنت</Text>
+              <Text style={[styles.body, { color: colors.textSecondary }]}>
+                احفظ السور التي تريدها على الجهاز لتقرأها لاحقًا دون اتصال بالإنترنت.
+              </Text>
+            </View>
+          </View>
+
+          {offlineStatusQuery.isPending ? (
+            <View style={styles.inlineStatus}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.body, { color: colors.textSecondary }]}>جارٍ حساب المحفوظ…</Text>
+            </View>
+          ) : offlineStatusQuery.error ? (
+            <Text style={[styles.body, { color: colors.textSecondary }]}>
+              تعذر حساب الصفحات المحفوظة.
+            </Text>
+          ) : status ? (
+            <View style={styles.statRow}>
+              <View
+                style={[
+                  styles.statTile,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                ]}>
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {toArabicNumbers(status.cachedPages)}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                  {`من ${toArabicNumbers(status.totalPages)} صفحة`}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.statTile,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                ]}>
+                <Text style={[styles.statValue, { color: colors.text }]}>
+                  {toArabicNumbers(status.completeSurahs)}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>سورة كاملة</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {offlineRunning ? (
+            <View style={styles.progressBlock}>
+              <View style={styles.progressHeader}>
+                <View style={styles.progressTitleRow}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={[styles.progressTitle, { color: colors.text }]}>
+                    {`تحميل ${toArabicNumbers(offlineDone)} من ${toArabicNumbers(offlineTotal)} صفحة`}
+                  </Text>
+                </View>
+                <Text style={[styles.progressPercent, { color: colors.primary }]}>
+                  {`${toArabicNumbers(Math.round(progress * 100))}٪`}
+                </Text>
+              </View>
+              <DownloadProgressBar progress={progress} colors={colors} />
+              <Text style={[styles.progressHint, { color: colors.textSecondary }]}>
+                {`متبقٍ ${toArabicNumbers(Math.max(offlineTotal - offlineDone, 0))} صفحة · يمكنك التنقل في التطبيق أثناء التحميل`}
+              </Text>
+            </View>
+          ) : null}
+
+          {offlineRunning ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={offlineCancelling}
+              onPress={cancelDownload}
+              style={[styles.wideButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Ionicons name="stop-circle-outline" size={18} color={colors.text} />
+              <Text style={[styles.primaryButtonText, { color: colors.text }]}>
+                {offlineCancelling ? 'جارٍ الإيقاف…' : 'إيقاف التحميل'}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.offlineActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void startDownload(database, 'all')}
+                style={[styles.primaryButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                <Ionicons name="cloud-download" size={18} color={colors.background} />
+                <Text style={[styles.primaryButtonText, { color: colors.background }]}>تحميل الكل</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setPickerOpen(true)}
+                style={[styles.outlineButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Ionicons name="options-outline" size={18} color={colors.text} />
+                <Text style={[styles.primaryButtonText, { color: colors.text }]}>اختيار السور</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {!offlineRunning && confirmingDelete ? (
+            <View style={styles.confirmRow}>
+              <Text style={[styles.body, { color: colors.textSecondary, flex: 1 }]}>
+                حذف كل الصفحات المحفوظة؟
+              </Text>
+              <Pressable accessibilityRole="button" onPress={() => setConfirmingDelete(false)}>
+                <Text style={[styles.linkText, { color: colors.primary }]}>إلغاء</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => void deleteStoredPages()}>
+                <Text style={[styles.linkText, { color: colors.primary }]}>حذف</Text>
+              </Pressable>
+            </View>
+          ) : !offlineRunning && status && status.cachedPages > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setConfirmingDelete(true)}
+              style={styles.deleteRow}>
+              <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.hintText, { color: colors.textSecondary }]}>
+                حذف الصفحات المحفوظة
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {offlineError && (
+            <Text accessibilityRole="alert" style={styles.error}>{offlineError}</Text>
+          )}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -177,7 +368,362 @@ export default function SettingsScreen() {
           </Text>
         )}
       </ScrollView>
+
+      <SurahDownloadPicker
+        visible={pickerOpen}
+        colors={colors}
+        surahs={directoryQuery.data?.surahs}
+        loading={directoryQuery.isPending}
+        failed={Boolean(directoryQuery.error)}
+        statuses={status?.surahStatuses}
+        running={offlineRunning}
+        onRetry={() => void directoryQuery.refetch()}
+        onDownload={(surahNumbers) => void startDownload(database, surahNumbers)}
+        onDownloadAll={() => void startDownload(database, 'all')}
+        onClose={() => setPickerOpen(false)}
+      />
     </SafeAreaView>
+  );
+}
+
+type SurahFilter = 'all' | 'missing' | 'saved';
+
+const surahFilters: { value: SurahFilter; label: string }[] = [
+  { value: 'all', label: 'الكل' },
+  { value: 'missing', label: 'غير المحفوظة' },
+  { value: 'saved', label: 'المحفوظة' },
+];
+
+function SurahDownloadPicker({
+  visible,
+  colors,
+  surahs,
+  loading,
+  failed,
+  statuses,
+  running,
+  onRetry,
+  onDownload,
+  onDownloadAll,
+  onClose,
+}: {
+  visible: boolean;
+  colors: ReturnType<typeof useTheme>;
+  surahs: QuranSurahSummary[] | undefined;
+  loading: boolean;
+  failed: boolean;
+  statuses: OfflineStatus['surahStatuses'] | undefined;
+  running: boolean;
+  onRetry: () => void;
+  onDownload: (surahNumbers: number[]) => void;
+  onDownloadAll: () => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<SurahFilter>('all');
+  const [selected, setSelected] = useState<number[]>([]);
+
+  /** Clears the selection so the sheet always opens fresh. */
+  function closePicker(): void {
+    setQuery('');
+    setFilter('all');
+    setSelected([]);
+    onClose();
+  }
+
+  const normalizedQuery = normalizeSurahSearch(query);
+  const visibleSurahs = useMemo(() => {
+    if (!surahs) {
+      return [];
+    }
+    return surahs.filter((surah) => {
+      const surahStatus = statuses?.[surah.surahNumber] ?? 'none';
+      if (filter === 'missing' && surahStatus === 'complete') {
+        return false;
+      }
+      if (filter === 'saved' && surahStatus !== 'complete') {
+        return false;
+      }
+      return (
+        normalizedQuery.length === 0 ||
+        normalizeSurahSearch(surah.nameArabic).includes(normalizedQuery) ||
+        String(surah.surahNumber).includes(normalizedQuery)
+      );
+    });
+  }, [filter, normalizedQuery, statuses, surahs]);
+
+  const allVisibleSelected =
+    visibleSurahs.length > 0 &&
+    visibleSurahs.every((surah) => selected.includes(surah.surahNumber));
+
+  function toggle(surahNumber: number): void {
+    setSelected((current) =>
+      current.includes(surahNumber)
+        ? current.filter((item) => item !== surahNumber)
+        : [...current, surahNumber],
+    );
+  }
+
+  function toggleAllVisible(): void {
+    setSelected((current) => {
+      if (allVisibleSelected) {
+        return current.filter(
+          (item) => !visibleSurahs.some((surah) => surah.surahNumber === item),
+        );
+      }
+      return [
+        ...new Set([...current, ...visibleSurahs.map((surah) => surah.surahNumber)]),
+      ];
+    });
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={closePicker}>
+      <View style={styles.pickerOverlay}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="إغلاق"
+          style={StyleSheet.absoluteFill}
+          onPress={closePicker}
+        />
+        <View style={[styles.pickerDialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.pickerHandle, { backgroundColor: colors.border }]} />
+
+          <View style={styles.pickerHeader}>
+            <View style={styles.sectionHeading}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>اختيار السور</Text>
+              <Text style={[styles.pickerCaption, { color: colors.textSecondary }]}>
+                {`المحدد ${toArabicNumbers(selected.length)} · اضغط السورة لتحديدها`}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق"
+              onPress={closePicker}
+              style={[styles.iconButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Ionicons name="close" size={18} color={colors.text} />
+            </Pressable>
+          </View>
+
+          {loading ? (
+            <View style={styles.pickerStatus}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.body, { color: colors.textSecondary }]}>جارٍ تحميل السور…</Text>
+            </View>
+          ) : failed || !surahs ? (
+            <Pressable accessibilityRole="button" onPress={onRetry} style={styles.pickerStatus}>
+              <Text style={[styles.linkText, { color: colors.primary }]}>
+                تعذر تحميل السور. اضغط لإعادة المحاولة.
+              </Text>
+            </Pressable>
+          ) : (
+            <>
+              <View style={[styles.searchField, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Ionicons name="search" size={16} color={colors.textSecondary} />
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="ابحث باسم السورة أو رقمها"
+                  placeholderTextColor={colors.textSecondary}
+                  returnKeyType="search"
+                  style={[styles.searchInput, { color: colors.text }]}
+                />
+                {query.length > 0 && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="مسح البحث"
+                    onPress={() => setQuery('')}>
+                    <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                  </Pressable>
+                )}
+              </View>
+
+              <View style={styles.filterRow}>
+                {surahFilters.map((option) => {
+                  const active = filter === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => setFilter(option.value)}
+                      style={[
+                        styles.filterChip,
+                        {
+                          backgroundColor: active ? colors.backgroundSelected : colors.background,
+                          borderColor: active ? colors.primary : colors.border,
+                        },
+                      ]}>
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          { color: active ? colors.primary : colors.textSecondary },
+                        ]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={toggleAllVisible}
+                  style={styles.selectAllButton}>
+                  <Text style={[styles.linkText, { color: colors.primary }]}>
+                    {allVisibleSelected ? 'إلغاء التحديد' : 'تحديد الكل'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <FlatList
+                data={visibleSurahs}
+                keyExtractor={(item) => String(item.surahNumber)}
+                style={styles.pickerListViewport}
+                contentContainerStyle={styles.pickerList}
+                initialNumToRender={12}
+                maxToRenderPerBatch={12}
+                windowSize={7}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <Text style={[styles.emptyList, { color: colors.textSecondary }]}>
+                    لا توجد سورة مطابقة.
+                  </Text>
+                }
+                renderItem={({ item }) => {
+                  const surahStatus = statuses?.[item.surahNumber] ?? 'none';
+                  const checked = selected.includes(item.surahNumber);
+                  return (
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked, disabled: running }}
+                      accessibilityLabel={item.nameArabic}
+                      disabled={running}
+                      onPress={() => toggle(item.surahNumber)}
+                      style={[
+                        styles.pickerRow,
+                        {
+                          backgroundColor: checked ? colors.backgroundSelected : 'transparent',
+                          borderColor: colors.border,
+                        },
+                      ]}>
+                      <View
+                        style={[
+                          styles.checkBox,
+                          {
+                            borderColor: checked ? colors.primary : colors.border,
+                            backgroundColor: checked ? colors.primary : 'transparent',
+                          },
+                        ]}>
+                        {checked && (
+                          <Ionicons name="checkmark" size={14} color={colors.background} />
+                        )}
+                      </View>
+                      <View
+                        style={[
+                          styles.surahBadge,
+                          { backgroundColor: colors.background, borderColor: colors.border },
+                        ]}>
+                        <Text style={[styles.surahBadgeText, { color: colors.primary }]}>
+                          {toArabicNumbers(item.surahNumber)}
+                        </Text>
+                      </View>
+                      <View style={styles.pickerInfo}>
+                        <Text style={[styles.pickerName, { color: colors.text }]}>
+                          {item.nameArabic}
+                        </Text>
+                        <Text style={[styles.pickerMeta, { color: colors.textSecondary }]}>
+                          {`${toArabicNumbers(item.ayahCount)} آية`}
+                        </Text>
+                      </View>
+                      {surahStatus === 'complete' && (
+                        <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                      )}
+                      {surahStatus === 'partial' && (
+                        <Ionicons name="contrast-outline" size={20} color={colors.textSecondary} />
+                      )}
+                    </Pressable>
+                  );
+                }}
+              />
+
+              <View style={styles.pickerFooter}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={running || selected.length === 0}
+                  onPress={() => {
+                    onDownload(selected);
+                    closePicker();
+                  }}
+                  style={[
+                    styles.primaryButton,
+                    {
+                      backgroundColor: selected.length === 0 ? colors.background : colors.primary,
+                      borderColor: selected.length === 0 ? colors.border : colors.primary,
+                    },
+                  ]}>
+                  <Ionicons
+                    name="download-outline"
+                    size={18}
+                    color={selected.length === 0 ? colors.textSecondary : colors.background}
+                  />
+                  <Text
+                    style={[
+                      styles.primaryButtonText,
+                      { color: selected.length === 0 ? colors.textSecondary : colors.background },
+                    ]}>
+                    {selected.length === 0
+                      ? 'اختر سورًا'
+                      : `تحميل المحدد (${toArabicNumbers(selected.length)})`}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={running}
+                  onPress={() => {
+                    onDownloadAll();
+                    closePicker();
+                  }}
+                  style={[styles.outlineButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Text style={[styles.primaryButtonText, { color: colors.text }]}>تحميل الكل</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * The bar tracks the stored pages. Its width is animated from the measured
+ * track instead of a percentage string so the growth stays smooth while the
+ * download store reports a new page every few hundred milliseconds.
+ */
+function DownloadProgressBar({
+  progress,
+  colors,
+}: {
+  progress: number;
+  colors: ReturnType<typeof useTheme>;
+}) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const width = useSharedValue(0);
+
+  useEffect(() => {
+    const ratio = Math.min(Math.max(progress, 0), 1);
+    width.value = withTiming(trackWidth * ratio, { duration: 350 });
+  }, [progress, trackWidth, width]);
+
+  const fillStyle = useAnimatedStyle(() => ({ width: width.value }));
+
+  return (
+    <View
+      onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+      style={[styles.progressTrack, { backgroundColor: colors.background, borderColor: colors.border }]}>
+      <Animated.View
+        style={[styles.progressFill, { backgroundColor: colors.primary }, fillStyle]}
+      />
+    </View>
   );
 }
 
@@ -186,6 +732,10 @@ function parseThemePreference(value: string): ThemePreference {
     throw new Error('إعداد المظهر غير صالح.');
   }
   return value;
+}
+
+function toArabicNumbers(value: number): string {
+  return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
 }
 
 const styles = StyleSheet.create({
@@ -233,6 +783,151 @@ const styles = StyleSheet.create({
   body: {
     fontSize: 14,
     lineHeight: 23,
+    textAlign: 'right',
+  },
+  sectionHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  sectionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionHeading: {
+    flex: 1,
+    gap: 3,
+  },
+  inlineStatus: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  statRow: {
+    flexDirection: 'row-reverse',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  statTile: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+    borderWidth: 1,
+    borderRadius: 15,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.two,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  statLabel: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  progressBlock: {
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  progressTrack: {
+    height: 10,
+    borderWidth: 1,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  progressHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressTitleRow: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  progressTitle: {
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  progressPercent: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  progressHint: {
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  wideButton: {
+    minHeight: 46,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: Spacing.three,
+  },
+  outlineButton: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: Spacing.three,
+  },
+  deleteRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: Spacing.two,
+  },
+  hintText: {
+    fontSize: 13,
+    textAlign: 'right',
+  },
+  offlineActions: {
+    flexDirection: 'row-reverse',
+    gap: Spacing.two,
+  },
+  primaryButton: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: Spacing.three,
+  },
+  primaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  confirmRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  linkText: {
+    fontSize: 14,
+    fontWeight: '700',
     textAlign: 'right',
   },
   optionRow: {
@@ -285,5 +980,146 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     textAlign: 'right',
+  },
+  pickerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.three,
+    backgroundColor: 'rgba(0, 0, 0, 0.38)',
+  },
+  pickerDialog: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '85%',
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: Spacing.three,
+    gap: Spacing.three,
+  },
+  pickerHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  pickerHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginTop: -Spacing.one,
+  },
+  pickerCaption: {
+    fontSize: 12,
+    textAlign: 'right',
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchField: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: Spacing.three,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    textAlign: 'right',
+    paddingVertical: 0,
+  },
+  filterRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 6,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  selectAllButton: {
+    marginStart: 'auto',
+    paddingVertical: 6,
+  },
+  pickerStatus: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.three,
+  },
+  pickerListViewport: {
+    flexGrow: 1,
+  },
+  pickerList: {
+    gap: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  emptyList: {
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: Spacing.four,
+  },
+  pickerRow: {
+    minHeight: 56,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  checkBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  surahBadge: {
+    minWidth: 34,
+    height: 30,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  surahBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  pickerInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  pickerName: {
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  pickerMeta: {
+    fontSize: 12,
+    textAlign: 'right',
+  },
+  pickerFooter: {
+    flexDirection: 'row-reverse',
+    gap: Spacing.two,
   },
 });

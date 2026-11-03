@@ -10,6 +10,12 @@ import type {
 
 export type ContentUnavailableReason = 'network' | 'invalid-data' | 'server';
 
+/** A single Arabic gloss of one Quranic word, keyed by the word as printed. */
+export type AyahWordMeaning = {
+  word: string;
+  meaning: string;
+};
+
 export class ContentUnavailableError extends Error {
   readonly reason: ContentUnavailableReason;
 
@@ -36,12 +42,27 @@ export interface QuranContentProvider {
   getVerseKeysForPage(pageNumber: number): Promise<string[]>;
   getVerseKeysForJuz(juzNumber: number): Promise<string[]>;
   getAyahTafsir(surahNumber: number, ayahNumber: number): Promise<string>;
+  getAyahWordMeanings(surahNumber: number, ayahNumber: number): Promise<AyahWordMeaning[]>;
   searchAyahs(query: string, limit?: number): Promise<AyahSearchResult[]>;
 }
 
 const API_BASE_URL = 'https://api.quran.com/api/v4';
+/**
+ * The same source also serves the `/qdc` endpoints. Its paginated
+ * `/verses/by_page` window is the printed page itself, while the plain API
+ * returns a window shifted by one verse on many pages, which hands the first
+ * verse of the page the line numbers of the previous one.
+ */
+const QDC_API_BASE_URL = 'https://api.qurancdn.com/api/qdc';
 const AYAH_AUDIO_BASE_URL = 'https://verses.quran.com/';
 const WORD_AUDIO_BASE_URL = 'https://audio.qurancdn.com/';
+/**
+ * QuranEnc publishes «السراج في بيان غريب القرآن»: an Arabic explanation of the
+ * hard words of each ayah, keyed by the word itself. It is the source of the
+ * word meanings shown in the reader, which the Quran.com API only serves as a
+ * translation in another language.
+ */
+const WORD_MEANING_BASE_URL = 'https://quranenc.com/api/v1/translation/aya/arabic_seraj';
 const SOURCE_ID = 'quran-com-api';
 const CONTENT_VERSION = 'api-v4';
 const API_REQUEST_TIMEOUT_MS = 15_000;
@@ -154,6 +175,7 @@ export class QuranComContentProvider implements QuranContentProvider {
       this.getSurahDirectory(),
       this.requestJson(
         `/verses/by_page/${pageNumber}?language=ar&mushaf=19&words=true&word_fields=code_v2%2Ctext_uthmani%2Caudio_url%2Ctranslation&fields=text_uthmani_tajweed&per_page=300`,
+        QDC_API_BASE_URL,
       ),
     ]);
 
@@ -260,6 +282,23 @@ export class QuranComContentProvider implements QuranContentProvider {
     return text;
   }
 
+  async getAyahWordMeanings(surahNumber: number, ayahNumber: number): Promise<AyahWordMeaning[]> {
+    assertAyahReference(surahNumber, ayahNumber);
+    const payload = await this.requestJson(
+      `/${surahNumber}/${ayahNumber}`,
+      WORD_MEANING_BASE_URL,
+    );
+    if (
+      !isRecord(payload) ||
+      !isRecord(payload.result) ||
+      typeof payload.result.translation !== 'string'
+    ) {
+      throw new ContentUnavailableError('invalid-data', 'Word meaning response is invalid.');
+    }
+    // An ayah whose words are all clear has no entries; that is not an error.
+    return parseWordMeanings(payload.result.translation);
+  }
+
   async searchAyahs(query: string, limit = 20): Promise<AyahSearchResult[]> {
     const trimmed = query.trim();
     if (trimmed.length === 0) {
@@ -268,8 +307,11 @@ export class QuranComContentProvider implements QuranContentProvider {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
       throw new RangeError('Search limit must be an integer between 1 and 50.');
     }
+    // `language=ar` makes this endpoint answer 204 with an empty body, which
+    // reaches the client as unparsable JSON. The default language serves the
+    // Arabic source text just as well.
     const payload = await this.requestJson(
-      `/search?q=${encodeURIComponent(trimmed)}&size=${limit}&page=1&language=ar`,
+      `/search?q=${encodeURIComponent(trimmed)}&size=${limit}&page=1`,
     );
     if (!isRecord(payload) || !isRecord(payload.search) || !Array.isArray(payload.search.results)) {
       throw new ContentUnavailableError('invalid-data', 'Search response is invalid.');
@@ -435,6 +477,7 @@ export class QuranComContentProvider implements QuranContentProvider {
     }
     return this.collectVerseKeys(
       `/verses/by_page/${pageNumber}?language=ar&mushaf=19&fields=verse_key`,
+      QDC_API_BASE_URL,
     );
   }
 
@@ -445,13 +488,17 @@ export class QuranComContentProvider implements QuranContentProvider {
     return this.collectVerseKeys(`/verses/by_juz/${juzNumber}?language=ar&fields=verse_key`);
   }
 
-  private async collectVerseKeys(path: string): Promise<string[]> {
+  private async collectVerseKeys(
+    path: string,
+    baseUrl: string = API_BASE_URL,
+  ): Promise<string[]> {
     const verseKeys: string[] = [];
     let totalRecords: number | null = null;
     let pageNumber = 1;
     for (;;) {
       const payload = await this.requestJson(
         `${path}&per_page=${VERSE_KEY_PAGE_SIZE}&page=${pageNumber}`,
+        baseUrl,
       );
       if (
         !isRecord(payload) ||
@@ -529,11 +576,11 @@ export class QuranComContentProvider implements QuranContentProvider {
     );
   }
 
-  private async requestJson(path: string): Promise<unknown> {
+  private async requestJson(path: string, baseUrl: string = API_BASE_URL): Promise<unknown> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, {
+      const response = await fetch(`${baseUrl}${path}`, {
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -541,6 +588,11 @@ export class QuranComContentProvider implements QuranContentProvider {
           'server',
           `Quran.com API returned HTTP ${response.status}.`,
         );
+      }
+      // 204 is "ok" but carries no body, so `json()` would fail with a
+      // misleading parse error instead of telling us the source had nothing.
+      if (response.status === 204) {
+        throw new ContentUnavailableError('invalid-data', 'المصدر لم يُرجع أي بيانات.');
       }
       return await response.json();
     } catch (error) {
@@ -654,8 +706,7 @@ function parseMushafPage(
         item.code_v2.length === 0 ||
         typeof item.text_uthmani !== 'string' ||
         item.text_uthmani.length === 0 ||
-        item.audio_url !== null &&
-          (typeof item.audio_url !== 'string' || !isSafeWordAudioPath(item.audio_url))
+        !isSourceWordAudio(item.audio_url)
       ) {
         throw new ContentUnavailableError('invalid-data', 'Mushaf page contains an invalid word.');
       }
@@ -663,6 +714,7 @@ function parseMushafPage(
       previousPosition = item.position;
       seenWordIds.add(item.id);
       const wordId = String(item.id);
+      const audioUrl = toWordAudioReference(item.audio_url);
       const lineWords = lines.get(item.line_number) ?? [];
       lineWords.push({
         id: wordId,
@@ -674,7 +726,7 @@ function parseMushafPage(
         charType: item.char_type_name,
         codeV2: item.code_v2,
         textUthmani: item.text_uthmani,
-        audioUrl: item.audio_url,
+        audioUrl,
       });
       lines.set(item.line_number, lineWords);
       if (item.char_type_name === 'word') {
@@ -682,7 +734,7 @@ function parseMushafPage(
           id: wordId,
           position: item.position,
           textUthmani: item.text_uthmani,
-          audioUrl: item.audio_url,
+          audioUrl,
           translationText: parseWordTranslation(item.translation),
         });
       }
@@ -691,7 +743,7 @@ function parseMushafPage(
     if (
       ayahWords.length === 0 ||
       typeof verse.text_uthmani_tajweed !== 'string' ||
-      !isValidTajweedText(verse.text_uthmani_tajweed, ayahWords, verse.verse_number)
+      verse.text_uthmani_tajweed.trim().length === 0
     ) {
       throw new ContentUnavailableError('invalid-data', 'Mushaf page has incomplete Tajweed text.');
     }
@@ -788,8 +840,7 @@ function parseSurah(
           word.position !== expectedWordPosition ||
           typeof word.text_uthmani !== 'string' ||
           word.text_uthmani.length === 0 ||
-          word.audio_url !== null &&
-            (typeof word.audio_url !== 'string' || !isSafeWordAudioPath(word.audio_url))
+          !isSourceWordAudio(word.audio_url)
         ) {
           throw new ContentUnavailableError('invalid-data', 'A word has an invalid response shape.');
         }
@@ -800,7 +851,7 @@ function parseSurah(
           id: String(word.id),
           position: word.position,
           textUthmani: word.text_uthmani,
-          audioUrl: word.audio_url,
+          audioUrl: toWordAudioReference(word.audio_url),
           translationText: parseWordTranslation(word.translation),
         };
       });
@@ -846,6 +897,28 @@ function parseWordTranslation(value: unknown): QuranWord['translationText'] {
   return text.length === 0 ? null : text;
 }
 
+/**
+ * The word-meaning source lays every entry out on its own line as
+ * `الكلمة: معناها.`, where the gloss itself may contain further colons. Only a
+ * line with a non-empty key and gloss is kept.
+ */
+function parseWordMeanings(value: string): AyahWordMeaning[] {
+  const meanings: AyahWordMeaning[] = [];
+  for (const line of value.split('\n')) {
+    const entry = line.trim();
+    const separator = entry.indexOf(':');
+    if (separator < 1) {
+      continue;
+    }
+    const word = entry.slice(0, separator).trim();
+    const meaning = entry.slice(separator + 1).replace(/\s+/g, ' ').trim();
+    if (word.length > 0 && meaning.length > 0) {
+      meanings.push({ word, meaning });
+    }
+  }
+  return meanings;
+}
+
 function stripMarkup(value: string): string {
   return value
     .replace(/<[^>]*>/g, ' ')
@@ -871,6 +944,22 @@ function assertAyahReference(surahNumber: number, ayahNumber: number): void {
 
 function isSafeWordAudioPath(value: string): boolean {
   return /^wbw\/\d{3}_\d{3}_\d{3}\.mp3$/.test(value);
+}
+
+/**
+ * The source reports "no recording for this word" either as null or as an
+ * empty string, depending on the word. Both mean the same thing, so both are
+ * accepted here and normalized to null once stored.
+ */
+function isSourceWordAudio(value: unknown): boolean {
+  if (value === null || value === '') {
+    return true;
+  }
+  return typeof value === 'string' && isSafeWordAudioPath(value);
+}
+
+function toWordAudioReference(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 function padToThree(value: number): string {

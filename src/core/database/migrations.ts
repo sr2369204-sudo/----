@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 7;
+const DATABASE_VERSION = 8;
 
 export async function initializeDatabase(database: SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON;');
@@ -144,6 +144,18 @@ export async function initializeDatabase(database: SQLiteDatabase): Promise<void
           ON saved_words (surah_number, ayah_number);
 
         PRAGMA user_version = 7;
+      `);
+    }
+
+    if (currentVersion < 8) {
+      await database.execAsync(`
+        CREATE TABLE quran_content_cache (
+          cache_key TEXT PRIMARY KEY NOT NULL,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        PRAGMA user_version = 8;
       `);
     }
   });

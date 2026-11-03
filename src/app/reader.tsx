@@ -34,6 +34,7 @@ import {
   quranContentProvider,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
+import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
 import {
@@ -77,6 +78,9 @@ export default function ReaderScreen() {
   const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
+  // Resolves surah, juz, and ayah references from the on-device index so the
+  // reader can navigate without a connection once the pages are saved.
+  const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
   const player = useAudioPlayer(null);
   const playerStatus = useAudioPlayerStatus(player);
   const recitationPlaylist = useAudioPlaylist({ loop: 'none' });
@@ -157,7 +161,7 @@ export default function ReaderScreen() {
         if (!Number.isInteger(requestedSurah) || requestedSurah < 1 || requestedSurah > 114) {
           throw new ContentUnavailableError('invalid-data', 'Invalid surah route parameter.');
         }
-        return quranContentProvider.getPageNumberForSurah(requestedSurah);
+        return quranCache.getPageNumberForSurah(requestedSurah);
       }
 
       const saved = await database.getFirstAsync<{ value: string }>(
@@ -299,7 +303,7 @@ export default function ReaderScreen() {
 
   const directoryQuery = useQuery({
     queryKey: ['quran', 'surah-directory'],
-    queryFn: () => quranContentProvider.getSurahDirectory(),
+    queryFn: () => quranCache.loadSurahDirectory(),
     staleTime: 24 * 60 * 60 * 1000,
   });
 
@@ -351,7 +355,7 @@ export default function ReaderScreen() {
       if (!activeTrack) {
         throw new Error('لا توجد آية جارية.');
       }
-      return quranContentProvider.getPageNumberForAyah(
+      return quranCache.getPageNumberForAyah(
         activeTrack.surahNumber,
         activeTrack.ayahNumber,
       );
@@ -724,7 +728,7 @@ export default function ReaderScreen() {
   }, [bookmarks, database]);
 
   const openAyah = useCallback((surahNumber: number, ayahNumber: number) => {
-    quranContentProvider
+    quranCache
       .getPageNumberForAyah(surahNumber, ayahNumber)
       .then((destination) => navigateToPage(destination))
       .catch((error: unknown) => {
@@ -734,7 +738,7 @@ export default function ReaderScreen() {
             : 'تعذر الانتقال إلى الآية.',
         );
       });
-  }, [navigateToPage]);
+  }, [navigateToPage, quranCache]);
 
   const toggleSaveWord = useCallback((
     surahNumber: number,
@@ -920,12 +924,12 @@ export default function ReaderScreen() {
         if (value < 1 || value > 114) {
           throw new RangeError('رقم السورة يجب أن يكون بين ١ و١١٤.');
         }
-        destination = await quranContentProvider.getPageNumberForSurah(value);
+        destination = await quranCache.getPageNumberForSurah(value);
       } else {
         if (value < 1 || value > 30) {
           throw new RangeError('رقم الجزء يجب أن يكون بين ١ و٣٠.');
         }
-        destination = await quranContentProvider.getPageNumberForJuz(value);
+        destination = await quranCache.getPageNumberForJuz(value);
       }
       navigateToPage(destination);
       setNavigationOpen(false);
@@ -937,7 +941,7 @@ export default function ReaderScreen() {
     } finally {
       setNavigationBusy(false);
     }
-  }, [navigateToPage]);
+  }, [navigateToPage, quranCache]);
 
   useEffect(() => {
     if ((!selection || isReciting) && navVisible) {

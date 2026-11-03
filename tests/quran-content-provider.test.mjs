@@ -73,7 +73,7 @@ const syntheticPageVerses = {
           line_number: lineNumber,
           code_v2: `SYNTHETIC_END_${ayahNumber}`,
           text_uthmani: String(ayahNumber),
-          audio_url: null,
+          audio_url: '',
         },
       ],
     };
@@ -167,6 +167,11 @@ test('loads QCF Tajweed page one as source-ordered lines and words', async (t) =
 
   assert.equal(requestedUrls.length, 2);
   assert.ok(requestedUrls.some((url) => url.includes('/verses/by_page/1?language=ar&mushaf=19')));
+  assert.ok(
+    requestedUrls.some((url) =>
+      url.startsWith('https://api.qurancdn.com/api/qdc/verses/by_page/1?'),
+    ),
+  );
   assert.ok(requestedUrls.some((url) => url.endsWith('/chapters?language=ar')));
   assert.equal(page.mushafId, 19);
   assert.equal(page.pageNumber, 1);
@@ -179,6 +184,8 @@ test('loads QCF Tajweed page one as source-ordered lines and words', async (t) =
   );
   assert.equal(page.lines[0].words[0].codeV2, 'SYNTHETIC_GLYPH_1');
   assert.equal(page.ayahs[0].words[0].audioUrl, 'wbw/001_001_001.mp3');
+  // An empty source path means "no recording", exactly like a missing one.
+  assert.equal(page.lines[0].words[1].audioUrl, null);
   assert.equal(page.juzNumber, 1);
   assert.equal(page.hizbNumber, 1);
   assert.equal(page.basmalaWords, null);
@@ -354,8 +361,31 @@ test('searches source ayahs and returns normalized verse references', async (t) 
   const results = await provider.searchAyahs('الرحمن', 20);
 
   assert.deepEqual(results, [{ surahNumber: 2, ayahNumber: 255, text: 'آية بحث' }]);
-  assert.ok(requestedUrls.some((url) => url.endsWith('/search?q=%D8%A7%D9%84%D8%B1%D8%AD%D9%85%D9%86&size=20&page=1&language=ar')));
+  assert.ok(requestedUrls.some((url) => url.endsWith('/search?q=%D8%A7%D9%84%D8%B1%D8%AD%D9%85%D9%86&size=20&page=1')));
   await assert.rejects(provider.searchAyahs('   '), RangeError);
+});
+
+test('loads Arabic word meanings for an ayah and ignores malformed lines', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify({
+      result: {
+        translation: 'رَبِّ: الرَّبُّ: المُرَبِّي لِخَلْقِهِ.\nسِنَةٌ: نُعَاسٌ.\nبلا فاصل',
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const meanings = await new QuranComContentProvider().getAyahWordMeanings(2, 255);
+
+  assert.deepEqual(meanings, [
+    { word: 'رَبِّ', meaning: 'الرَّبُّ: المُرَبِّي لِخَلْقِهِ.' },
+    { word: 'سِنَةٌ', meaning: 'نُعَاسٌ.' },
+  ]);
+  assert.ok(requestedUrls.some((url) => url.endsWith('/translation/aya/arabic_seraj/2/255')));
 });
 
 test('resolves source-backed ayah audio URLs and reciter metadata', async (t) => {
@@ -564,6 +594,11 @@ test('collects ordered verse keys for a page and a juz across pagination', async
   assert.deepEqual(juzKeys, ['2:1', '2:2', '2:3', '2:4']);
   assert.ok(
     requestedUrls.some((url) => url.endsWith('/verses/by_page/2?language=ar&mushaf=19&fields=verse_key&per_page=300&page=1')),
+  );
+  assert.ok(
+    requestedUrls.some((url) =>
+      url.startsWith('https://api.qurancdn.com/api/qdc/verses/by_page/2?'),
+    ),
   );
   assert.ok(
     requestedUrls.some((url) => url.endsWith('/verses/by_juz/1?language=ar&fields=verse_key&per_page=300&page=2')),

@@ -12,10 +12,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSQLiteContext } from 'expo-sqlite';
 
 import { Spacing } from '@/constants/theme';
 import type { QuranSurahSummary } from '@/features/quran/types';
-import { ContentUnavailableError, quranContentProvider } from '@/features/quran/services/content-provider';
+import { ContentUnavailableError } from '@/features/quran/services/content-provider';
+import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -29,11 +31,15 @@ const filters: { key: RevelationFilter; label: string }[] = [
 
 export default function HomeScreen() {
   const colors = useTheme();
+  const database = useSQLiteContext();
   const [search, setSearch] = useState('');
   const [revelationFilter, setRevelationFilter] = useState<RevelationFilter>('all');
+  // The directory is served from the on-device index first so the surah list
+  // keeps working offline; the source is only reached when nothing is stored.
+  const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
   const surahDirectory = useQuery({
     queryKey: ['quran', 'surah-directory'],
-    queryFn: () => quranContentProvider.getSurahDirectory(),
+    queryFn: () => quranCache.loadSurahDirectory(),
   });
 
   const visibleSurahs = useMemo(() => {

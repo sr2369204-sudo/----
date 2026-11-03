@@ -22,6 +22,8 @@ import { Spacing } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import type { AnnotationTarget, Highlight, Note } from '@/features/annotations/types';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
+import type { AyahWordMeaning } from '@/features/quran/services/content-provider';
+import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult } from '@/features/quran/types';
 import {
   useReaderSelectionStore,
@@ -190,7 +192,6 @@ function Toolbar({
     startAyah === endAyah
       ? `${surahName} · الآية ${toArabicNumbers(startAyah)}`
       : `${surahName} · الآيات ${toArabicNumbers(startAyah)}–${toArabicNumbers(endAyah)}`;
-  const wordMeaning = selection.type === 'word' ? selection.word.translationText : null;
   const searchQuery = selection.type === 'word'
     ? selection.word.textUthmani
     : selection.type === 'ayah'
@@ -625,21 +626,13 @@ function Toolbar({
               </Pressable>
             </View>
 
-            {panel === 'meaning' && (
-              <ScrollView contentContainerStyle={styles.dialogBody}>
-                <View style={[styles.wordCard, { backgroundColor: palette.background, borderColor: palette.border }]}>
-                  <Text style={[styles.wordCardText, { color: palette.text }]}>
-                    {isWord ? selection.word.textUthmani : ''}
-                  </Text>
-                </View>
-                {wordMeaning ? (
-                  <Text style={[styles.bodyText, { color: palette.text }]}>{wordMeaning}</Text>
-                ) : (
-                  <Text style={[styles.hintText, { color: palette.textSecondary }]}>
-                    لا يتوفر معنى لهذه الكلمة من المصدر.
-                  </Text>
-                )}
-              </ScrollView>
+            {panel === 'meaning' && isWord && (
+              <MeaningPanel
+                surahNumber={selection.surahNumber}
+                ayahNumber={selection.ayah.ayahNumber}
+                wordText={selection.word.textUthmani}
+                palette={palette}
+              />
             )}
 
             {panel === 'highlight' && (
@@ -716,7 +709,7 @@ function Toolbar({
 
             {panel === 'search' && (
               <SearchPanel
-                query={searchQuery}
+                initialQuery={searchQuery}
                 palette={palette}
                 onOpenAyah={(surahNumber, ayahNumber) => {
                   setPanel('toolbar');
@@ -963,27 +956,161 @@ function TafsirPanel({
   );
 }
 
-function SearchPanel({
-  query,
+function MeaningPanel({
+  surahNumber,
+  ayahNumber,
+  wordText,
   palette,
-  onOpenAyah,
 }: {
-  query: string;
+  surahNumber: number;
+  ayahNumber: number;
+  wordText: string;
   palette: ReturnType<typeof useTheme>;
-  onOpenAyah: (surahNumber: number, ayahNumber: number) => void;
 }) {
   const [reloadKey, setReloadKey] = useState(0);
-  const requestKey = `${query}:${reloadKey}`;
+  const requestKey = `${surahNumber}:${ayahNumber}:${reloadKey}`;
   const [state, setState] = useState<{
     key: string;
-    results: AyahSearchResult[];
+    meanings: AyahWordMeaning[];
     error: string | null;
   } | null>(null);
 
   useEffect(() => {
     let active = true;
     quranContentProvider
-      .searchAyahs(query, 20)
+      .getAyahWordMeanings(surahNumber, ayahNumber)
+      .then((meanings) => {
+        if (active) {
+          setState({ key: requestKey, meanings, error: null });
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setState({
+            key: requestKey,
+            meanings: [],
+            error: error instanceof Error ? error.message : 'تعذر تحميل معنى الكلمة.',
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [ayahNumber, requestKey, surahNumber]);
+
+  const loading = !state || state.key !== requestKey;
+  const own = normalizeWord(wordText);
+  const matched = state?.meanings.find((item) => normalizeWord(item.word) === own) ?? null;
+  const others = (state?.meanings ?? []).filter((item) => item !== matched);
+
+  return (
+    <View style={styles.panelColumn}>
+      <View style={[styles.wordCard, { backgroundColor: palette.background, borderColor: palette.border }]}>
+        <Text style={[styles.wordCardText, { color: palette.text }]}>{wordText}</Text>
+      </View>
+      <ScrollView style={styles.panelScroll} contentContainerStyle={styles.dialogBody}>
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={palette.primary} />
+            <Text style={[styles.hintText, { color: palette.textSecondary }]}>جارٍ تحميل المعنى…</Text>
+          </View>
+        ) : state?.error ? (
+          <View style={styles.centered}>
+            <Text accessibilityRole="alert" style={styles.errorText}>{state.error}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setReloadKey((key) => key + 1)}
+              style={[styles.primaryButton, { backgroundColor: palette.primary }]}>
+              <Text style={[styles.primaryButtonText, { color: palette.background }]}>إعادة المحاولة</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            {matched ? (
+              <View
+                style={[
+                  styles.meaningCard,
+                  { backgroundColor: palette.backgroundSelected, borderColor: palette.primary },
+                ]}>
+                <Text style={[styles.meaningText, { color: palette.text }]}>{matched.meaning}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.hintText, { color: palette.textSecondary }]}>
+                لا يتوفر معنى مفرد لهذه الكلمة؛ الكلمات التي بينها المصدر في هذه الآية:
+              </Text>
+            )}
+
+            {others.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
+                  معاني كلمات هذه الآية
+                </Text>
+                {others.map((item) => (
+                  <View
+                    key={item.word}
+                    style={[
+                      styles.meaningRow,
+                      { backgroundColor: palette.background, borderColor: palette.border },
+                    ]}>
+                    <Text style={[styles.meaningRowWord, { color: palette.primary }]}>{item.word}</Text>
+                    <Text style={[styles.meaningRowText, { color: palette.text }]}>{item.meaning}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {state && state.meanings.length === 0 && (
+              <Text style={[styles.hintText, { color: palette.textSecondary }]}>
+                لا يتوفر معنى لهذه الكلمة من المصدر.
+              </Text>
+            )}
+
+            <Text style={[styles.sourceNote, { color: palette.textSecondary }]}>
+              المصدر: السراج في بيان غريب القرآن
+            </Text>
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function SearchPanel({
+  initialQuery,
+  palette,
+  onOpenAyah,
+}: {
+  initialQuery: string;
+  palette: ReturnType<typeof useTheme>;
+  onOpenAyah: (surahNumber: number, ayahNumber: number) => void;
+}) {
+  const [query, setQuery] = useState(initialQuery);
+  const [submitted, setSubmitted] = useState(initialQuery.trim());
+  const [reloadKey, setReloadKey] = useState(0);
+  const [state, setState] = useState<{
+    key: string;
+    results: AyahSearchResult[];
+    error: string | null;
+  } | null>(null);
+
+  // The field stays editable, so typing settles before it hits the source.
+  useEffect(() => {
+    const next = query.trim();
+    if (next === submitted) {
+      return;
+    }
+    const timer = setTimeout(() => setSubmitted(next), 400);
+    return () => clearTimeout(timer);
+  }, [query, submitted]);
+
+  const requestKey = `${submitted}:${reloadKey}`;
+  useEffect(() => {
+    if (submitted.length === 0) {
+      return;
+    }
+    let active = true;
+    quranContentProvider
+      .searchAyahs(submitted, 30)
       .then((results) => {
         if (active) {
           setState({ key: requestKey, results, error: null });
@@ -1001,66 +1128,120 @@ function SearchPanel({
     return () => {
       active = false;
     };
-  }, [query, requestKey]);
+  }, [reloadKey, requestKey, submitted]);
 
-  if (!state || state.key !== requestKey) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={palette.primary} />
-        <Text style={[styles.hintText, { color: palette.textSecondary }]}>جارٍ البحث في المصحف…</Text>
-      </View>
-    );
-  }
-  if (state.error) {
-    return (
-      <View style={styles.centered}>
-        <Text accessibilityRole="alert" style={styles.errorText}>{state.error}</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setReloadKey((key) => key + 1)}
-          style={[styles.primaryButton, { backgroundColor: palette.primary }]}>
-          <Text style={[styles.primaryButtonText, { color: palette.background }]}>إعادة المحاولة</Text>
-        </Pressable>
-      </View>
-    );
-  }
-  if (state.results.length === 0) {
-    return (
-      <View style={styles.centered}>
-        <Text style={[styles.hintText, { color: palette.textSecondary }]}>
-          لا توجد نتائج مطابقة في المصحف.
-        </Text>
-      </View>
-    );
-  }
+  const searching = submitted.length > 0 && (!state || state.key !== requestKey);
+
   return (
-    <ScrollView contentContainerStyle={styles.dialogBody} keyboardShouldPersistTaps="handled">
-      {state.results.map((result) => (
-        <Pressable
-          key={`${result.surahNumber}:${result.ayahNumber}`}
-          accessibilityRole="button"
-          onPress={() => onOpenAyah(result.surahNumber, result.ayahNumber)}
-          style={({ pressed }) => [
-            styles.savedCard,
-            { backgroundColor: palette.background, borderColor: palette.border },
-            pressed && styles.pressed,
-          ]}>
-          <Text style={[styles.resultRef, { color: palette.primary }]}>
-            سورة {toArabicNumbers(result.surahNumber)} · الآية {toArabicNumbers(result.ayahNumber)}
+    <View style={styles.panelColumn}>
+      <View
+        style={[
+          styles.searchField,
+          { backgroundColor: palette.background, borderColor: palette.border },
+        ]}>
+        <Ionicons name="search" size={16} color={palette.textSecondary} />
+        <TextInput
+          accessibilityLabel="كلمة البحث"
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={() => setSubmitted(query.trim())}
+          placeholder="ابحث عن كلمة أو آية"
+          placeholderTextColor={palette.textSecondary}
+          returnKeyType="search"
+          autoCorrect={false}
+          style={[styles.searchInput, { color: palette.text }]}
+        />
+        {query.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="مسح البحث"
+            onPress={() => {
+              setQuery('');
+              setSubmitted('');
+            }}>
+            <Ionicons name="close-circle" size={17} color={palette.textSecondary} />
+          </Pressable>
+        )}
+      </View>
+
+      {submitted.length === 0 ? (
+        <View style={styles.centered}>
+          <Text style={[styles.hintText, { color: palette.textSecondary }]}>
+            اكتب كلمة للبحث عنها في المصحف.
           </Text>
-          {result.text.length > 0 && (
-            <Text style={[styles.bodyText, { color: palette.text }]} numberOfLines={3}>
-              {result.text}
-            </Text>
-          )}
-        </Pressable>
-      ))}
-    </ScrollView>
+        </View>
+      ) : searching ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={palette.primary} />
+          <Text style={[styles.hintText, { color: palette.textSecondary }]}>جارٍ البحث في المصحف…</Text>
+        </View>
+      ) : state?.error ? (
+        <View style={styles.centered}>
+          <Text accessibilityRole="alert" style={styles.errorText}>{state.error}</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setReloadKey((key) => key + 1)}
+            style={[styles.primaryButton, { backgroundColor: palette.primary }]}>
+            <Text style={[styles.primaryButtonText, { color: palette.background }]}>إعادة المحاولة</Text>
+          </Pressable>
+        </View>
+      ) : (state?.results.length ?? 0) === 0 ? (
+        <View style={styles.centered}>
+          <Text style={[styles.hintText, { color: palette.textSecondary }]}>
+            لا توجد نتائج مطابقة في المصحف.
+          </Text>
+        </View>
+      ) : (
+        <>
+          <Text style={[styles.resultCount, { color: palette.textSecondary }]}>
+            {`${toArabicNumbers(state?.results.length ?? 0)} نتيجة`}
+          </Text>
+          <ScrollView
+            style={styles.panelScroll}
+            contentContainerStyle={styles.dialogBody}
+            keyboardShouldPersistTaps="handled">
+            {state?.results.map((result) => (
+              <Pressable
+                key={`${result.surahNumber}:${result.ayahNumber}`}
+                accessibilityRole="button"
+                onPress={() => onOpenAyah(result.surahNumber, result.ayahNumber)}
+                style={({ pressed }) => [
+                  styles.resultCard,
+                  { backgroundColor: palette.background, borderColor: palette.border },
+                  pressed && styles.pressed,
+                ]}>
+                <View style={styles.resultHead}>
+                  <View style={[styles.refChip, { backgroundColor: palette.backgroundSelected }]}>
+                    <Text style={[styles.refChipText, { color: palette.primary }]}>
+                      {`${toArabicNumbers(result.surahNumber)}:${toArabicNumbers(result.ayahNumber)}`}
+                    </Text>
+                  </View>
+                  <Ionicons name="open-outline" size={15} color={palette.textSecondary} />
+                </View>
+                {result.text.length > 0 && (
+                  <Text style={[styles.ayahText, { color: palette.text }]} numberOfLines={3}>
+                    {result.text}
+                  </Text>
+                )}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      )}
+    </View>
   );
 }
 
 function toArabicNumbers(value: number): string {
   return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
+}
+
+/**
+ * The source keys its glosses with a plain word, while the page prints the
+ * fully vocalised Uthmani form, so both sides are reduced to letters.
+ */
+function normalizeWord(value: string): string {
+  return normalizeSurahSearch(value).replace(/^ال/, '');
 }
 
 const styles = StyleSheet.create({
@@ -1168,6 +1349,89 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.four,
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  panelColumn: {
+    gap: Spacing.two,
+    flexShrink: 1,
+  },
+  panelScroll: {
+    flexShrink: 1,
+  },
+  searchField: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: Spacing.three,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    textAlign: 'right',
+    paddingVertical: 0,
+  },
+  resultCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  resultCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: Spacing.two,
+    gap: 6,
+  },
+  resultHead: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  refChip: {
+    borderRadius: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  refChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  ayahText: {
+    fontSize: 17,
+    lineHeight: 30,
+    textAlign: 'right',
+  },
+  meaningCard: {
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: Spacing.three,
+  },
+  meaningText: {
+    fontSize: 16,
+    lineHeight: 28,
+    textAlign: 'right',
+  },
+  meaningRow: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: Spacing.two,
+    gap: 3,
+  },
+  meaningRowWord: {
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  meaningRowText: {
+    fontSize: 14,
+    lineHeight: 24,
+    textAlign: 'right',
+  },
+  sourceNote: {
+    fontSize: 11,
+    textAlign: 'right',
+    marginTop: Spacing.one,
   },
   bodyText: {
     fontSize: 15,
@@ -1278,11 +1542,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     gap: Spacing.one,
-  },
-  resultRef: {
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'right',
   },
   deleteText: {
     color: '#B24C4C',
