@@ -43,12 +43,12 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
       href: '/settings',
     },
     {
-      id: 'search',
-      label: 'بحث متقدم',
-      sublabel: 'في الآيات',
-      icon: 'search',
+      id: 'library',
+      label: 'المكتبة القرآنية',
+      sublabel: 'تفسير وترجمة',
+      icon: 'library',
       color: '#2DCE89',
-      href: '/',
+      href: '/settings',
     },
   ];
 

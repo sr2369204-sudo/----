@@ -12,7 +12,7 @@ type HomeHeroProps = {
   onSearchChange: (value: string) => void;
 };
 
-const HERO_IMAGE = 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=Elegant%20modern%20Islamic%20architecture%20interior%2C%20soft%20warm%20lighting%2C%20peaceful%20atmosphere%2C%20minimalist%20design%2C%20high%20quality%20photography&image_size=landscape_16_9';
+const HERO_IMAGE = 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=Luxurious%20Quran%20on%20wooden%20stand%2C%20Islamic%20architecture%20background%2C%20warm%20sunlight%20casting%20shadows%2C%20lantern%20and%20prayer%20beads%2C%20peaceful%20sanctuary%20vibe%2C%20cinematic%20lighting%2C%20high%20resolution&image_size=landscape_16_9';
 
 export function HomeHero({ searchValue, onSearchChange }: HomeHeroProps) {
   const colors = useTheme();
@@ -26,13 +26,13 @@ export function HomeHero({ searchValue, onSearchChange }: HomeHeroProps) {
         contentFit="cover"
         transition={1000}
       />
-      <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.3)' }]} />
+      <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
 
       <View style={[styles.content, { paddingTop: insets.top + Spacing.two }]}>
         <View style={styles.topRow}>
           <View style={styles.welcomeGroup}>
             <Text style={styles.welcomeTitle}>مرحباً بك في مصحف</Text>
-            <Text style={styles.welcomeSubtitle}>رفيق وردك اليومي للقرآن الكريم</Text>
+            <Text style={styles.welcomeSubtitle}>ابحث في كتاب الله عز وجل</Text>
           </View>
           
           <Link href="/settings" asChild>
@@ -46,14 +46,15 @@ export function HomeHero({ searchValue, onSearchChange }: HomeHeroProps) {
         </View>
 
         <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
-          <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+          <Ionicons name="search" size={20} color={colors.primary} style={styles.searchIcon} />
           <TextInput
-            placeholder="ابحث عن سورة أو رقم..."
+            placeholder="ابحث عن سورة، آية، أو كلمة..."
             placeholderTextColor={colors.textSecondary}
             value={searchValue}
             onChangeText={onSearchChange}
             style={[styles.searchInput, { color: colors.text }]}
             textAlign="right"
+            returnKeyType="search"
           />
         </View>
       </View>

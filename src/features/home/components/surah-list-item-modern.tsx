@@ -8,7 +8,7 @@ import { formatAyahCount, toArabicNumbers } from '@/features/home/utils/format';
 import type { QuranSurahSummary } from '@/features/quran/types';
 import { useTheme } from '@/hooks/use-theme';
 
-export const SurahListItemModern = memo(function SurahListItemModern({
+export const SurahGridItemModern = memo(function SurahGridItemModern({
   surah,
 }: {
   surah: QuranSurahSummary;
@@ -28,29 +28,26 @@ export const SurahListItemModern = memo(function SurahListItemModern({
           { backgroundColor: colors.surface },
           pressed && { backgroundColor: colors.backgroundSelected },
         ]}>
-        <View style={styles.content}>
-          <View style={styles.info}>
-            <Text style={[styles.name, { color: colors.text }]}>{surah.nameArabic}</Text>
-            <View style={styles.meta}>
-              <View style={[styles.badge, { backgroundColor: `${tint}15` }]}>
-                <Text style={[styles.badgeText, { color: tint }]}>
-                  {isMeccan ? 'مكية' : 'مدنية'}
-                </Text>
-              </View>
-              <Text style={[styles.ayahCount, { color: colors.textSecondary }]}>
-                {formatAyahCount(surah.ayahCount)}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={[styles.numberContainer, { backgroundColor: colors.background }]}>
-            <Text style={[styles.number, { color: colors.primary }]}>
-              {toArabicNumbers(surah.surahNumber)}
+        <View style={[styles.numberContainer, { backgroundColor: colors.background }]}>
+          <Text style={[styles.number, { color: colors.primary }]}>
+            {toArabicNumbers(surah.surahNumber)}
+          </Text>
+        </View>
+
+        <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>
+          {surah.nameArabic}
+        </Text>
+
+        <View style={styles.meta}>
+          <View style={[styles.badge, { backgroundColor: `${tint}15` }]}>
+            <Text style={[styles.badgeText, { color: tint }]}>
+              {isMeccan ? 'مكية' : 'مدنية'}
             </Text>
           </View>
+          <Text style={[styles.ayahCount, { color: colors.textSecondary }]}>
+            {formatAyahCount(surah.ayahCount)}
+          </Text>
         </View>
-        
-        <Ionicons name="chevron-back" size={20} color={colors.border} />
       </Pressable>
     </Link>
   );
@@ -58,60 +55,51 @@ export const SurahListItemModern = memo(function SurahListItemModern({
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: Spacing.four,
-    marginBottom: Spacing.two,
+    flex: 1,
+    margin: 8,
     borderRadius: Radius.lg,
     padding: Spacing.three,
-    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 2,
-  },
-  content: {
-    flex: 1,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: Spacing.three,
+    elevation: 3,
   },
   numberContainer: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
   number: {
     fontSize: TypeScale.heading,
-    fontWeight: '800',
-  },
-  info: {
-    flex: 1,
-    gap: 4,
-    alignItems: 'flex-end',
+    fontWeight: '900',
   },
   name: {
-    fontSize: TypeScale.title,
-    fontWeight: '800',
+    fontSize: TypeScale.heading,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   meta: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   badge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: Radius.sm,
   },
   badgeText: {
-    fontSize: TypeScale.micro,
+    fontSize: 10,
     fontWeight: '700',
   },
   ayahCount: {
-    fontSize: TypeScale.caption,
+    fontSize: 10,
+    fontWeight: '600',
   },
 });
