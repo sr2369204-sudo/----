@@ -9,14 +9,25 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#18251F',
-    background: '#F8F7F1',
+    /** Main text: deep green-tinted charcoal. */
+    text: '#172B24',
+    /** Warm ivory page background. */
+    background: '#F8F7F2',
     backgroundElement: '#FFFFFF',
-    backgroundSelected: '#E8F0EB',
-    textSecondary: '#68746D',
-    primary: '#13684E',
+    /** Subtle surface: barely-there emerald wash used behind small badges. */
+    backgroundSelected: '#EDF3EE',
+    /** Secondary text. */
+    textSecondary: '#858B84',
+    /** Deep emerald. */
+    primary: '#126B50',
+    /** Pressed/darker emerald. */
+    primaryDark: '#0C4939',
+    /** Gold accent, used sparingly. */
+    accent: '#B68A3A',
+    /** Raised surface. */
     surface: '#FFFFFF',
-    border: '#E6E7DF',
+    /** Hairline dividers. */
+    border: '#E9E8E1',
   },
   dark: {
     text: '#F4EFE2',
@@ -25,9 +36,32 @@ export const Colors = {
     backgroundSelected: '#2F2717',
     textSecondary: '#B7A98B',
     primary: '#D9A94A',
+    primaryDark: '#B4883C',
+    accent: '#C9803F',
     surface: '#1F1A11',
     border: '#3B3220',
   },
+} as const;
+
+/**
+ * Arabic UI type scale. Sizes are deliberately few so the interface keeps a
+ * single, consistent typographic voice across screens.
+ */
+export const TypeScale = {
+  /** Screen-defining headings. */
+  display: 22,
+  /** Section titles. */
+  title: 19,
+  /** Item headings such as a surah name. */
+  heading: 16,
+  /** Default reading size. */
+  body: 14,
+  /** Labels and controls. */
+  label: 13,
+  /** Supporting captions and meta lines. */
+  caption: 12,
+  /** Smallest supporting text. */
+  micro: 11,
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
