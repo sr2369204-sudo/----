@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Link, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
@@ -11,7 +11,7 @@ type ActionItem = {
   sublabel?: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
-  href: any;
+  href: Href;
 };
 
 export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number }) {
@@ -45,10 +45,10 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
     {
       id: 'library',
       label: 'المكتبة القرآنية',
-      sublabel: 'تفسير وترجمة',
+      sublabel: 'تصفح السور والآيات',
       icon: 'library',
       color: '#2DCE89',
-      href: '/settings',
+      href: '/library',
     },
   ];
 

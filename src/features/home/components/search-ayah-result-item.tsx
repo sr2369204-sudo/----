@@ -29,11 +29,10 @@ export const SearchAyahResultItem = memo(function SearchAyahResultItem({
       asChild>
       <Pressable
         accessibilityRole="button"
-        style={({ pressed }) => [
+        style={StyleSheet.flatten([
           styles.card,
-          { backgroundColor: colors.surface },
-          pressed && { backgroundColor: colors.backgroundSelected },
-        ]}>
+          { backgroundColor: colors.glassSurface },
+        ])}>
         <View style={styles.header}>
           <View style={[styles.badge, { backgroundColor: colors.background }]}>
             <Text style={[styles.badgeText, { color: colors.primary }]}>
@@ -58,16 +57,12 @@ export const SearchAyahResultItem = memo(function SearchAyahResultItem({
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: Spacing.four,
-    marginBottom: Spacing.three,
-    borderRadius: Radius.lg,
-    padding: Spacing.three,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    marginHorizontal: Spacing.two,
+    marginVertical: Spacing.one,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    gap: Spacing.one,
   },
   header: {
     flexDirection: 'row-reverse',
@@ -75,8 +70,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   badge: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -90,15 +85,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   text: {
-    fontSize: TypeScale.body,
-    lineHeight: 24,
+    fontSize: TypeScale.caption,
+    lineHeight: 19,
     textAlign: 'right',
   },
   footer: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     alignSelf: 'flex-start',
+    marginTop: 2,
   },
   footerText: {
     fontSize: TypeScale.caption,

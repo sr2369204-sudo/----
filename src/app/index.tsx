@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
@@ -8,22 +8,62 @@ import { SqliteAnnotationRepository } from '@/features/annotations/repositories/
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { HomeHero } from '@/features/home/components/home-hero';
 import { SurahFilters, type RevelationFilter } from '@/features/home/components/surah-filters';
-import { SurahListItemModern } from '@/features/home/components/surah-list-item-modern';
+import { SurahGridItemModern } from '@/features/home/components/surah-list-item-modern';
+import { resolveAyahSearchReference } from '@/features/home/utils/home-search';
+import { quranContentProvider } from '@/features/quran/services/content-provider';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
-import type { QuranSurahSummary } from '@/features/quran/types';
+import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
   const colors = useTheme();
   const database = useSQLiteContext();
   const [search, setSearch] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
   const [revelationFilter, setRevelationFilter] = useState<RevelationFilter>('all');
 
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
+  useEffect(() => {
+    const timer = setTimeout(() => setSubmittedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const surahDirectory = useQuery({
     queryKey: ['quran', 'surah-directory'],
     queryFn: () => quranCache.loadSurahDirectory(),
+  });
+
+  const ayahSearch = useQuery({
+    queryKey: ['quran', 'home-search', submittedSearch],
+    enabled: submittedSearch.length > 0,
+    queryFn: async (): Promise<AyahSearchResult[]> => {
+      const directory = await quranCache.loadSurahDirectory();
+      const reference = resolveAyahSearchReference(
+        submittedSearch,
+        directory.surahs,
+        normalizeSurahSearch,
+      );
+      if (reference) {
+        const surah = await quranContentProvider.getSurah(reference.surahNumber);
+        const ayah = surah.ayahs.find((item) => item.ayahNumber === reference.ayahNumber);
+        return ayah
+          ? [{
+              surahNumber: reference.surahNumber,
+              ayahNumber: reference.ayahNumber,
+              text: ayah.words.map((word) => word.textUthmani).join(' '),
+            }]
+          : [];
+      }
+
+      const normalized = normalizeSurahSearch(submittedSearch);
+      if (/^\d+$/.test(normalized) && directory.surahs.some(
+        (surah) => surah.surahNumber === Number(normalized),
+      )) {
+        return [];
+      }
+      return quranContentProvider.searchAyahs(submittedSearch, 20);
+    },
   });
 
   const savedWords = useQuery({
@@ -31,21 +71,33 @@ export default function HomeScreen() {
     queryFn: () => new SqliteAnnotationRepository(database).listSavedWords(),
   });
 
-  const visibleSurahs = useMemo(() => {
+  const searchMatchedSurahs = useMemo(() => {
     const query = normalizeSurahSearch(search);
-    return (surahDirectory.data?.surahs ?? []).filter((surah) => {
-      const matchesSearch =
-        query.length === 0 ||
-        normalizeSurahSearch(surah.nameArabic).includes(query) ||
-        normalizeSurahSearch(String(surah.surahNumber)).includes(query);
-      return (
-        matchesSearch && (revelationFilter === 'all' || surah.revelationPlace === revelationFilter)
-      );
-    });
-  }, [revelationFilter, search, surahDirectory.data]);
+    return (surahDirectory.data?.surahs ?? []).filter((surah) =>
+      query.length === 0 ||
+      normalizeSurahSearch(surah.nameArabic).includes(query) ||
+      (/^\d+$/.test(query)
+        ? String(surah.surahNumber) === query
+        : normalizeSurahSearch(String(surah.surahNumber)).includes(query)),
+    );
+  }, [search, surahDirectory.data]);
+
+  const visibleSurahs = useMemo(
+    () => searchMatchedSurahs.filter((surah) =>
+      revelationFilter === 'all' || surah.revelationPlace === revelationFilter,
+    ),
+    [revelationFilter, searchMatchedSurahs],
+  );
+  const surahNames = useMemo(
+    () => new Map((surahDirectory.data?.surahs ?? []).map((surah) => [
+      surah.surahNumber,
+      surah.nameArabic,
+    ])),
+    [surahDirectory.data],
+  );
 
   const renderSurah = useCallback(
-    ({ item }: { item: QuranSurahSummary }) => <SurahListItemModern surah={item} />,
+    ({ item }: { item: QuranSurahSummary }) => <SurahGridItemModern surah={item} />,
     [],
   );
 
@@ -58,9 +110,25 @@ export default function HomeScreen() {
         renderItem={renderSurah}
         ListHeaderComponent={
           <View style={styles.headerContent}>
-            <HomeHero searchValue={search} onSearchChange={setSearch} />
+            <HomeHero
+              searchValue={search}
+              onSearchChange={setSearch}
+              surahResults={search.trim() ? searchMatchedSurahs : []}
+              surahNameByNumber={surahNames}
+              ayahResults={
+                search.trim() === submittedSearch && !ayahSearch.isPending && !ayahSearch.error
+                  ? ayahSearch.data ?? []
+                  : []
+              }
+              searchLoading={
+                search.trim().length > 0 &&
+                (search.trim() !== submittedSearch || ayahSearch.isPending)
+              }
+              searchError={Boolean(ayahSearch.error && search.trim() === submittedSearch)}
+              onRetrySearch={() => void ayahSearch.refetch()}
+            />
             <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
-            
+
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>سور القرآن</Text>
@@ -77,7 +145,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
             )}
-            
+
             {surahDirectory.error && (
               <View style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
@@ -91,9 +159,11 @@ export default function HomeScreen() {
           </View>
         }
         ListEmptyComponent={
-          !surahDirectory.isPending && !surahDirectory.error ? (
+          !surahDirectory.isPending &&
+          !surahDirectory.error &&
+          search.trim().length === 0 ? (
             <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              لا توجد سورة بهذا الاسم.
+              لا توجد سورة مطابقة لهذا البحث.
             </Text>
           ) : undefined
         }
@@ -110,11 +180,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
+    paddingHorizontal: Spacing.two,
     paddingBottom: Spacing.six,
   },
   headerContent: {
     gap: Spacing.four,
     marginBottom: Spacing.two,
+    zIndex: 25,
+    elevation: 25,
   },
   sectionHeader: {
     paddingHorizontal: Spacing.four,

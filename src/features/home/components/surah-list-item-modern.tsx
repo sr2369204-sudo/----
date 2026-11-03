@@ -23,30 +23,32 @@ export const SurahGridItemModern = memo(function SurahGridItemModern({
       asChild>
       <Pressable
         accessibilityRole="button"
-        style={({ pressed }) => [
+        accessibilityLabel={`سورة ${surah.nameArabic}، ${formatAyahCount(surah.ayahCount)}، ${isMeccan ? 'مكية' : 'مدنية'}`}
+        style={StyleSheet.flatten([
           styles.card,
-          { backgroundColor: colors.surface },
-          pressed && { backgroundColor: colors.backgroundSelected },
-        ]}>
+          { backgroundColor: colors.glassSurface, borderColor: colors.glassBorder },
+        ])}>
         <View style={[styles.numberContainer, { backgroundColor: colors.background }]}>
           <Text style={[styles.number, { color: colors.primary }]}>
             {toArabicNumbers(surah.surahNumber)}
           </Text>
         </View>
 
-        <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>
-          {surah.nameArabic}
-        </Text>
-
-        <View style={styles.meta}>
-          <View style={[styles.badge, { backgroundColor: `${tint}15` }]}>
-            <Text style={[styles.badgeText, { color: tint }]}>
-              {isMeccan ? 'مكية' : 'مدنية'}
+        <View style={styles.details}>
+          <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>
+            {surah.nameArabic}
+          </Text>
+          <View style={styles.meta}>
+            <View style={[styles.badge, { backgroundColor: `${tint}15` }]}>
+              <Text style={[styles.badgeText, { color: tint }]}>
+                {isMeccan ? 'مكية' : 'مدنية'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
+            <Text numberOfLines={1} style={[styles.ayahCount, { color: colors.textSecondary }]}>
+              {formatAyahCount(surah.ayahCount)}
             </Text>
           </View>
-          <Text style={[styles.ayahCount, { color: colors.textSecondary }]}>
-            {formatAyahCount(surah.ayahCount)}
-          </Text>
         </View>
       </Pressable>
     </Link>
@@ -56,50 +58,64 @@ export const SurahGridItemModern = memo(function SurahGridItemModern({
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    margin: 8,
-    borderRadius: Radius.lg,
-    padding: Spacing.three,
+    minHeight: 80,
+    marginHorizontal: 3,
+    marginBottom: 9,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 10,
+    gap: Spacing.two,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 1,
   },
   numberContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.md,
+    width: 36,
+    height: 36,
+    borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    flexShrink: 0,
   },
   number: {
-    fontSize: TypeScale.heading,
+    fontSize: TypeScale.label,
     fontWeight: '900',
   },
+  details: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   name: {
-    fontSize: TypeScale.heading,
+    width: '100%',
+    fontSize: TypeScale.body,
     fontWeight: '900',
-    textAlign: 'center',
+    textAlign: 'right',
   },
   meta: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 6,
+    alignSelf: 'stretch',
+    gap: 5,
   },
   badge: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
-    borderRadius: Radius.sm,
+    borderRadius: Radius.pill,
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
   },
   ayahCount: {
-    fontSize: 10,
+    flexShrink: 1,
+    fontSize: 9,
     fontWeight: '600',
   },
 });

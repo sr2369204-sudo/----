@@ -28,6 +28,10 @@ export const Colors = {
     accent: '#C9973C',
     /** Raised surface (cards). */
     surface: '#FFFFFF',
+    /** Translucent surface for frosted-glass cards. */
+    glassSurface: 'rgba(255,255,255,0.84)',
+    glassOverlaySurface: 'rgba(255,255,255,0.96)',
+    glassBorder: 'rgba(255,255,255,0.9)',
     /** Hairline dividers and card outlines. */
     border: '#E1E9E5',
   },
@@ -42,6 +46,9 @@ export const Colors = {
     onPrimary: '#06120D',
     accent: '#E3B75E',
     surface: '#14211C',
+    glassSurface: 'rgba(22,35,30,0.86)',
+    glassOverlaySurface: 'rgba(22,35,30,0.96)',
+    glassBorder: 'rgba(255,255,255,0.12)',
     border: '#25372F',
   },
 } as const;
