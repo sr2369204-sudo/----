@@ -26,7 +26,11 @@ export const SurahGridItemModern = memo(function SurahGridItemModern({
         accessibilityLabel={`سورة ${surah.nameArabic}، ${formatAyahCount(surah.ayahCount)}، ${isMeccan ? 'مكية' : 'مدنية'}`}
         style={StyleSheet.flatten([
           styles.card,
-          { backgroundColor: colors.glassSurface, borderColor: colors.glassBorder },
+          {
+            backgroundColor: colors.glassSurface,
+            borderColor: colors.glassBorder,
+            borderRightColor: `${tint}55`,
+          },
         ])}>
         <View style={[styles.numberContainer, { backgroundColor: colors.background }]}>
           <Text style={[styles.number, { color: colors.primary }]}>
@@ -44,11 +48,17 @@ export const SurahGridItemModern = memo(function SurahGridItemModern({
                 {isMeccan ? 'مكية' : 'مدنية'}
               </Text>
             </View>
-            <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
-            <Text numberOfLines={1} style={[styles.ayahCount, { color: colors.textSecondary }]}>
-              {formatAyahCount(surah.ayahCount)}
-            </Text>
+            <View style={styles.ayahInfo}>
+              <Ionicons name="book-outline" size={13} color={colors.textSecondary} />
+              <Text numberOfLines={1} style={[styles.ayahCount, { color: colors.textSecondary }]}>
+                {formatAyahCount(surah.ayahCount)}
+              </Text>
+            </View>
           </View>
+        </View>
+
+        <View style={[styles.navigationHint, { backgroundColor: `${tint}10` }]}>
+          <Ionicons name="chevron-back" size={16} color={tint} />
         </View>
       </Pressable>
     </Link>
@@ -62,6 +72,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 3,
     marginBottom: 9,
     borderWidth: 1,
+    borderRightWidth: 3,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
@@ -89,20 +100,21 @@ const styles = StyleSheet.create({
   details: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'flex-end',
+    alignItems: 'stretch',
     gap: 6,
   },
   name: {
     width: '100%',
     fontSize: TypeScale.body,
     fontWeight: '900',
-    textAlign: 'right',
+    textAlign: 'center',
   },
   meta: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     alignSelf: 'stretch',
-    gap: 5,
+    justifyContent: 'space-between',
+    gap: Spacing.two,
   },
   badge: {
     paddingHorizontal: 5,
@@ -115,7 +127,19 @@ const styles = StyleSheet.create({
   },
   ayahCount: {
     flexShrink: 1,
-    fontSize: 9,
+    fontSize: TypeScale.micro,
     fontWeight: '600',
+  },
+  ayahInfo: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  navigationHint: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
