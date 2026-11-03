@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Spacing, TypeScale } from '@/constants/theme';
+import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type RevelationFilter = 'all' | 'makkah' | 'madinah';
@@ -16,13 +16,12 @@ type SurahFiltersProps = {
   onChange: (value: RevelationFilter) => void;
 };
 
-/** Segmented control for the Meccan/Medinan filter. */
+/** Segmented control for the Meccan/Medinan filter, framed in gold hairlines. */
 export function SurahFilters({ value, onChange }: SurahFiltersProps) {
   const colors = useTheme();
 
   return (
-    <View
-      style={[styles.track, { backgroundColor: colors.backgroundSelected, borderColor: colors.border }]}>
+    <View style={[styles.track, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       {FILTERS.map((filter) => {
         const active = filter.key === value;
         return (
@@ -34,12 +33,12 @@ export function SurahFilters({ value, onChange }: SurahFiltersProps) {
             style={({ pressed }) => [
               styles.segment,
               active && { backgroundColor: colors.primary },
-              pressed && !active && { backgroundColor: colors.surface },
+              pressed && !active && { backgroundColor: colors.backgroundSelected },
             ]}>
             <Text
               style={[
                 styles.segmentText,
-                { color: active ? colors.background : colors.textSecondary },
+                { color: active ? colors.onPrimary : colors.textSecondary },
               ]}>
               {filter.label}
             </Text>
@@ -57,14 +56,14 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     padding: Spacing.one,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.pill,
   },
   segment: {
     flex: 1,
-    height: 36,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: Radius.pill,
   },
   segmentText: {
     fontSize: TypeScale.label,

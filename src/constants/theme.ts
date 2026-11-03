@@ -9,37 +9,40 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    /** Main text: deep green-tinted charcoal. */
-    text: '#172B24',
-    /** Warm ivory page background. */
-    background: '#F8F7F2',
+    /** Main text. */
+    text: '#12211C',
+    /** Page background: cool, light, so white cards read as raised. */
+    background: '#EFF4F1',
     backgroundElement: '#FFFFFF',
-    /** Subtle surface: barely-there emerald wash used behind small badges. */
-    backgroundSelected: '#EDF3EE',
+    /** Tinted wash used behind icon chips and selected surfaces. */
+    backgroundSelected: '#DCEDE5',
     /** Secondary text. */
-    textSecondary: '#858B84',
-    /** Deep emerald. */
-    primary: '#126B50',
+    textSecondary: '#6C7D76',
+    /** Brand emerald. */
+    primary: '#0E7A57',
     /** Pressed/darker emerald. */
-    primaryDark: '#0C4939',
-    /** Gold accent, used sparingly. */
-    accent: '#B68A3A',
-    /** Raised surface. */
+    primaryDark: '#0A5C42',
+    /** Content that sits on top of `primary`. */
+    onPrimary: '#FFFFFF',
+    /** Gold accent for highlights and premium touches. */
+    accent: '#C9973C',
+    /** Raised surface (cards). */
     surface: '#FFFFFF',
-    /** Hairline dividers. */
-    border: '#E9E8E1',
+    /** Hairline dividers and card outlines. */
+    border: '#E1E9E5',
   },
   dark: {
-    text: '#F4EFE2',
-    background: '#131109',
-    backgroundElement: '#1F1A11',
-    backgroundSelected: '#2F2717',
-    textSecondary: '#B7A98B',
-    primary: '#D9A94A',
-    primaryDark: '#B4883C',
-    accent: '#C9803F',
-    surface: '#1F1A11',
-    border: '#3B3220',
+    text: '#F3F8F5',
+    background: '#0B1512',
+    backgroundElement: '#16231E',
+    backgroundSelected: '#1E332B',
+    textSecondary: '#98ABA3',
+    primary: '#2FBF90',
+    primaryDark: '#1E8E69',
+    onPrimary: '#06120D',
+    accent: '#E3B75E',
+    surface: '#14211C',
+    border: '#25372F',
   },
 } as const;
 
@@ -48,10 +51,12 @@ export const Colors = {
  * single, consistent typographic voice across screens.
  */
 export const TypeScale = {
-  /** Screen-defining headings. */
-  display: 22,
+  /** Hero figures and screen-defining headings. */
+  hero: 23,
   /** Section titles. */
-  title: 19,
+  display: 20,
+  /** Sub-section titles. */
+  title: 18,
   /** Item headings such as a surah name. */
   heading: 16,
   /** Default reading size. */
@@ -62,6 +67,15 @@ export const TypeScale = {
   caption: 12,
   /** Smallest supporting text. */
   micro: 11,
+} as const;
+
+/** Corner radii. Cards sit between `lg` and `xl`, inner elements use `sm`/`md`. */
+export const Radius = {
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
+  pill: 999,
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
