@@ -340,16 +340,35 @@ test('loads and cleans the source Tafsir text for an ayah', async (t) => {
   assert.ok(requestedUrls.some((url) => url.endsWith('/tafsirs/16/by_ayah/2:255')));
 });
 
-test('searches source ayahs and returns normalized verse references', async (t) => {
+test('filters approximate search hits and orders exact Quran matches by reference', async (t) => {
   const requestedUrls = [];
   mockFetch(t, async (url) => {
     requestedUrls.push(String(url));
+    const requestUrl = new URL(String(url));
+    if (requestUrl.pathname.endsWith('/search')) {
+      return new Response(JSON.stringify({
+        search: {
+          results: [
+            { verse_key: '2:255', text: 'آية&nbsp;الرحمن' },
+            { verse_key: 'invalid' },
+            { verse_key: '1:2', text: 'الرحيم' },
+            { verse_key: '1:1', text: 'الرحمن' },
+          ],
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    const verseKey = requestUrl.pathname.split('/').pop();
     return new Response(JSON.stringify({
-      search: {
-        results: [
-          { verse_key: '2:255', text: 'آية&nbsp;بحث' },
-          { verse_key: 'invalid' },
-        ],
+      verse: {
+        text_uthmani: verseKey === '2:255'
+          ? 'الرَّحْمَٰنِ'
+          : verseKey === '1:2'
+            ? 'الرَّحِيمِ'
+            : 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
       },
     }), {
       status: 200,
@@ -360,7 +379,10 @@ test('searches source ayahs and returns normalized verse references', async (t) 
   const provider = new QuranComContentProvider();
   const results = await provider.searchAyahs('الرحمن', 20);
 
-  assert.deepEqual(results, [{ surahNumber: 2, ayahNumber: 255, text: 'آية بحث' }]);
+  assert.deepEqual(results, [
+    { surahNumber: 1, ayahNumber: 1, text: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ' },
+    { surahNumber: 2, ayahNumber: 255, text: 'الرَّحْمَٰنِ' },
+  ]);
   assert.ok(requestedUrls.some((url) => url.endsWith('/search?q=%D8%A7%D9%84%D8%B1%D8%AD%D9%85%D9%86&size=20&page=1')));
   await assert.rejects(provider.searchAyahs('   '), RangeError);
 });

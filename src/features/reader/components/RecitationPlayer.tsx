@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -45,9 +47,12 @@ type PlayerProps = {
   onPrevious: () => void;
   onClose: () => void;
   onOpenPicker: () => void;
+  onOpenReciterPicker?: () => void;
   reciters: QuranReciter[];
   reciterId: number;
   onSelectReciter: (reciterId: number) => void;
+  hidden?: boolean;
+  onToggleVisibility?: () => void;
 };
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
@@ -67,9 +72,12 @@ export function RecitationPlayer({
   onPrevious,
   onClose,
   onOpenPicker,
+  onOpenReciterPicker,
   reciters,
   reciterId,
   onSelectReciter,
+  hidden,
+  onToggleVisibility,
 }: PlayerProps) {
   const progress =
     status.duration > 0 ? Math.min(1, Math.max(0, status.currentTime / status.duration)) : 0;
@@ -93,188 +101,318 @@ export function RecitationPlayer({
 
   return (
     <View style={[styles.wrap, { bottom: offsetBottom }]} pointerEvents="box-none">
-      <View
-        style={[
-          styles.reciterBox,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-        ]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="القارئ السابق"
-          hitSlop={6}
-          disabled={!canCycleReciter}
-          onPress={() => cycleReciter(-1)}
-          style={({ pressed }) => [
-            styles.reciterArrow,
-            { backgroundColor: colors.backgroundSelected },
-            !canCycleReciter && styles.disabled,
-            pressed && styles.pressed,
-          ]}>
-          <Ionicons name="chevron-forward" size={16} color={colors.text} />
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="تغيير القارئ"
-          onPress={onOpenPicker}
-          style={({ pressed }) => [styles.reciterName, pressed && styles.pressed]}>
-          <Ionicons name="mic-outline" size={13} color={colors.primary} />
-          <Text style={[styles.reciterLabel, { color: colors.text }]} numberOfLines={1}>
-            {currentReciter ? currentReciter.name : 'جارٍ تحميل القرّاء…'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="القارئ التالي"
-          hitSlop={6}
-          disabled={!canCycleReciter}
-          onPress={() => cycleReciter(1)}
-          style={({ pressed }) => [
-            styles.reciterArrow,
-            { backgroundColor: colors.backgroundSelected },
-            !canCycleReciter && styles.disabled,
-            pressed && styles.pressed,
-          ]}>
-          <Ionicons name="chevron-back" size={16} color={colors.text} />
-        </Pressable>
-      </View>
-
-      <View
-        style={[
-          styles.player,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
-        ]}
-        accessibilityRole="toolbar"
-        accessibilityLabel="مشغل التلاوة"
-      >
-        <View style={styles.playerRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={status.playing ? 'إيقاف التلاوة مؤقتًا' : 'متابعة التلاوة'}
-            onPress={onTogglePlay}
-            style={({ pressed }) => [
-              styles.playButton,
-              { backgroundColor: colors.primary },
-              pressed && styles.pressed,
-            ]}
-          >
-            {status.isBuffering ? (
-              <ActivityIndicator size="small" color={colors.background} />
-            ) : (
-              <Ionicons
-                name={status.playing ? 'pause' : 'play'}
-                size={20}
-                color={colors.background}
-              />
-            )}
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تغيير نطاق التلاوة"
-            onPress={onOpenPicker}
-            style={styles.playerInfo}>
-            <Text style={[styles.playerTitle, { color: colors.text }]} numberOfLines={1}>
-              {label}
-            </Text>
-            <Text style={[styles.playerSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-              {trackLabel}
-            </Text>
-          </Pressable>
-
-          <View style={styles.playerActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="الآية السابقة"
-              hitSlop={6}
-              disabled={status.currentIndex <= 0}
-              onPress={onPrevious}
-              style={({ pressed }) => [
-                styles.iconButton,
-                status.currentIndex <= 0 && styles.disabled,
-                pressed && styles.pressed,
-              ]}>
-              <Ionicons name="play-skip-back" size={18} color={colors.text} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="الآية التالية"
-              hitSlop={6}
-              disabled={status.currentIndex >= status.trackCount - 1}
-              onPress={onNext}
-              style={({ pressed }) => [
-                styles.iconButton,
-                status.currentIndex >= status.trackCount - 1 && styles.disabled,
-                pressed && styles.pressed,
-              ]}>
-              <Ionicons name="play-skip-forward" size={18} color={colors.text} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                repeatMode === 'none'
-                  ? 'تشغيل متكرر'
-                  : repeatMode === 'all'
-                    ? 'تكرار المقطع كاملًا'
-                    : 'تكرار الآية الحالية'
-              }
-              accessibilityState={{ selected: repeatMode !== 'none' }}
-              hitSlop={6}
-              onPress={onCycleRepeat}
-              style={({ pressed }) => [
-                styles.iconButton,
-                repeatMode !== 'none' && { backgroundColor: colors.backgroundSelected },
-                pressed && styles.pressed,
-              ]}>
-              <Ionicons
-                name={repeatMode === 'single' ? 'repeat-outline' : 'repeat'}
-                size={18}
-                color={repeatMode === 'none' ? colors.textSecondary : colors.primary}
-              />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`سرعة التلاوة ${playbackRate} ضعف`}
-              hitSlop={6}
-              onPress={onCycleRate}
-              style={({ pressed }) => [
-                styles.rateButton,
-                { backgroundColor: colors.backgroundSelected },
-                pressed && styles.pressed,
-              ]}>
-              <Text style={[styles.rateLabel, { color: colors.text }]}>
-                {formatRate(playbackRate)}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إغلاق المشغل"
-              hitSlop={6}
-              onPress={onClose}
-              style={({ pressed }) => [
-                styles.iconButton,
-                { backgroundColor: colors.backgroundSelected },
-                pressed && styles.pressed,
-              ]}>
-              <Ionicons name="close" size={17} color={colors.text} />
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={[styles.progressTrack, { backgroundColor: colors.backgroundSelected }]}>
+      {!hidden && (
+        <>
           <View
             style={[
-              styles.progressFill,
-              { width: `${progress * 100}%`, backgroundColor: colors.primary },
+              styles.reciterBox,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="القارئ السابق"
+              hitSlop={6}
+              disabled={!canCycleReciter}
+              onPress={() => cycleReciter(-1)}
+              style={({ pressed }) => [
+                styles.reciterArrow,
+                { backgroundColor: colors.backgroundSelected },
+                !canCycleReciter && styles.disabled,
+                pressed && styles.pressed,
+              ]}>
+              <Ionicons name="chevron-forward" size={16} color={colors.text} />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="تغيير القارئ"
+              onPress={onOpenReciterPicker ?? onOpenPicker}
+              style={({ pressed }) => [styles.reciterName, pressed && styles.pressed]}>
+              <View style={[styles.miniAvatar, { backgroundColor: colors.backgroundSelected }]}>
+                {currentReciter?.imageUrl ? (
+                  <Image
+                    source={{ uri: currentReciter.imageUrl }}
+                    style={styles.reciterAvatar}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Ionicons name="mic-outline" size={13} color={colors.primary} />
+                )}
+              </View>
+              <Text style={[styles.reciterLabel, { color: colors.text }]} numberOfLines={1}>
+                {currentReciter ? currentReciter.name : 'جارٍ تحميل القرّاء…'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="القارئ التالي"
+              hitSlop={6}
+              disabled={!canCycleReciter}
+              onPress={() => cycleReciter(1)}
+              style={({ pressed }) => [
+                styles.reciterArrow,
+                { backgroundColor: colors.backgroundSelected },
+                !canCycleReciter && styles.disabled,
+                pressed && styles.pressed,
+              ]}>
+              <Ionicons name="chevron-back" size={16} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <View
+            style={[
+              styles.player,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
             ]}
+            accessibilityRole="toolbar"
+            accessibilityLabel="مشغل التلاوة"
+          >
+            <View style={styles.playerRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={status.playing ? 'إيقاف التلاوة مؤقتًا' : 'متابعة التلاوة'}
+                onPress={onTogglePlay}
+                style={({ pressed }) => [
+                  styles.playButton,
+                  { backgroundColor: colors.primary },
+                  pressed && styles.pressed,
+                ]}
+              >
+                {status.isBuffering ? (
+                  <ActivityIndicator size="small" color={colors.background} />
+                ) : (
+                  <Ionicons
+                    name={status.playing ? 'pause' : 'play'}
+                    size={20}
+                    color={colors.background}
+                  />
+                )}
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="تغيير نطاق التلاوة"
+                onPress={onOpenPicker}
+                style={styles.playerInfo}>
+                <Text style={[styles.playerTitle, { color: colors.text }]} numberOfLines={1}>
+                  {label}
+                </Text>
+                <Text style={[styles.playerSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {trackLabel}
+                </Text>
+              </Pressable>
+
+              <View style={styles.playerActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="الآية السابقة"
+                  hitSlop={6}
+                  disabled={status.currentIndex <= 0}
+                  onPress={onPrevious}
+                  style={({ pressed }) => [
+                    styles.iconButton,
+                    status.currentIndex <= 0 && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}>
+                  <Ionicons name="play-skip-back" size={18} color={colors.text} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="الآية التالية"
+                  hitSlop={6}
+                  disabled={status.currentIndex >= status.trackCount - 1}
+                  onPress={onNext}
+                  style={({ pressed }) => [
+                    styles.iconButton,
+                    status.currentIndex >= status.trackCount - 1 && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}>
+                  <Ionicons name="play-skip-forward" size={18} color={colors.text} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    repeatMode === 'none'
+                      ? 'تشغيل متكرر'
+                      : repeatMode === 'all'
+                        ? 'تكرار المقطع كاملًا'
+                        : 'تكرار الآية الحالية'
+                  }
+                  accessibilityState={{ selected: repeatMode !== 'none' }}
+                  hitSlop={6}
+                  onPress={onCycleRepeat}
+                  style={({ pressed }) => [
+                    styles.iconButton,
+                    repeatMode !== 'none' && { backgroundColor: colors.backgroundSelected },
+                    pressed && styles.pressed,
+                  ]}>
+                  <Ionicons
+                    name={repeatMode === 'single' ? 'repeat-outline' : 'repeat'}
+                    size={18}
+                    color={repeatMode === 'none' ? colors.textSecondary : colors.primary}
+                  />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`سرعة التلاوة ${playbackRate} ضعف`}
+                  hitSlop={6}
+                  onPress={onCycleRate}
+                  style={({ pressed }) => [
+                    styles.rateButton,
+                    { backgroundColor: colors.backgroundSelected },
+                    pressed && styles.pressed,
+                  ]}>
+                  <Text style={[styles.rateLabel, { color: colors.text }]}>
+                    {formatRate(playbackRate)}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="إغلاق المشغل"
+                  hitSlop={6}
+                  onPress={onClose}
+                  style={({ pressed }) => [
+                    styles.iconButton,
+                    { backgroundColor: colors.backgroundSelected },
+                    pressed && styles.pressed,
+                  ]}>
+                  <Ionicons name="close" size={17} color={colors.text} />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={[styles.progressTrack, { backgroundColor: colors.backgroundSelected }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${progress * 100}%`, backgroundColor: colors.primary },
+                ]}
+              />
+            </View>
+          </View>
+        </>
+      )}
+
+      {onToggleVisibility && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={hidden ? 'إظهار المشغل' : 'إخفاء المشغل'}
+          onPress={onToggleVisibility}
+          style={({ pressed }) => [
+            styles.visibilityToggle,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+            pressed && styles.pressed,
+          ]}>
+          <Ionicons
+            name={hidden ? 'musical-notes' : 'eye-off-outline'}
+            size={18}
+            color={colors.primary}
           />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+type ReciterPickerProps = {
+  visible: boolean;
+  colors: Palette;
+  reciters: QuranReciter[];
+  reciterId: number;
+  onSelect: (reciterId: number) => void;
+  onClose: () => void;
+};
+
+export function ReciterPickerDialog({
+  visible,
+  colors,
+  reciters,
+  reciterId,
+  onSelect,
+  onClose,
+}: ReciterPickerProps) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.dialogOverlay}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="إغلاق قائمة القراء"
+          style={styles.dialogBackdrop}
+          onPress={onClose}
+        />
+        <View
+          style={[
+            styles.dialog,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+          <View style={styles.dialogHeader}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.headerRow}>
+              <Text style={[styles.dialogTitle, { color: colors.text }]}>اختر القارئ</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={onClose} hitSlop={12}>
+                <View style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
+                  <Ionicons name="close" size={18} color={colors.textSecondary} />
+                </View>
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.reciterList}
+            contentContainerStyle={styles.reciterListContent}
+            showsVerticalScrollIndicator={false}>
+            {reciters.map((reciter) => {
+              const selected = reciter.id === reciterId;
+              return (
+                <Pressable
+                  key={reciter.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => {
+                    onSelect(reciter.id);
+                    onClose();
+                  }}
+                  style={({ pressed }) => [
+                    styles.reciterItem,
+                    { backgroundColor: selected ? colors.primary + '10' : colors.background },
+                    selected && { borderColor: colors.primary },
+                    pressed && styles.pressed,
+                  ]}>
+                  <View style={[styles.reciterIcon, { backgroundColor: selected ? colors.primary : colors.backgroundSelected }]}>
+                    {reciter.imageUrl ? (
+                      <Image
+                        source={{ uri: reciter.imageUrl }}
+                        style={styles.reciterAvatar}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Ionicons
+                        name="person"
+                        size={18}
+                        color={selected ? colors.background : colors.textSecondary}
+                      />
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      styles.reciterItemLabel,
+                      { color: selected ? colors.primary : colors.text },
+                      selected && { fontWeight: '900' },
+                    ]}>
+                    {reciter.name}
+                  </Text>
+                  {selected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -403,77 +541,84 @@ export function RecitationScopeDialog({
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}>
           <View style={styles.dialogHeader}>
-            <Text style={[styles.dialogTitle, { color: colors.text }]}>تشغيل التلاوة</Text>
-            <Pressable accessibilityRole="button" onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={20} color={colors.textSecondary} />
-            </Pressable>
+            <View style={styles.sheetHandle} />
+            <View style={styles.headerRow}>
+              <Text style={[styles.dialogTitle, { color: colors.text }]}>إعدادات التلاوة</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={onClose} hitSlop={12}>
+                <View style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
+                  <Ionicons name="close" size={18} color={colors.textSecondary} />
+                </View>
+              </Pressable>
+            </View>
           </View>
 
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>القارئ</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipRow}>
-            {reciters.length === 0 ? (
-              <Text style={[styles.hintText, { color: colors.textSecondary }]}>
-                جارٍ تحميل قائمة القرّاء…
-              </Text>
-            ) : (
-              reciters.map((reciter) => {
-                const selected = reciter.id === reciterId;
+          <View style={styles.dialogContent}>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>القارئ</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}>
+              {reciters.length === 0 ? (
+                <Text style={[styles.hintText, { color: colors.textSecondary }]}>
+                  جارٍ تحميل قائمة القرّاء…
+                </Text>
+              ) : (
+                reciters.map((reciter) => {
+                  const selected = reciter.id === reciterId;
+                  return (
+                    <Pressable
+                      key={reciter.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => onSelectReciter(reciter.id)}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: selected ? colors.primary : colors.backgroundSelected,
+                          borderColor: selected ? colors.primary : colors.border,
+                        },
+                      ]}>
+                      <Text
+                        style={[
+                          styles.chipLabel,
+                          { color: selected ? colors.background : colors.text },
+                        ]}>
+                        {reciter.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>النطاق</Text>
+            <View style={styles.modeRow}>
+              {modes.map((option) => {
+                const selected = mode === option.key;
                 return (
                   <Pressable
-                    key={reciter.id}
+                    key={option.key}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
-                    onPress={() => onSelectReciter(reciter.id)}
+                    onPress={() => setMode(option.key)}
                     style={[
-                      styles.chip,
+                      styles.modeChip,
                       {
-                        backgroundColor: selected ? colors.primary : colors.backgroundSelected,
+                        backgroundColor: selected ? colors.backgroundSelected : colors.background,
                         borderColor: selected ? colors.primary : colors.border,
                       },
                     ]}>
                     <Text
                       style={[
-                        styles.chipLabel,
-                        { color: selected ? colors.background : colors.text },
+                        styles.modeLabel,
+                        { color: selected ? colors.primary : colors.text },
                       ]}>
-                      {reciter.name}
+                      {option.label}
                     </Text>
                   </Pressable>
                 );
-              })
-            )}
-          </ScrollView>
-
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>النطاق</Text>
-          <View style={styles.modeRow}>
-            {modes.map((option) => {
-              const selected = mode === option.key;
-              return (
-                <Pressable
-                  key={option.key}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setMode(option.key)}
-                  style={[
-                    styles.modeChip,
-                    {
-                      backgroundColor: selected ? colors.backgroundSelected : colors.background,
-                      borderColor: selected ? colors.primary : colors.border,
-                    },
-                  ]}>
-                  <Text
-                    style={[
-                      styles.modeLabel,
-                      { color: selected ? colors.primary : colors.text },
-                    ]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+              })}
+            </View>
           </View>
 
           {mode === 'current' && (
@@ -585,6 +730,126 @@ export function RecitationScopeDialog({
   );
 }
 
+/** The three starting points offered by the long-press play menu. */
+export type PlayScopeChoice = 'rest-of-surah' | 'from-page-start' | 'from-surah-start';
+
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
+type PlayMenuProps = {
+  visible: boolean;
+  colors: Palette;
+  /** Surah of the ayah the menu was opened on, shown as the reference. */
+  surahName: string;
+  ayahNumber: number;
+  busy: boolean;
+  error: string | null;
+  onChoose: (choice: PlayScopeChoice) => void;
+  onClose: () => void;
+};
+
+/**
+ * Small sheet opened by long-pressing the play control. It offers the three
+ * starting points for a recitation instead of the full scope dialog, so a
+ * reader can start listening from where they are without leaving the page.
+ */
+export function RecitationPlayMenu({
+  visible,
+  colors,
+  surahName,
+  ayahNumber,
+  busy,
+  error,
+  onChoose,
+  onClose,
+}: PlayMenuProps) {
+  const options: { key: PlayScopeChoice; icon: IconName; label: string; hint: string }[] = [
+    {
+      key: 'rest-of-surah',
+      icon: 'play-skip-forward',
+      label: 'باقي السورة من هنا',
+      hint: 'يبدأ من هذه الآية حتى نهاية السورة',
+    },
+    {
+      key: 'from-page-start',
+      icon: 'documents-outline',
+      label: 'من أول الصفحة',
+      hint: 'يبدأ من أول آية في الصفحة الحالية',
+    },
+    {
+      key: 'from-surah-start',
+      icon: 'book-outline',
+      label: 'من أول السورة',
+      hint: 'يبدأ من الآية الأولى في السورة',
+    },
+  ];
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.dialogOverlay}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="إغلاق قائمة التشغيل"
+          style={styles.dialogBackdrop}
+          onPress={onClose}
+        />
+        <View
+          style={[
+            styles.dialog,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+          <View style={styles.dialogHeader}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.headerRow}>
+              <Text style={[styles.dialogTitle, { color: colors.text }]}>تشغيل التلاوة</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={onClose} hitSlop={12}>
+                <View style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
+                  <Ionicons name="close" size={18} color={colors.textSecondary} />
+                </View>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={[styles.ayahReference, { backgroundColor: colors.backgroundSelected }]}>
+            <Ionicons name="book-outline" size={14} color={colors.primary} />
+            <Text style={[styles.ayahReferenceText, { color: colors.textSecondary }]}>
+              {`${surahName} · الآية ${toArabicDigits(ayahNumber)}`}
+            </Text>
+          </View>
+
+          <View style={styles.optionsList}>
+            {options.map((option) => (
+              <Pressable
+                key={option.key}
+                accessibilityRole="button"
+                disabled={busy}
+                onPress={() => onChoose(option.key)}
+                style={({ pressed }) => [
+                  styles.playOption,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                  busy && styles.disabled,
+                  pressed && styles.pressed,
+                ]}>
+                <View style={[styles.playOptionIcon, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons name={option.icon} size={20} color={colors.primary} />
+                </View>
+                <View style={styles.playOptionText}>
+                  <Text style={[styles.playOptionLabel, { color: colors.text }]}>{option.label}</Text>
+                  <Text style={[styles.playOptionHint, { color: colors.textSecondary }]}>
+                    {option.hint}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-back" size={16} color={colors.border} />
+              </Pressable>
+            ))}
+          </View>
+
+          {error && <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function parseNumber(value: string): number {
   const normalized = value.replace(/[٠-٩]/g, (digit) =>
     String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)),
@@ -609,20 +874,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 18,
     borderWidth: 1,
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    elevation: 5,
   },
   reciterArrow: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -633,86 +906,92 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   reciterLabel: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 13.5,
+    fontWeight: '900',
     textAlign: 'center',
   },
   player: {
     flexDirection: 'column',
-    gap: 4,
-    paddingTop: 6,
-    paddingBottom: 9,
-    paddingHorizontal: 10,
+    gap: 6,
+    paddingTop: 8,
+    paddingBottom: 10,
+    paddingHorizontal: 12,
     borderRadius: 18,
     borderWidth: 1,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 7,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
   playerRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: Spacing.two,
-    minHeight: 42,
+    gap: Spacing.three,
+    minHeight: 46,
   },
   playButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   playerInfo: {
     flex: 1,
     minWidth: 0,
     alignItems: 'flex-start',
+    gap: 1,
   },
   playerTitle: {
-    fontSize: 13.5,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '900',
     textAlign: 'right',
   },
   playerSubtitle: {
-    fontSize: 11,
-    marginTop: 1,
+    fontSize: 11.5,
     textAlign: 'right',
+    opacity: 0.7,
   },
   playerActions: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
   },
   iconButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rateButton: {
-    minWidth: 34,
-    height: 30,
-    paddingHorizontal: 5,
-    borderRadius: 15,
+    minWidth: 38,
+    height: 32,
+    paddingHorizontal: 6,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rateLabel: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 12.5,
+    fontWeight: '900',
   },
   progressTrack: {
     position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 3,
-    height: 2.5,
+    left: 12,
+    right: 12,
+    bottom: 4,
+    height: 3,
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -720,52 +999,177 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
   },
+  visibilityToggle: {
+    alignSelf: 'flex-start',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.4 },
 
   dialogOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.three,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
   },
   dialogBackdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
   },
   dialog: {
     width: '100%',
-    maxWidth: 460,
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: Spacing.three,
-    gap: Spacing.two,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Platform.OS === 'ios' ? 40 : Spacing.four,
+    gap: Spacing.three,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 20,
   },
   dialogHeader: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginBottom: Spacing.one,
+  },
+  sheetHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+  },
+  headerRow: {
+    width: '100%',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  closeCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   dialogTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 19,
+    fontWeight: '900',
   },
   sectionLabel: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  dialogContent: {
+    gap: Spacing.two,
+  },
+  ayahReference: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignSelf: 'center',
+  },
+  ayahReferenceText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  reciterList: {
+    maxHeight: 400,
+  },
+  reciterListContent: {
+    gap: 8,
+    paddingBottom: Spacing.two,
+  },
+  reciterItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  reciterIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  reciterAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  reciterItemLabel: {
+    flex: 1,
+    fontSize: 15,
     fontWeight: '700',
     textAlign: 'right',
+  },
+  optionsList: {
+    gap: 10,
     marginTop: Spacing.one,
+  },
+  playOption: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderWidth: 1.5,
+    borderRadius: 18,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 14,
+  },
+  playOptionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playOptionText: {
+    flex: 1,
+    gap: 2,
+  },
+  playOptionLabel: {
+    fontSize: 15.5,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  playOptionHint: {
+    fontSize: 12,
+    textAlign: 'right',
+    opacity: 0.8,
   },
   chipRow: {
     flexDirection: 'row-reverse',
+    alignItems: 'center',
     gap: Spacing.two,
-    paddingVertical: 2,
+    marginTop: Spacing.one,
+    paddingBottom: Spacing.one,
   },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 8,
+    borderRadius: 12,
     borderWidth: 1,
+    minWidth: 80,
+    alignItems: 'center',
   },
   chipLabel: {
     fontSize: 13,

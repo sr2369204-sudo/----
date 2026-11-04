@@ -1167,9 +1167,12 @@ document.addEventListener("click", (event) => {
     swallowClick = false;
     return;
   }
-  // While the recitation runs the page is in focus mode: a tap changes nothing
-  // on the page, so the only frame in view stays the one following the reciter.
+  // While the recitation runs the page is in focus mode: a tap never changes
+  // the selection, so the only frame in view stays the one following the
+  // reciter. The tap is still reported as a background tap, which the host uses
+  // to hide or reveal the mini player so the reader can see the verse beneath it.
   if (recitationFocus) {
+    postPageMessage({ type: "background" });
     return;
   }
   const button = event.target.closest("button[data-kind]");

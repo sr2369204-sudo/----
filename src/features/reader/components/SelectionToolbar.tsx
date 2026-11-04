@@ -89,6 +89,8 @@ type Props = {
   ) => void;
   onPlayAudio: (selection: ReaderSelection) => Promise<void>;
   onStopAudio: () => void;
+  /** Opens the long-press play menu (rest of surah / page start / surah start). */
+  onOpenPlayMenu: () => void;
   onOpenAyah: (surahNumber: number, ayahNumber: number) => void;
 };
 
@@ -120,6 +122,7 @@ function Toolbar({
   onToggleSaveWord,
   onPlayAudio,
   onStopAudio,
+  onOpenPlayMenu,
   onOpenAyah,
 }: Props & { selection: ReaderSelection }) {
   const database = useSQLiteContext();
@@ -520,6 +523,7 @@ function Toolbar({
     label: string;
     active?: boolean;
     onPress: () => void;
+    onLongPress?: () => void;
   };
 
   const actions: Action[] = [
@@ -529,6 +533,8 @@ function Toolbar({
       label: isAudioPlaying ? 'إيقاف' : 'استماع',
       active: isAudioPlaying,
       onPress: () => (isAudioPlaying ? onStopAudio() : void playAudio()),
+      // Long press swaps the single-item playback for the broader scope menu.
+      onLongPress: onOpenPlayMenu,
     },
   ];
 
@@ -719,6 +725,7 @@ function Toolbar({
                   disabled={busy}
                   hitSlop={6}
                   onPress={action.onPress}
+                  onLongPress={action.onLongPress}
                   style={({ pressed }) => [
                     styles.iconButton,
                     {

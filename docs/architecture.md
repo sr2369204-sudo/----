@@ -18,6 +18,7 @@ UI components should call feature services or repositories rather than own persi
 
 - Quran text and Tajweed are immutable source content, separate from user data.
 - Provider response types are normalized into internal domain types.
+- Quran text search filters approximate source results against normalized Arabic ayah text and orders matches by surah and ayah reference.
 - The mobile client never receives confidential Content API credentials.
 - Unknown or unavailable content is an explicit unavailable state, never synthetic Quran content.
 - Synthetic data used by tests must be clearly labeled and must not enter production content.

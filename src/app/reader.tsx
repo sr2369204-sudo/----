@@ -38,9 +38,12 @@ import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
 import {
+  RecitationPlayMenu,
   RecitationPlayer,
   RecitationScopeDialog,
+  ReciterPickerDialog,
   nextPlaybackRate,
+  type PlayScopeChoice,
   type RepeatMode,
 } from '@/features/reader/components/RecitationPlayer';
 import { SwipePageViewer } from '@/features/reader/components/SwipePageViewer';
@@ -52,7 +55,6 @@ import {
   type RecitationScope,
 } from '@/features/reader/services/recitation-queue';
 import {
-  DEFAULT_RECITER_ID,
   useReaderPreferencesStore,
 } from '@/features/reader/state/reader-preferences-store';
 import {
@@ -108,19 +110,24 @@ export default function ReaderScreen() {
   const [interactionError, setInteractionError] = useState<string | null>(null);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const [navigationMode, setNavigationMode] = useState<NavigationMode>('page');
+  const [navigationMode, setNavigationMode] = useState<NavigationMode>('surah');
   const [navigationValue, setNavigationValue] = useState('');
   const [navigationBusy, setNavigationBusy] = useState(false);
   const audioRequest = useRef(0);
   const [navVisible, setNavVisible] = useState(false);
+  const [reciterPickerOpen, setReciterPickerOpen] = useState(false);
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [navAnimation] = useState(() => new Animated.Value(0));
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
   const [playbackRate, setPlaybackRate] = useState(1);
-  // True when the floating player was started from a word/ayah selection, so
-  // it is dismissed together with the selection exactly like the navbar. A
-  // recitation started from the navbar scope dialog keeps playing instead.
-  const [selectionBoundPlayer, setSelectionBoundPlayer] = useState(false);
+  // True while the reader has tucked the floating player away by tapping the
+  // page, so the verse it covers can be read while the recitation keeps going.
+  const [playerHidden, setPlayerHidden] = useState(false);
+  // True while the long-press play menu is open.
+  const [playMenuOpen, setPlayMenuOpen] = useState(false);
+  // Snapshot of the playback state read from inside the page's background-tap
+  // callback, which must keep a stable identity while the status ticks.
+  const playbackRef = useRef<{ hasPlaylist: boolean }>({ hasPlaylist: false });
 
   // The reader controls are no longer opened from a floating button: they come
   // up together with the word tools, so revealing the ring always reveals the
@@ -327,6 +334,11 @@ export default function ReaderScreen() {
   // chrome out of the way and follows the reciting ayah alone.
   const isReciting = recitationStatus.playing;
 
+  // True whenever any audio is running — a single word/ayah file or a full
+  // recitation queue. Both take the word tools and the navbar off screen so the
+  // page stays clear while the reader listens.
+  const isPlayingAudio = playerStatus.playing || recitationStatus.playing;
+
   // The page of the recited ayah is almost always already mounted (the reader
   // follows one ayah at a time through the current page and its two preloaded
   // neighbours), so it is resolved locally and the source is only asked when
@@ -505,6 +517,12 @@ export default function ReaderScreen() {
     player.setPlaybackRate(playbackRate);
   }, [playbackRate, player, recitationPlaylist]);
 
+  // Kept in a ref because the page's background-tap callback has to stay stable
+  // while the playback status ticks every second.
+  useEffect(() => {
+    playbackRef.current.hasPlaylist = recitationQueue !== null;
+  }, [recitationQueue]);
+
   const onWordPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
@@ -594,6 +612,9 @@ export default function ReaderScreen() {
     recitationPlaylist.loop = repeatMode;
     recitationPlaylist.playbackRate = playbackRate;
     setRecitationQueue(queue);
+    // A fresh queue always brings the floating player back into view, even if
+    // the reader had tucked the previous one away.
+    setPlayerHidden(false);
     const resumeIndex = resumeTrack
       ? queue.tracks.findIndex(
           (track) =>
@@ -623,7 +644,7 @@ export default function ReaderScreen() {
     if (currentSelection.type === 'range') {
       // A run of ayahs is a playlist, not a single file: it is loaded into the
       // recitation player so it can be browsed, repeated and sped up.
-      setSelectionBoundPlayer(true);
+      useReaderSelectionStore.getState().clearSelection();
       await runRecitation({
         type: 'ayahRange',
         surahNumber: currentSelection.surahNumber,
@@ -632,6 +653,19 @@ export default function ReaderScreen() {
       });
       return;
     }
+
+    if (currentSelection.type === 'ayah') {
+      // A single ayah is also loaded into the recitation player to provide
+      // consistent controls (repeat, speed, reciter info).
+      useReaderSelectionStore.getState().clearSelection();
+      await runRecitation({
+        type: 'ayah',
+        surahNumber: currentSelection.surahNumber,
+        ayahNumber: currentSelection.ayah.ayahNumber,
+      });
+      return;
+    }
+
     const requestId = ++audioRequest.current;
     setAudioError(null);
     recitationPlaylist.pause();
@@ -645,52 +679,20 @@ export default function ReaderScreen() {
         currentSelection.word.position,
       );
     } else {
-      try {
-        audioUrl = await quranContentProvider.getAyahAudioUrl(
-          reciterId,
-          currentSelection.surahNumber,
-          currentSelection.ayah.ayahNumber,
-        );
-      } catch (error) {
-        if (
-          !(error instanceof ContentUnavailableError) ||
-          error.reason !== 'server' ||
-          error.message !== 'Quran.com API returned HTTP 404.'
-        ) {
-          throw error;
-        }
-
-        const reciters = await quranContentProvider.getReciters();
-        if (reciters.some((reciter) => reciter.id === reciterId)) {
-          throw error;
-        }
-        const fallbackReciter =
-          reciters.find((reciter) => reciter.id === DEFAULT_RECITER_ID) ?? reciters[0];
-        if (!fallbackReciter) {
-          throw error;
-        }
-        if (requestId !== audioRequest.current) {
-          return;
-        }
-        await saveSetting(database, 'reciterId', String(fallbackReciter.id));
-        const preferences = useReaderPreferencesStore.getState();
-        preferences.setPreferences(preferences.themePreference, fallbackReciter.id);
-        audioUrl = await quranContentProvider.getAyahAudioUrl(
-          fallbackReciter.id,
-          currentSelection.surahNumber,
-          currentSelection.ayah.ayahNumber,
-        );
-      }
+      // This branch is now only for words or other types if added; ayah is handled above.
+      audioUrl = null;
     }
+
     if (requestId !== audioRequest.current) {
       return;
     }
+
     if (!audioUrl) {
       throw new Error('لا يتوفر تسجيل صوتي لهذه الكلمة من المصدر.');
     }
     player.replace({ uri: audioUrl });
     player.play();
-  }, [database, player, recitationPlaylist, reciterId, runRecitation]);
+  }, [player, recitationPlaylist, runRecitation]);
 
   const stopAudio = useCallback(() => {
     audioRequest.current += 1;
@@ -812,9 +814,9 @@ export default function ReaderScreen() {
     setRecitationBusy(true);
     setRecitationError(null);
     try {
-      // A recitation picked from the navbar is not tied to a selection, so it
-      // keeps its player after the selection is dismissed.
-      setSelectionBoundPlayer(false);
+      // Focus mode: the word tools and the navbar go away as soon as a
+      // recitation starts, leaving the page and the floating player alone.
+      useReaderSelectionStore.getState().clearSelection();
       await runRecitation(scope);
       setScopeDialogOpen(false);
     } catch (error) {
@@ -831,14 +833,19 @@ export default function ReaderScreen() {
     recitationPlaylist.clear();
     setRecitationQueue(null);
     setRecitationError(null);
-    setSelectionBoundPlayer(false);
   }, [recitationPlaylist]);
 
-  // Reported by the page itself when a tap misses every word and ayah. The
-  // tools opened from the page are dismissed here; because the report comes
+  // Reported by the page itself when a tap misses every word and ayah. With a
+  // recitation queue loaded the tap tucks the floating player away — or brings
+  // it back — so the verse underneath can be read while the reciter goes on.
+  // Otherwise it simply dismisses the word/ayah tools. Because the report comes
   // from inside the page, a tap on another ayah is never read as a dismissal
   // and can still stretch the selection into a range.
   const handleBackgroundPress = useCallback(() => {
+    if (!useReaderSelectionStore.getState().selection && playbackRef.current.hasPlaylist) {
+      setPlayerHidden((hidden) => !hidden);
+      return;
+    }
     useReaderSelectionStore.getState().clearSelection();
   }, []);
 
@@ -906,6 +913,55 @@ export default function ReaderScreen() {
       : selection.ayah.ayahNumber
     : page?.ayahs[0]?.ayahNumber ?? 1;
 
+  // The verse the long-press play menu is opened on: the selected one when
+  // there is a selection, otherwise the first verse of the page on screen.
+  const playMenuSurahNumber =
+    selection?.surahNumber ?? page?.surahs[0]?.surahNumber ?? 1;
+  const playMenuAyahNumber = selection
+    ? selection.type === 'range'
+      ? selection.startAyah
+      : selection.ayah.ayahNumber
+    : page?.ayahs[0]?.ayahNumber ?? 1;
+  const playMenuSurahName =
+    page?.surahs.find((surah) => surah.surahNumber === playMenuSurahNumber)?.nameArabic ??
+    currentSurahName;
+
+  const openPlayMenu = useCallback(() => {
+    setRecitationError(null);
+    setPlayMenuOpen(true);
+  }, []);
+
+  /** Turns one of the long-press menu options into the recitation it starts. */
+  const handlePlayScope = useCallback(
+    (choice: PlayScopeChoice) => {
+      setPlayMenuOpen(false);
+      const surahNumber = playMenuSurahNumber;
+      const lastAyah =
+        directoryQuery.data?.surahs.find((surah) => surah.surahNumber === surahNumber)?.ayahCount ??
+        playMenuAyahNumber;
+      if (choice === 'from-surah-start') {
+        void startRecitation({ type: 'surah', surahNumber });
+        return;
+      }
+      if (choice === 'from-page-start') {
+        const pageAyahNumbers = (page?.ayahs ?? [])
+          .filter((ayah) => ayah.surahNumber === surahNumber)
+          .map((ayah) => ayah.ayahNumber);
+        const fromAyah =
+          pageAyahNumbers.length > 0 ? Math.min(...pageAyahNumbers) : playMenuAyahNumber;
+        void startRecitation({ type: 'ayahRange', surahNumber, fromAyah, toAyah: lastAyah });
+        return;
+      }
+      void startRecitation({
+        type: 'ayahRange',
+        surahNumber,
+        fromAyah: playMenuAyahNumber,
+        toAyah: lastAyah,
+      });
+    },
+    [directoryQuery.data, page, playMenuAyahNumber, playMenuSurahNumber, startRecitation],
+  );
+
   const navigateTo = useCallback(async (mode: NavigationMode, rawValue: string) => {
     const value = parseArabicNumber(rawValue);
     setNavigationError(null);
@@ -944,7 +1000,7 @@ export default function ReaderScreen() {
   }, [navigateToPage, quranCache]);
 
   useEffect(() => {
-    if ((!selection || isReciting) && navVisible) {
+    if ((!selection || isPlayingAudio) && navVisible) {
       // Avoid calling setState synchronously during render/effect to satisfy
       // strict lint rules, especially since hideNavbar starts an animation.
       const task = requestAnimationFrame(() => {
@@ -952,19 +1008,25 @@ export default function ReaderScreen() {
       });
       return () => cancelAnimationFrame(task);
     }
-  }, [selection, isReciting, navVisible, hideNavbar]);
+  }, [selection, isPlayingAudio, navVisible, hideNavbar]);
 
   useEffect(() => {
-    // The player opened from the word/ayah tools belongs to the selection, so
-    // clearing the selection takes it away with the ring and the navbar.
-    if (selection || !selectionBoundPlayer || !recitationQueue) {
-      return;
+    // Automatically close the recitation player when the playlist finishes
+    // and is no longer playing. This keeps the screen clear once the
+    // requested passage has been heard.
+    if (
+      recitationQueue &&
+      !recitationStatus.playing &&
+      recitationStatus.currentIndex === recitationStatus.trackCount - 1 &&
+      recitationStatus.currentTime >= (recitationStatus.duration - 100) && // near the end
+      recitationStatus.duration > 0
+    ) {
+      const task = setTimeout(() => {
+        closeRecitation();
+      }, 1500);
+      return () => clearTimeout(task);
     }
-    const task = requestAnimationFrame(() => {
-      closeRecitation();
-    });
-    return () => cancelAnimationFrame(task);
-  }, [closeRecitation, recitationQueue, selection, selectionBoundPlayer]);
+  }, [closeRecitation, recitationQueue, recitationStatus.currentIndex, recitationStatus.currentTime, recitationStatus.duration, recitationStatus.playing, recitationStatus.trackCount]);
 
   const initialError = startLocationQuery.error;
   const pageError = pageQuery.error;
@@ -1034,18 +1096,6 @@ export default function ReaderScreen() {
         </Pressable>
 
         <View style={styles.navLeftActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تشغيل التلاوة"
-            onPress={() => setScopeDialogOpen(true)}
-            style={({ pressed }) => [
-              styles.navIconBtn,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-              pressed && { opacity: 0.75 },
-            ]}
-          >
-            <Ionicons name="headset-outline" size={18} color={colors.text} />
-          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="فهرس الصفحات والسور"
@@ -1150,9 +1200,12 @@ export default function ReaderScreen() {
           onPrevious={() => recitationPlaylist.previous()}
           onClose={closeRecitation}
           onOpenPicker={() => setScopeDialogOpen(true)}
+          onOpenReciterPicker={() => setReciterPickerOpen(true)}
           reciters={recitersQuery.data ?? []}
           reciterId={reciterId}
           onSelectReciter={selectReciter}
+          hidden={playerHidden}
+          onToggleVisibility={() => setPlayerHidden((h) => !h)}
         />
       )}
 
@@ -1168,19 +1221,20 @@ export default function ReaderScreen() {
         <Text accessibilityRole="alert" style={styles.error}>{navigationError}</Text>
       )}
 
-      {!isReciting && (
+      {!isPlayingAudio && (
         <SelectionToolbar
           surahName={currentSurahName}
           anchorRect={selectionAnchor}
           navbarHeight={navbarHeight}
           isBookmarked={isBookmarked}
           isWordSaved={isWordSaved}
-          isAudioPlaying={playerStatus.playing}
+          isAudioPlaying={isPlayingAudio}
           onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
           onToggleBookmark={toggleBookmark}
           onToggleSaveWord={toggleSaveWord}
           onPlayAudio={playSelection}
           onStopAudio={stopAudio}
+          onOpenPlayMenu={openPlayMenu}
           onOpenAyah={openAyah}
         />
       )}
@@ -1227,6 +1281,33 @@ export default function ReaderScreen() {
             setScopeDialogOpen(false);
             setRecitationError(null);
           }}
+        />
+      )}
+
+      {playMenuOpen && (
+        <RecitationPlayMenu
+          visible
+          colors={colors}
+          surahName={playMenuSurahName}
+          ayahNumber={playMenuAyahNumber}
+          busy={recitationBusy}
+          error={recitationError}
+          onChoose={handlePlayScope}
+          onClose={() => {
+            setPlayMenuOpen(false);
+            setRecitationError(null);
+          }}
+        />
+      )}
+
+      {reciterPickerOpen && (
+        <ReciterPickerDialog
+          visible
+          colors={colors}
+          reciters={recitersQuery.data ?? []}
+          reciterId={reciterId}
+          onSelect={selectReciter}
+          onClose={() => setReciterPickerOpen(false)}
         />
       )}
     </View>

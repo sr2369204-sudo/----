@@ -76,6 +76,7 @@ export type QuranReciter = {
   id: number;
   name: string;
   style: string;
+  imageUrl?: string;
 };
 
 /** A single playable ayah recording resolved from the source reciter. */
@@ -313,25 +314,61 @@ export class QuranComContentProvider implements QuranContentProvider {
     const payload = await this.requestJson(
       `/search?q=${encodeURIComponent(trimmed)}&size=${limit}&page=1`,
     );
+
     if (!isRecord(payload) || !isRecord(payload.search) || !Array.isArray(payload.search.results)) {
       throw new ContentUnavailableError('invalid-data', 'Search response is invalid.');
     }
-    const results: AyahSearchResult[] = [];
-    for (const item of payload.search.results) {
-      if (!isRecord(item) || typeof item.verse_key !== 'string') {
-        continue;
-      }
-      const match = /^(\d{1,3}):(\d{1,3})$/.exec(item.verse_key);
-      if (!match) {
-        continue;
-      }
-      results.push({
-        surahNumber: Number(match[1]),
-        ayahNumber: Number(match[2]),
-        text: typeof item.text === 'string' ? stripMarkup(item.text) : '',
-      });
-    }
-    return results;
+
+    const searchItems = payload.search.results.filter(
+      (item: unknown): item is Record<string, unknown> =>
+        isRecord(item) && typeof item.verse_key === 'string',
+    );
+
+    // The source search is approximate; only keep candidates whose canonical
+    // Arabic text contains the exact word or phrase the user entered.
+    const results = await Promise.all(
+      searchItems.map(async (item) => {
+        const verseKey = item.verse_key as string;
+        const match = /^(\d{1,3}):(\d{1,3})$/.exec(verseKey);
+        if (!match) {
+          return null;
+        }
+
+        const surahNumber = Number(match[1]);
+        const ayahNumber = Number(match[2]);
+        let text: string | null = null;
+
+        try {
+          const versePayload = await this.requestJson(
+            `/verses/by_key/${verseKey}?language=ar&fields=text_uthmani`,
+            QDC_API_BASE_URL,
+          );
+
+          if (
+            isRecord(versePayload) &&
+            isRecord(versePayload.verse) &&
+            typeof versePayload.verse.text_uthmani === 'string'
+          ) {
+            text = stripMarkup(versePayload.verse.text_uthmani);
+          }
+        } catch {
+          // Use the search snippet only when it independently matches below.
+        }
+
+        if (text === null && typeof item.text === 'string') {
+          text = stripMarkup(item.text);
+        }
+        if (text === null || !matchesExactArabicSearch(trimmed, text)) {
+          return null;
+        }
+
+        return { surahNumber, ayahNumber, text };
+      }),
+    );
+
+    return results
+      .filter((result): result is AyahSearchResult => result !== null)
+      .sort((a, b) => a.surahNumber - b.surahNumber || a.ayahNumber - b.ayahNumber);
   }
 
   async getAyahAudioUrl(
@@ -392,7 +429,17 @@ export class QuranComContentProvider implements QuranContentProvider {
       }
 
       seen.add(item.id);
-      return { id: item.id, name: item.name, style: item.style.name };
+      const name = item.name;
+      // Dicebear initials provide a stable, clean, and modern visual for reciters
+      // without relying on external AI generation which might be unstable or blocked.
+      const imageUrl = `https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(name)}&backgroundColor=006758,ffd700,004d40&fontFamily=Arial&fontSize=40`;
+
+      return {
+        id: item.id,
+        name,
+        style: item.style.name,
+        imageUrl,
+      };
     });
 
     const playableReciters: QuranReciter[] = [];
@@ -928,6 +975,27 @@ function stripMarkup(value: string): string {
     .replace(/&gt;/g, '>')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function matchesExactArabicSearch(query: string, ayahText: string): boolean {
+  const queryWords = getArabicSearchWords(query);
+  const ayahWords = getArabicSearchWords(ayahText);
+
+  if (queryWords.length === 0 || queryWords.length > ayahWords.length) {
+    return false;
+  }
+
+  return ayahWords.some((_, start) =>
+    queryWords.every((word, offset) => ayahWords[start + offset] === word),
+  );
+}
+
+function getArabicSearchWords(value: string): string[] {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, '')
+    .replace(/[أإآٱى]/g, (letter) => letter === 'ى' ? 'ي' : 'ا');
+  return normalized.match(/[\u0621-\u064A\u0671-\u06D3]+/g) ?? [];
 }
 
 function assertAyahReference(surahNumber: number, ayahNumber: number): void {
