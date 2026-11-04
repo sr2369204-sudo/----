@@ -33,6 +33,7 @@ import { Spacing } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import type {
   AnnotationTarget,
+  AyahVoiceNote,
   Highlight,
   Note,
   WordVoiceNote,
@@ -136,7 +137,7 @@ function Toolbar({
   const [panel, setPanel] = useState<Panel>('toolbar');
   const [highlightColors, setHighlightColors] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [voiceNotes, setVoiceNotes] = useState<WordVoiceNote[]>([]);
+  const [voiceNotes, setVoiceNotes] = useState<(WordVoiceNote | AyahVoiceNote)[]>([]);
   const [playingVoiceUri, setPlayingVoiceUri] = useState<string | null>(null);
   const [noteBody, setNoteBody] = useState('');
   const [customColor, setCustomColor] = useState('');
@@ -208,17 +209,25 @@ function Toolbar({
     };
   }, [repository, target]);
 
-  // Voice notes belong to a single word, so they are only offered when one is
-  // selected; an ayah or a range has no word to attach a recording to.
   const wordTarget = target?.type === 'word' ? target : null;
+  const voiceNoteTarget = target?.type === 'word' || target?.type === 'ayah' ? target : null;
 
   useEffect(() => {
-    if (!wordTarget) {
+    if (!voiceNoteTarget) {
       return;
     }
     let active = true;
-    repository
-      .listVoiceNotesForWord(wordTarget.surahNumber, wordTarget.ayahNumber, wordTarget.wordId)
+    const savedNotes = voiceNoteTarget.type === 'word'
+      ? repository.listVoiceNotesForWord(
+          voiceNoteTarget.surahNumber,
+          voiceNoteTarget.ayahNumber,
+          voiceNoteTarget.wordId,
+        )
+      : repository.listVoiceNotesForAyah(
+          voiceNoteTarget.surahNumber,
+          voiceNoteTarget.ayahNumber,
+        );
+    savedNotes
       .then((saved) => {
         if (active) {
           setVoiceNotes(saved);
@@ -230,7 +239,7 @@ function Toolbar({
     return () => {
       active = false;
     };
-  }, [repository, wordTarget]);
+  }, [repository, voiceNoteTarget]);
 
   const rangeAyahs = selection.type === 'range' ? selection.ayahs : null;
   const startAyah = selection.type === 'range' ? selection.startAyah : selection.ayah.ayahNumber;
@@ -267,14 +276,17 @@ function Toolbar({
     ]);
     setHighlightColors(savedHighlights);
     setNotes(savedNotes);
-    if (wordTarget) {
-      setVoiceNotes(
-        await repository.listVoiceNotesForWord(
-          wordTarget.surahNumber,
-          wordTarget.ayahNumber,
-          wordTarget.wordId,
-        ),
-      );
+    if (voiceNoteTarget?.type === 'word') {
+      setVoiceNotes(await repository.listVoiceNotesForWord(
+        voiceNoteTarget.surahNumber,
+        voiceNoteTarget.ayahNumber,
+        voiceNoteTarget.wordId,
+      ));
+    } else if (voiceNoteTarget?.type === 'ayah') {
+      setVoiceNotes(await repository.listVoiceNotesForAyah(
+        voiceNoteTarget.surahNumber,
+        voiceNoteTarget.ayahNumber,
+      ));
     }
   }
 
@@ -372,7 +384,7 @@ function Toolbar({
   }
 
   async function stopVoiceNote(): Promise<void> {
-    if (!wordTarget) {
+    if (!voiceNoteTarget) {
       return;
     }
     setBusy(true);
@@ -403,13 +415,22 @@ function Toolbar({
       // clear; moving the file keeps the note for as long as the app is installed.
       await new File(recordedUri).move(destination);
 
-      await repository.createVoiceNote({
-        surahNumber: wordTarget.surahNumber,
-        ayahNumber: wordTarget.ayahNumber,
-        wordId: wordTarget.wordId,
-        fileUri: destination.uri,
-        durationMs,
-      });
+      if (voiceNoteTarget.type === 'word') {
+        await repository.createVoiceNote({
+          surahNumber: voiceNoteTarget.surahNumber,
+          ayahNumber: voiceNoteTarget.ayahNumber,
+          wordId: voiceNoteTarget.wordId,
+          fileUri: destination.uri,
+          durationMs,
+        });
+      } else {
+        await repository.createAyahVoiceNote({
+          surahNumber: voiceNoteTarget.surahNumber,
+          ayahNumber: voiceNoteTarget.ayahNumber,
+          fileUri: destination.uri,
+          durationMs,
+        });
+      }
       await refreshSavedItems();
       setMessage('تم حفظ الملاحظة الصوتية.');
     } catch (recordError) {
@@ -421,7 +442,7 @@ function Toolbar({
     }
   }
 
-  function toggleVoiceNote(note: WordVoiceNote): void {
+  function toggleVoiceNote(note: WordVoiceNote | AyahVoiceNote): void {
     setError(null);
     if (playingVoiceUri === note.fileUri && voiceStatus.playing) {
       voicePlayer.pause();
@@ -433,7 +454,7 @@ function Toolbar({
     setPlayingVoiceUri(note.fileUri);
   }
 
-  async function removeVoiceNote(note: WordVoiceNote): Promise<void> {
+  async function removeVoiceNote(note: WordVoiceNote | AyahVoiceNote): Promise<void> {
     setBusy(true);
     setError(null);
     try {
@@ -441,7 +462,11 @@ function Toolbar({
         voicePlayer.pause();
         setPlayingVoiceUri(null);
       }
-      await repository.deleteVoiceNote(note.id);
+      if ('wordId' in note) {
+        await repository.deleteVoiceNote(note.id);
+      } else {
+        await repository.deleteAyahVoiceNote(note.id);
+      }
       const file = new File(note.fileUri);
       if (file.exists) {
         file.delete();
@@ -895,7 +920,38 @@ function Toolbar({
 
             {panel === 'notes' && (
               <ScrollView contentContainerStyle={styles.dialogBody} keyboardShouldPersistTaps="handled">
-                {wordTarget && (
+                {selection.type !== 'range' && (
+                  <View
+                    style={[
+                      styles.ayahContextCard,
+                      { backgroundColor: palette.backgroundSelected, borderColor: palette.border },
+                    ]}>
+                    <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
+                      نص الآية
+                    </Text>
+                    <Text style={[styles.ayahText, { color: palette.text }]}>
+                      {selection.ayah.words.map((word, index) => (
+                        <Text
+                          key={word.id}
+                          style={[
+                            selection.type === 'word' && word.id === selection.word.id
+                              ? styles.noteTargetWord
+                              : undefined,
+                            selection.type === 'word' && word.id === selection.word.id
+                              ? {
+                                  color: palette.background,
+                                  backgroundColor: palette.primary,
+                                }
+                              : undefined,
+                          ]}>
+                          {word.textUthmani}{index < selection.ayah.words.length - 1 ? ' ' : ''}
+                        </Text>
+                      ))}
+                    </Text>
+                  </View>
+                )}
+
+                {voiceNoteTarget && (
                   <View
                     style={[
                       styles.recorderCard,
@@ -919,7 +975,7 @@ function Toolbar({
                       </View>
                       <View style={styles.recorderText}>
                         <Text style={[styles.recorderTitle, { color: palette.text }]}>
-                          ملاحظة صوتية على الكلمة
+                          {wordTarget ? 'ملاحظة صوتية على الكلمة' : 'ملاحظة صوتية على الآية'}
                         </Text>
                         <Text style={[styles.recorderHint, { color: palette.textSecondary }]}>
                           {recorderState.isRecording
@@ -964,7 +1020,7 @@ function Toolbar({
                 {voiceNotes.length > 0 && (
                   <View style={styles.savedList}>
                     <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
-                      تسجيلاتي على هذه الكلمة
+                      {wordTarget ? 'تسجيلاتي على هذه الكلمة' : 'تسجيلاتي على هذه الآية'}
                     </Text>
                     {voiceNotes.map((voiceNote) => {
                       const playing = playingVoiceUri === voiceNote.fileUri && voiceStatus.playing;
@@ -1732,6 +1788,16 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 30,
     textAlign: 'right',
+  },
+  noteTargetWord: {
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+  },
+  ayahContextCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: Spacing.three,
+    gap: Spacing.two,
   },
   meaningCard: {
     borderWidth: 1.5,

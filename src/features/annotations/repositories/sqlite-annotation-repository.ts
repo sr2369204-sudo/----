@@ -3,7 +3,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type {
   AnnotationTarget,
+  AyahVoiceNote,
   Bookmark,
+  CreateAyahVoiceNoteInput,
   CreateHighlightInput,
   CreateNoteInput,
   CreateSavedWordInput,
@@ -55,6 +57,15 @@ type WordVoiceNoteRow = {
   surah_number: number;
   ayah_number: number;
   word_id: string;
+  file_uri: string;
+  duration_ms: number;
+  created_at: string;
+};
+
+type AyahVoiceNoteRow = {
+  id: string;
+  surah_number: number;
+  ayah_number: number;
   file_uri: string;
   duration_ms: number;
   created_at: string;
@@ -165,6 +176,14 @@ export class SqliteAnnotationRepository {
        ORDER BY created_at ASC, id ASC`,
       surahNumber,
       ayahNumber,
+    );
+    return rows.map(toBookmark);
+  }
+
+  async listBookmarks(): Promise<Bookmark[]> {
+    const rows = await this.database.getAllAsync<BookmarkRow>(
+      `SELECT * FROM bookmarks
+       ORDER BY created_at DESC, id DESC`,
     );
     return rows.map(toBookmark);
   }
@@ -304,6 +323,20 @@ export class SqliteAnnotationRepository {
     return rows.map(toWordVoiceNote);
   }
 
+  async listVoiceNotesForAyah(
+    surahNumber: number,
+    ayahNumber: number,
+  ): Promise<AyahVoiceNote[]> {
+    const rows = await this.database.getAllAsync<AyahVoiceNoteRow>(
+      `SELECT * FROM ayah_voice_notes
+       WHERE surah_number = ? AND ayah_number = ?
+       ORDER BY created_at ASC, id ASC`,
+      surahNumber,
+      ayahNumber,
+    );
+    return rows.map(toAyahVoiceNote);
+  }
+
   async createVoiceNote(input: CreateWordVoiceNoteInput): Promise<WordVoiceNote> {
     if (
       !Number.isInteger(input.surahNumber) ||
@@ -350,8 +383,55 @@ export class SqliteAnnotationRepository {
     };
   }
 
+  async createAyahVoiceNote(input: CreateAyahVoiceNoteInput): Promise<AyahVoiceNote> {
+    if (
+      !Number.isInteger(input.surahNumber) ||
+      input.surahNumber < 1 ||
+      input.surahNumber > 114 ||
+      !Number.isInteger(input.ayahNumber) ||
+      input.ayahNumber < 1
+    ) {
+      throw new Error('Voice notes require a valid surah and ayah reference.');
+    }
+    const fileUri = input.fileUri.trim();
+    if (fileUri.length === 0) {
+      throw new Error('Voice notes require the recorded file.');
+    }
+    if (!Number.isFinite(input.durationMs) || input.durationMs < 0) {
+      throw new Error('Voice notes require a non-negative duration.');
+    }
+
+    const id = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    const durationMs = Math.round(input.durationMs);
+    await this.database.runAsync(
+      `INSERT INTO ayah_voice_notes (
+        id, surah_number, ayah_number, file_uri, duration_ms, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      id,
+      input.surahNumber,
+      input.ayahNumber,
+      fileUri,
+      durationMs,
+      now,
+    );
+
+    return {
+      id,
+      surahNumber: input.surahNumber,
+      ayahNumber: input.ayahNumber,
+      fileUri,
+      durationMs,
+      createdAt: now,
+    };
+  }
+
   async deleteVoiceNote(id: string): Promise<void> {
     await this.database.runAsync('DELETE FROM word_voice_notes WHERE id = ?', id);
+  }
+
+  async deleteAyahVoiceNote(id: string): Promise<void> {
+    await this.database.runAsync('DELETE FROM ayah_voice_notes WHERE id = ?', id);
   }
 }
 
@@ -514,6 +594,17 @@ function toWordVoiceNote(row: WordVoiceNoteRow): WordVoiceNote {
     surahNumber: row.surah_number,
     ayahNumber: row.ayah_number,
     wordId: row.word_id,
+    fileUri: row.file_uri,
+    durationMs: row.duration_ms,
+    createdAt: row.created_at,
+  };
+}
+
+function toAyahVoiceNote(row: AyahVoiceNoteRow): AyahVoiceNote {
+  return {
+    id: row.id,
+    surahNumber: row.surah_number,
+    ayahNumber: row.ayah_number,
     fileUri: row.file_uri,
     durationMs: row.duration_ms,
     createdAt: row.created_at,

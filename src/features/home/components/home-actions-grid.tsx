@@ -50,14 +50,28 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
       color: '#2DCE89',
       href: '/library',
     },
+    {
+      id: 'bookmarks',
+      label: 'الإشارات المرجعية',
+      sublabel: 'الآيات التي حفظتها',
+      icon: 'bookmarks',
+      color: '#C07A44',
+      href: '/bookmarks',
+    },
   ];
 
   return (
     <View style={[styles.card, { backgroundColor: colors.surface }]}>
       <View style={styles.grid}>
-        {ACTIONS.map((action) => (
+        {ACTIONS.map((action, index) => (
           <Link key={action.id} href={action.href} asChild>
-            <Pressable style={styles.item}>
+            <Pressable
+              style={StyleSheet.flatten([
+                styles.item,
+                index === ACTIONS.length - 1 && ACTIONS.length % 2 !== 0
+                  ? styles.lastItem
+                  : undefined,
+              ])}>
               <View style={[styles.iconContainer, { backgroundColor: `${action.color}15` }]}>
                 <Ionicons name={action.icon} size={24} color={action.color} />
               </View>
@@ -100,6 +114,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.two,
     gap: 10,
+  },
+  lastItem: {
+    width: '100%',
   },
   textContainer: {
     flex: 1,

@@ -81,10 +81,27 @@ export type WordVoiceNote = {
   createdAt: string;
 };
 
+export type AyahVoiceNote = {
+  id: string;
+  surahNumber: number;
+  ayahNumber: number;
+  /** Persistent location of the recorded audio file on the device. */
+  fileUri: string;
+  durationMs: number;
+  createdAt: string;
+};
+
 export type CreateWordVoiceNoteInput = {
   surahNumber: number;
   ayahNumber: number;
   wordId: string;
+  fileUri: string;
+  durationMs: number;
+};
+
+export type CreateAyahVoiceNoteInput = {
+  surahNumber: number;
+  ayahNumber: number;
   fileUri: string;
   durationMs: number;
 };

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { Link } from 'expo-router';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import {
   ActivityIndicator,
   Pressable,
@@ -59,12 +60,22 @@ export function HomeHero({
       </View>
 
       <View style={[styles.content, { paddingTop: insets.top + Spacing.two }]}>
-        <View style={styles.topRow}>
+        <Animated.View entering={FadeInDown.duration(560).delay(100)} style={styles.topRow}>
           <View style={styles.welcomeGroup}>
-            <Text style={styles.welcomeTitle}>مرحباً بك في مصحف</Text>
-            <Text style={styles.welcomeSubtitle}>ابحث في كتاب الله عز وجل</Text>
+            <View style={styles.brandMark}>
+              <Image
+                source={require('../../../../assets/images/icon.png')}
+                contentFit="contain"
+                style={styles.brandMarkImage}
+                accessibilityLabel="شعار مصحف"
+              />
+            </View>
+            <View style={styles.brandCopy}>
+              <Text style={styles.welcomeTitle}>مصحف</Text>
+              <Text style={styles.welcomeSubtitle}>اقرأ القرآن وتصفّح سوره</Text>
+            </View>
           </View>
-          
+
           <Link href="/settings" asChild>
             <Pressable
               accessibilityRole="button"
@@ -73,21 +84,23 @@ export function HomeHero({
               <Ionicons name="settings-outline" size={24} color="#FFF" />
             </Pressable>
           </Link>
-        </View>
+        </Animated.View>
 
-        <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
-          <Ionicons name="search" size={20} color={colors.primary} style={styles.searchIcon} />
-          <TextInput
-            accessibilityLabel="ابحث باسم السورة أو آية أو كلمة من القرآن"
-            placeholder="ابحث باسم السورة أو آية أو كلمة من القرآن..."
-            placeholderTextColor={colors.textSecondary}
-            value={searchValue}
-            onChangeText={onSearchChange}
-            style={[styles.searchInput, { color: colors.text }]}
-            textAlign="right"
-            returnKeyType="search"
-          />
-        </View>
+        <Animated.View entering={FadeInUp.duration(520).delay(220)} style={styles.searchEntry}>
+          <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
+            <Ionicons name="search" size={20} color={colors.primary} style={styles.searchIcon} />
+            <TextInput
+              accessibilityLabel="ابحث باسم السورة أو آية أو كلمة من القرآن"
+              placeholder="ابحث باسم السورة أو آية أو كلمة من القرآن..."
+              placeholderTextColor={colors.textSecondary}
+              value={searchValue}
+              onChangeText={onSearchChange}
+              style={[styles.searchInput, { color: colors.text }]}
+              textAlign="right"
+              returnKeyType="search"
+            />
+          </View>
+        </Animated.View>
       </View>
 
       {showResults && (
@@ -213,10 +226,31 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   welcomeGroup: {
-    gap: 4,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  brandMark: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(227,183,94,0.5)',
+  },
+  brandMarkImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  brandCopy: {
+    gap: 3,
   },
   welcomeTitle: {
-    fontSize: TypeScale.hero,
+    fontSize: TypeScale.hero + 2,
     fontWeight: '900',
     color: '#FFF',
     textAlign: 'right',
@@ -225,6 +259,9 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.body,
     color: 'rgba(255,255,255,0.8)',
     textAlign: 'right',
+  },
+  searchEntry: {
+    width: '100%',
   },
   settingsButton: {
     width: 44,

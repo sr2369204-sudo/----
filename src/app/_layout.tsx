@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/theme';
+import { BrandIntro } from '@/components/brand-intro';
 import { initializeDatabase } from '@/core/database/migrations';
 import {
   DEFAULT_RECITER_ID,
@@ -82,6 +83,7 @@ function AppLayout() {
     <ThemeProvider value={theme}>
       <StatusBar hidden />
       <Stack screenOptions={{ headerShown: false }} />
+      <BrandIntro />
     </ThemeProvider>
   );
 }

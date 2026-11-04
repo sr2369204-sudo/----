@@ -43,6 +43,8 @@ test('creates the initial schema and Mushaf page cache on a fresh database', asy
   assert.match(schema, /PRAGMA user_version = 8/);
   assert.match(schema, /CREATE TABLE word_voice_notes/);
   assert.match(schema, /PRAGMA user_version = 9/);
+  assert.match(schema, /CREATE TABLE ayah_voice_notes/);
+  assert.match(schema, /PRAGMA user_version = 10/);
 });
 
 test('adds the Mushaf page cache to a version-one database', async () => {
@@ -63,6 +65,8 @@ test('adds the Mushaf page cache to a version-one database', async () => {
   assert.match(schema, /PRAGMA user_version = 8/);
   assert.match(schema, /CREATE TABLE word_voice_notes/);
   assert.match(schema, /PRAGMA user_version = 9/);
+  assert.match(schema, /CREATE TABLE ayah_voice_notes/);
+  assert.match(schema, /PRAGMA user_version = 10/);
 });
 
 test('adds the Basmala font cache to a version-four database', async () => {
@@ -82,10 +86,24 @@ test('adds the Basmala font cache to a version-four database', async () => {
   assert.match(schema, /PRAGMA user_version = 8/);
   assert.match(schema, /CREATE TABLE word_voice_notes/);
   assert.match(schema, /PRAGMA user_version = 9/);
+  assert.match(schema, /CREATE TABLE ayah_voice_notes/);
+  assert.match(schema, /PRAGMA user_version = 10/);
+});
+
+test('adds ayah voice notes to a version-nine database', async () => {
+  const database = createDatabase(9);
+
+  await initializeDatabase(database);
+
+  const schema = database.statements.join('\n');
+  assert.match(schema, /CREATE TABLE ayah_voice_notes/);
+  assert.match(schema, /CREATE INDEX ayah_voice_notes_by_reference/);
+  assert.match(schema, /PRAGMA user_version = 10/);
+  assert.doesNotMatch(schema, /CREATE TABLE word_voice_notes/);
 });
 
 test('rejects databases newer than the app schema', async () => {
-  const database = createDatabase(10);
+  const database = createDatabase(11);
 
   await assert.rejects(initializeDatabase(database), /newer than supported/);
 });

@@ -104,7 +104,10 @@ export default function SavedWordsScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="رجوع"
-                  style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  style={StyleSheet.flatten([
+                    styles.iconButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                  ])}>
                   <Ionicons name="arrow-forward" size={20} color={colors.text} />
                 </Pressable>
               </Link>
