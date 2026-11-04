@@ -12,6 +12,21 @@ Before a source is imported, cached offline, redistributed, or shown in producti
 
 Quran.com API availability is not by itself confirmation that content can be redistributed, cached offline, or used commercially. The published terms limit service content to personal, non-commercial use; confirm the applicable rights before distributing this app. Reciter recordings may have separate rights and attribution requirements and must be reviewed individually.
 
+## Reciter portraits
+
+The picker streams these portraits from Wikimedia Commons and shows a source-and-license link beside each image:
+
+| Reciter | Source file | Credit | License |
+|---|---|---|---|
+| Abdul Basit Abdul Samad | [Abdul Basit 'Abd us-Samad with King Faisal](https://commons.wikimedia.org/wiki/File:Abdul_Basit_%27Abd_us-Samad_with_King_Faisal.jpg) | Unknown author | Public domain |
+| Abdur-Rahman as-Sudais | [Abdul-Rahman Al-Sudais (Cropped, 2011)](https://commons.wikimedia.org/wiki/File:Abdul-Rahman_Al-Sudais_(Cropped,_2011).jpg) | Prime Minister's Office | GODL-India |
+| Mahmoud Khalil Al-Husary | [Hussary](https://commons.wikimedia.org/wiki/File:Hussary.jpg) | Zubairkhan1 | Public domain |
+| Muhammad Siddiq al-Minshawi | [Elminshwey](https://commons.wikimedia.org/wiki/File:Elminshwey.jpg) | Unknown author | Public domain |
+| Saud al-Shuraim | [Saud Shuraim](https://commons.wikimedia.org/wiki/File:Saud_Shuraim.png) | Sazwanmisuari | CC0 |
+| Yasser al-Dosari | [Yasser Al-dosari](https://commons.wikimedia.org/wiki/File:Yasser_Al-dosari.jpg) | Yasser Al-Dosari | CC0 |
+
+Portraits without a verified source are not shown; the picker uses a neutral placeholder instead. Review each Commons file page and its current license terms before redistribution.
+
 The page endpoint uses the public Quran.com API v4 and is not the OAuth-protected Quran Foundation Content API; anonymous availability is not guaranteed. Each QCF page font is fetched from `verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p{page}.woff2`. Local caching is for pages the user has opened; it does not grant redistribution rights or permit bundling the page data or font.
 
 ## Release gate

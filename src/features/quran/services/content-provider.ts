@@ -76,7 +76,6 @@ export type QuranReciter = {
   id: number;
   name: string;
   style: string;
-  imageUrl?: string;
 };
 
 /** A single playable ayah recording resolved from the source reciter. */
@@ -429,16 +428,11 @@ export class QuranComContentProvider implements QuranContentProvider {
       }
 
       seen.add(item.id);
-      const name = item.name;
-      // Dicebear initials provide a stable, clean, and modern visual for reciters
-      // without relying on external AI generation which might be unstable or blocked.
-      const imageUrl = `https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(name)}&backgroundColor=006758,ffd700,004d40&fontFamily=Arial&fontSize=40`;
 
       return {
         id: item.id,
-        name,
+        name: item.name,
         style: item.style.name,
-        imageUrl,
       };
     });
 

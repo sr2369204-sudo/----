@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Platform,
   Pressable,
@@ -13,7 +12,10 @@ import {
   View,
 } from 'react-native';
 
+import { ExternalLink } from '@/components/external-link';
 import { Spacing } from '@/constants/theme';
+import { ReciterAvatar } from '@/features/quran/components/reciter-avatar';
+import { getReciterPortrait } from '@/features/quran/services/reciter-portraits';
 import type { QuranReciter } from '@/features/quran/services/content-provider';
 import type { QuranSurahSummary } from '@/features/quran/types';
 import type { RecitationScope } from '@/features/reader/services/recitation-queue';
@@ -128,17 +130,12 @@ export function RecitationPlayer({
               accessibilityLabel="تغيير القارئ"
               onPress={onOpenReciterPicker ?? onOpenPicker}
               style={({ pressed }) => [styles.reciterName, pressed && styles.pressed]}>
-              <View style={[styles.miniAvatar, { backgroundColor: colors.backgroundSelected }]}>
-                {currentReciter?.imageUrl ? (
-                  <Image
-                    source={{ uri: currentReciter.imageUrl }}
-                    style={styles.reciterAvatar}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Ionicons name="mic-outline" size={13} color={colors.primary} />
-                )}
-              </View>
+              <ReciterAvatar
+                reciterId={currentReciter?.id ?? reciterId}
+                size={24}
+                backgroundColor={colors.backgroundSelected}
+                iconColor={colors.primary}
+              />
               <Text style={[styles.reciterLabel, { color: colors.text }]} numberOfLines={1}>
                 {currentReciter ? currentReciter.name : 'جارٍ تحميل القرّاء…'}
               </Text>
@@ -367,46 +364,46 @@ export function ReciterPickerDialog({
             showsVerticalScrollIndicator={false}>
             {reciters.map((reciter) => {
               const selected = reciter.id === reciterId;
+              const portrait = getReciterPortrait(reciter.id);
               return (
-                <Pressable
-                  key={reciter.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => {
-                    onSelect(reciter.id);
-                    onClose();
-                  }}
-                  style={({ pressed }) => [
-                    styles.reciterItem,
-                    { backgroundColor: selected ? colors.primary + '10' : colors.background },
-                    selected && { borderColor: colors.primary },
-                    pressed && styles.pressed,
-                  ]}>
-                  <View style={[styles.reciterIcon, { backgroundColor: selected ? colors.primary : colors.backgroundSelected }]}>
-                    {reciter.imageUrl ? (
-                      <Image
-                        source={{ uri: reciter.imageUrl }}
-                        style={styles.reciterAvatar}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <Ionicons
-                        name="person"
-                        size={18}
-                        color={selected ? colors.background : colors.textSecondary}
-                      />
-                    )}
-                  </View>
-                  <Text
-                    style={[
-                      styles.reciterItemLabel,
-                      { color: selected ? colors.primary : colors.text },
-                      selected && { fontWeight: '900' },
+                <View key={reciter.id} style={styles.reciterItemGroup}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      onSelect(reciter.id);
+                      onClose();
+                    }}
+                    style={({ pressed }) => [
+                      styles.reciterItem,
+                      { backgroundColor: selected ? colors.primary + '10' : colors.background },
+                      selected && { borderColor: colors.primary },
+                      pressed && styles.pressed,
                     ]}>
-                    {reciter.name}
-                  </Text>
-                  {selected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
-                </Pressable>
+                    <ReciterAvatar
+                      reciterId={reciter.id}
+                      size={46}
+                      backgroundColor={selected ? colors.primary : colors.backgroundSelected}
+                      iconColor={selected ? colors.background : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.reciterItemLabel,
+                        { color: selected ? colors.primary : colors.text },
+                        selected && { fontWeight: '900' },
+                      ]}>
+                      {reciter.name}
+                    </Text>
+                    {selected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+                  </Pressable>
+                  {portrait && (
+                    <ExternalLink href={portrait.sourceUrl} style={styles.photoCredit}>
+                      <Text style={styles.photoCreditText}>
+                        {`مصدر الصورة: ${portrait.credit} · ${portrait.license}`}
+                      </Text>
+                    </ExternalLink>
+                  )}
+                </View>
               );
             })}
           </ScrollView>
@@ -891,14 +888,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  miniAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   reciterName: {
     flex: 1,
     minWidth: 0,
@@ -1095,6 +1084,9 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingBottom: Spacing.two,
   },
+  reciterItemGroup: {
+    gap: 3,
+  },
   reciterItem: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1104,23 +1096,22 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'transparent',
   },
-  reciterIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  reciterAvatar: {
-    width: '100%',
-    height: '100%',
-  },
   reciterItemLabel: {
     flex: 1,
     fontSize: 15,
     fontWeight: '700',
     textAlign: 'right',
+  },
+  photoCredit: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  photoCreditText: {
+    color: '#777',
+    fontSize: 10,
+    textAlign: 'right',
+    textDecorationLine: 'underline',
   },
   optionsList: {
     gap: 10,

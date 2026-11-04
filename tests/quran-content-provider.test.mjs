@@ -5,6 +5,7 @@ import {
   ContentUnavailableError,
   QuranComContentProvider,
 } from '../src/features/quran/services/content-provider.ts';
+import { getReciterPortrait } from '../src/features/quran/services/reciter-portraits.ts';
 
 const syntheticChapter = {
   chapter: {
@@ -97,6 +98,20 @@ function mockFetch(t, handler) {
   });
   globalThis.fetch = handler;
 }
+
+test('uses verified source portraits and leaves unknown reciters without a photo', () => {
+  const husaryPortrait = getReciterPortrait(6);
+  const saudPortrait = getReciterPortrait(10);
+
+  assert.ok(husaryPortrait);
+  assert.match(husaryPortrait.imageUrl, /Hussary\.jpg/);
+  assert.equal(husaryPortrait.license, 'Public domain');
+  assert.equal(getReciterPortrait(12)?.sourceUrl, husaryPortrait.sourceUrl);
+  assert.ok(saudPortrait);
+  assert.equal(saudPortrait.license, 'CC0');
+  assert.equal(getReciterPortrait(7), undefined);
+  assert.equal(getReciterPortrait(4), undefined);
+});
 
 test('loads and validates the complete Arabic surah directory without app credentials', async (t) => {
   mockFetch(t, async (url) => {
@@ -438,7 +453,11 @@ test('resolves source-backed ayah audio URLs and reciter metadata', async (t) =>
   const reciters = await provider.getReciters();
 
   assert.equal(audioUrl, 'https://verses.quran.com/Alafasy/mp3/001001.mp3');
-  assert.deepEqual(reciters, [{ id: 7, name: 'Mishari Rashid al-`Afasy', style: 'Murattal' }]);
+  assert.deepEqual(reciters, [{
+    id: 7,
+    name: 'Mishari Rashid al-`Afasy',
+    style: 'Murattal',
+  }]);
   assert.ok(requestedUrls.some((url) => url.endsWith('/recitations/7/by_ayah/1:1')));
 });
 
@@ -493,7 +512,11 @@ test('omits reciters whose source has no playable ayah audio', async (t) => {
 
   const reciters = await new QuranComContentProvider().getReciters();
 
-  assert.deepEqual(reciters, [{ id: 7, name: 'Playable reciter', style: 'Murattal' }]);
+  assert.deepEqual(reciters, [{
+    id: 7,
+    name: 'Playable reciter',
+    style: 'Murattal',
+  }]);
   assert.equal(maxActiveRequests, 1);
 });
 

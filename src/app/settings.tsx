@@ -22,7 +22,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { Spacing } from '@/constants/theme';
+import { ExternalLink } from '@/components/external-link';
+import { ReciterAvatar } from '@/features/quran/components/reciter-avatar';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
+import { getReciterPortrait } from '@/features/quran/services/reciter-portraits';
 import type { QuranSurahSummary } from '@/features/quran/types';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
@@ -330,32 +333,49 @@ export default function SettingsScreen() {
             <View style={styles.reciterList}>
               {recitersQuery.data?.map((reciter) => {
                 const selected = reciterId === reciter.id;
+                const portrait = getReciterPortrait(reciter.id);
                 return (
-                  <Pressable
-                    key={reciter.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    disabled={saving}
-                    onPress={() => void savePreference('reciterId', String(reciter.id))}
-                    style={[
-                      styles.reciterOption,
-                      {
-                        backgroundColor: selected ? colors.backgroundSelected : colors.background,
-                        borderColor: selected ? colors.primary : colors.border,
-                      },
-                    ]}>
-                    <View style={styles.reciterInfo}>
-                      <Text style={[styles.reciterName, { color: colors.text }]}>
-                        {ArabicReciterNames[reciter.id] ?? reciter.name}
+                  <View key={reciter.id} style={styles.reciterOptionGroup}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      disabled={saving}
+                      onPress={() => void savePreference('reciterId', String(reciter.id))}
+                      style={[
+                        styles.reciterOption,
+                        {
+                          backgroundColor: selected ? colors.backgroundSelected : colors.background,
+                          borderColor: selected ? colors.primary : colors.border,
+                        },
+                      ]}>
+                      <ReciterAvatar
+                        reciterId={reciter.id}
+                        size={44}
+                        backgroundColor={colors.backgroundSelected}
+                        iconColor={colors.textSecondary}
+                      />
+                      <View style={styles.reciterInfo}>
+                        <Text style={[styles.reciterName, { color: colors.text }]}>
+                          {ArabicReciterNames[reciter.id] ?? reciter.name}
+                        </Text>
+                        <Text style={[styles.reciterStyle, { color: colors.textSecondary }]}>
+                          {reciter.style}
+                        </Text>
+                      </View>
+                      <Text style={[styles.radio, { color: colors.primary }]}>
+                        {selected ? '●' : '○'}
                       </Text>
-                      <Text style={[styles.reciterStyle, { color: colors.textSecondary }]}>
-                        {reciter.style}
-                      </Text>
-                    </View>
-                    <Text style={[styles.radio, { color: colors.primary }]}>
-                      {selected ? '●' : '○'}
-                    </Text>
-                  </Pressable>
+                    </Pressable>
+                    {portrait && (
+                      <ExternalLink
+                        href={portrait.sourceUrl}
+                        style={styles.photoCredit}>
+                        <Text style={[styles.photoCreditText, { color: colors.textSecondary }]}>
+                          {`مصدر الصورة: ${portrait.credit} · ${portrait.license}`}
+                        </Text>
+                      </ExternalLink>
+                    )}
+                  </View>
                 );
               })}
             </View>
@@ -951,6 +971,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     marginTop: Spacing.one,
   },
+  reciterOptionGroup: {
+    gap: 3,
+  },
   reciterOption: {
     minHeight: 58,
     flexDirection: 'row-reverse',
@@ -972,6 +995,16 @@ const styles = StyleSheet.create({
   reciterStyle: {
     fontSize: 12,
     textAlign: 'right',
+  },
+  photoCredit: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+  },
+  photoCreditText: {
+    fontSize: 10,
+    textAlign: 'right',
+    textDecorationLine: 'underline',
   },
   radio: {
     fontSize: 18,
