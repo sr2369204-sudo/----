@@ -13,7 +13,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-const INTRO_DURATION_MS = 10_000;
+const INTRO_DURATION_MS = 2_800;
 const FADE_DURATION_MS = 360;
 const GOLD = '#E5B85F';
 const CREAM = '#FFF4DC';
