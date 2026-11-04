@@ -55,6 +55,12 @@ import {
   type RecitationScope,
 } from '@/features/reader/services/recitation-queue';
 import {
+  loadDailyReadingPlan,
+  saveLastReadingPosition,
+  toggleDailyAyahCompletion,
+  type AyahReference,
+} from '@/features/reader/services/reading-progress';
+import {
   useReaderPreferencesStore,
 } from '@/features/reader/state/reader-preferences-store';
 import {
@@ -73,9 +79,11 @@ export default function ReaderScreen() {
   const params = useLocalSearchParams<{
     surahNumber?: string | string[];
     pageNumber?: string | string[];
+    ayahNumber?: string | string[];
   }>();
   const rawSurahNumber = firstParam(params.surahNumber);
   const rawPageNumber = firstParam(params.pageNumber);
+  const rawAyahNumber = firstParam(params.ayahNumber);
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
@@ -151,7 +159,13 @@ export default function ReaderScreen() {
   }, [navAnimation]);
 
   const startLocationQuery = useQuery({
-    queryKey: ['quran', 'reader-start', rawSurahNumber ?? '', rawPageNumber ?? ''],
+    queryKey: [
+      'quran',
+      'reader-start',
+      rawSurahNumber ?? '',
+      rawAyahNumber ?? '',
+      rawPageNumber ?? '',
+    ],
     queryFn: async () => {
       if (rawPageNumber !== undefined) {
         const requestedPage = parseArabicNumber(rawPageNumber);
@@ -159,6 +173,21 @@ export default function ReaderScreen() {
           throw new ContentUnavailableError('invalid-data', 'Invalid Mushaf page route parameter.');
         }
         return requestedPage;
+      }
+      if (rawAyahNumber !== undefined) {
+        const requestedSurah = parseArabicNumber(rawSurahNumber ?? '');
+        const requestedAyah = parseArabicNumber(rawAyahNumber);
+        if (
+          !Number.isInteger(requestedSurah) ||
+          requestedSurah < 1 ||
+          requestedSurah > 114 ||
+          !Number.isInteger(requestedAyah) ||
+          requestedAyah < 1 ||
+          requestedAyah > 286
+        ) {
+          throw new ContentUnavailableError('invalid-data', 'Invalid ayah route parameter.');
+        }
+        return quranCache.getPageNumberForAyah(requestedSurah, requestedAyah);
       }
       // An explicit surah always wins, Al-Fatiha included. Resuming the saved
       // position is the request that carries no route parameter at all, so the
@@ -314,6 +343,11 @@ export default function ReaderScreen() {
     staleTime: 24 * 60 * 60 * 1000,
   });
 
+  const dailyPlanQuery = useQuery({
+    queryKey: ['reading', 'daily-plan'],
+    queryFn: () => loadDailyReadingPlan(database),
+  });
+
   const recitersQuery = useQuery({
     queryKey: ['quran', 'reciters'],
     queryFn: () => quranContentProvider.getReciters(),
@@ -390,6 +424,28 @@ export default function ReaderScreen() {
     setPageNumber(recitationFollowPage);
   }, [recitationFollowPage]);
 
+  const rememberReadingPosition = useCallback((
+    surahNumber: number,
+    ayahNumber: number,
+    currentPageNumber: number,
+  ) => {
+    const position = { surahNumber, ayahNumber, pageNumber: currentPageNumber };
+    saveLastReadingPosition(database, position)
+      .then(() => queryClient.setQueryData(['reading', 'last-position'], position))
+      .catch((error: unknown) => {
+        setNavigationError(
+          error instanceof Error
+            ? `تعذر حفظ موضع القراءة: ${error.message}`
+            : 'تعذر حفظ موضع القراءة.',
+        );
+      });
+  }, [database, queryClient]);
+
+  const toggleDailyReading = useCallback(async (references: AyahReference[]) => {
+    const plan = await toggleDailyAyahCompletion(database, references);
+    queryClient.setQueryData(['reading', 'daily-plan'], plan);
+  }, [database, queryClient]);
+
   useEffect(() => {
     if (!page || page.pageNumber !== activePageNumber) {
       return;
@@ -399,7 +455,39 @@ export default function ReaderScreen() {
         error instanceof Error ? `تعذر حفظ موضع القراءة: ${error.message}` : 'تعذر حفظ موضع القراءة.',
       );
     });
-  }, [activePageNumber, database, page]);
+    const firstAyah = page.ayahs[0];
+    const isRequestedAyahPage =
+      rawAyahNumber !== undefined &&
+      startLocationQuery.data === page.pageNumber &&
+      rawSurahNumber !== undefined;
+    if (isRequestedAyahPage) {
+      rememberReadingPosition(
+        parseArabicNumber(rawSurahNumber),
+        parseArabicNumber(rawAyahNumber),
+        page.pageNumber,
+      );
+    } else if (firstAyah) {
+      rememberReadingPosition(firstAyah.surahNumber, firstAyah.ayahNumber, page.pageNumber);
+    }
+  }, [
+    activePageNumber,
+    database,
+    page,
+    rawAyahNumber,
+    rawSurahNumber,
+    rememberReadingPosition,
+    startLocationQuery.data,
+  ]);
+
+  useEffect(() => {
+    if (activeTrack && recitationFollowPage !== null) {
+      rememberReadingPosition(
+        activeTrack.surahNumber,
+        activeTrack.ayahNumber,
+        recitationFollowPage,
+      );
+    }
+  }, [activeTrack, recitationFollowPage, rememberReadingPosition]);
 
   useEffect(() => {
     if (!page) {
@@ -537,13 +625,16 @@ export default function ReaderScreen() {
       setInteractionError('تعذر مطابقة الكلمة مع بيانات صفحة المصحف.');
       return;
     }
+    if (page) {
+      rememberReadingPosition(surahNumber, ayahNumber, page.pageNumber);
+    }
     audioRequest.current += 1;
     player.pause();
     setInteractionError(null);
     setSelectionAnchor(rect);
     selectWord(surahNumber, ayah, word, 'compact');
     showNavbar();
-  }, [page, player, selectWord, showNavbar]);
+  }, [page, player, rememberReadingPosition, selectWord, showNavbar]);
 
   const onAyahPress = useCallback((
     surahNumber: number,
@@ -556,6 +647,9 @@ export default function ReaderScreen() {
     if (!ayah) {
       setInteractionError('تعذر مطابقة الآية مع بيانات صفحة المصحف.');
       return;
+    }
+    if (page) {
+      rememberReadingPosition(surahNumber, ayahNumber, page.pageNumber);
     }
     audioRequest.current += 1;
     player.pause();
@@ -591,7 +685,7 @@ export default function ReaderScreen() {
 
     selectAyah(surahNumber, ayah, 'compact');
     showNavbar();
-  }, [page, player, selectAyah, selectAyahRange, showNavbar]);
+  }, [page, player, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar]);
 
   /**
    * Swaps the playlist contents for a freshly built queue and starts it. When
@@ -876,6 +970,23 @@ export default function ReaderScreen() {
     }
     return selection.ayahs.map((ayah) => `ayah-${selection.surahNumber}-${ayah.ayahNumber}`);
   }, [selection]);
+
+  const selectedAyahReferences = useMemo<AyahReference[]>(() => {
+    if (!selection) {
+      return [];
+    }
+    const ayahs = selection.type === 'range' ? selection.ayahs : [selection.ayah];
+    return ayahs.map((ayah) => ({
+      surahNumber: selection.surahNumber,
+      ayahNumber: ayah.ayahNumber,
+    }));
+  }, [selection]);
+  const completedAyahKeys = new Set(dailyPlanQuery.data?.completedAyahs ?? []);
+  const isDailyReadingComplete =
+    selectedAyahReferences.length > 0 &&
+    selectedAyahReferences.every((ayah) =>
+      completedAyahKeys.has(`${ayah.surahNumber}:${ayah.ayahNumber}`),
+    );
 
   const isBookmarked = selection
     ? selection.type === 'range'
@@ -1220,6 +1331,13 @@ export default function ReaderScreen() {
       {navigationError && !navigationOpen && (
         <Text accessibilityRole="alert" style={styles.error}>{navigationError}</Text>
       )}
+      {dailyPlanQuery.error && dailyPlanQuery.data === undefined && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {dailyPlanQuery.error instanceof Error
+            ? `تعذر تحميل خطة القراءة اليومية: ${dailyPlanQuery.error.message}`
+            : 'تعذر تحميل خطة القراءة اليومية.'}
+        </Text>
+      )}
 
       {!isPlayingAudio && (
         <SelectionToolbar
@@ -1228,10 +1346,13 @@ export default function ReaderScreen() {
           navbarHeight={navbarHeight}
           isBookmarked={isBookmarked}
           isWordSaved={isWordSaved}
+          isDailyReadingReady={dailyPlanQuery.data !== undefined}
+          isDailyReadingComplete={isDailyReadingComplete}
           isAudioPlaying={isPlayingAudio}
           onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
           onToggleBookmark={toggleBookmark}
           onToggleSaveWord={toggleSaveWord}
+          onToggleDailyReading={toggleDailyReading}
           onPlayAudio={playSelection}
           onStopAudio={stopAudio}
           onOpenPlayMenu={openPlayMenu}

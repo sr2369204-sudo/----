@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -8,6 +8,7 @@ import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
+import { DailyReadingPlan } from '@/features/home/components/daily-reading-plan';
 import { HomeHero } from '@/features/home/components/home-hero';
 import {
   HomeSearchResults,
@@ -21,6 +22,11 @@ import {
 } from '@/features/home/utils/home-search';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
+import {
+  loadDailyReadingPlan,
+  loadLastReadingPosition,
+  setDailyAyahTarget,
+} from '@/features/reader/services/reading-progress';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types';
 import { useTheme } from '@/hooks/use-theme';
@@ -29,10 +35,13 @@ export default function HomeScreen() {
   const introFinished = useContext(IntroAnimationContext);
   const colors = useTheme();
   const database = useSQLiteContext();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [searchAnchor, setSearchAnchor] = useState<SearchAnchor | null>(null);
   const [revelationFilter, setRevelationFilter] = useState<RevelationFilter>('all');
+  const [dailyPlanSaveError, setDailyPlanSaveError] = useState<string | null>(null);
+  const [dailyPlanUpdating, setDailyPlanUpdating] = useState(false);
 
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
   useEffect(() => {
@@ -81,6 +90,31 @@ export default function HomeScreen() {
     queryKey: ['annotations', 'saved-words'],
     queryFn: () => new SqliteAnnotationRepository(database).listSavedWords(),
   });
+
+  const dailyPlanQuery = useQuery({
+    queryKey: ['reading', 'daily-plan'],
+    queryFn: () => loadDailyReadingPlan(database),
+  });
+
+  const lastReadingPositionQuery = useQuery({
+    queryKey: ['reading', 'last-position'],
+    queryFn: () => loadLastReadingPosition(database),
+  });
+
+  const updateDailyTarget = useCallback(async (targetAyahs: number) => {
+    setDailyPlanUpdating(true);
+    setDailyPlanSaveError(null);
+    try {
+      const plan = await setDailyAyahTarget(database, targetAyahs);
+      queryClient.setQueryData(['reading', 'daily-plan'], plan);
+    } catch (error) {
+      setDailyPlanSaveError(
+        error instanceof Error ? `تعذر حفظ هدف القراءة: ${error.message}` : 'تعذر حفظ هدف القراءة.',
+      );
+    } finally {
+      setDailyPlanUpdating(false);
+    }
+  }, [database, queryClient]);
 
   const searchMatchedSurahs = useMemo(() => {
     const query = normalizeSurahSearch(search);
@@ -134,7 +168,35 @@ export default function HomeScreen() {
               onSearchChange={setSearch}
               onSearchAnchorChange={setSearchAnchor}
             />
-            <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
+            <HomeActionsGrid
+              savedWordsCount={savedWords.data?.length}
+              continueHref={
+                lastReadingPositionQuery.data
+                  ? {
+                      pathname: '/reader',
+                      params: {
+                        surahNumber: String(lastReadingPositionQuery.data.surahNumber),
+                        ayahNumber: String(lastReadingPositionQuery.data.ayahNumber),
+                      },
+                    }
+                  : '/reader'
+              }
+            />
+            <DailyReadingPlan
+              plan={dailyPlanQuery.data ?? null}
+              surahNameByNumber={surahNames}
+              loading={dailyPlanQuery.isPending}
+              error={
+                dailyPlanSaveError ??
+                (dailyPlanQuery.error instanceof Error
+                  ? `تعذر تحميل خطة القراءة: ${dailyPlanQuery.error.message}`
+                  : dailyPlanQuery.error
+                    ? 'تعذر تحميل خطة القراءة اليومية.'
+                    : null)
+              }
+              updating={dailyPlanUpdating}
+              onChangeTarget={(target) => void updateDailyTarget(target)}
+            />
 
             <Animated.View
               entering={FadeInDown.duration(520).delay(220)}

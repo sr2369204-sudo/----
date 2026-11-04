@@ -47,6 +47,7 @@ import {
   useReaderSelectionStore,
   type ReaderSelection,
 } from '@/features/reader/state/selection-store';
+import type { AyahReference } from '@/features/reader/services/reading-progress';
 import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -79,6 +80,8 @@ type Props = {
   navbarHeight: number;
   isBookmarked: boolean;
   isWordSaved: boolean;
+  isDailyReadingReady: boolean;
+  isDailyReadingComplete: boolean;
   isAudioPlaying: boolean;
   onHighlightsChanged: () => void;
   onToggleBookmark: (surahNumber: number, ayahNumber: number) => void;
@@ -88,6 +91,7 @@ type Props = {
     wordId: string,
     wordText: string,
   ) => void;
+  onToggleDailyReading: (references: AyahReference[]) => Promise<void>;
   onPlayAudio: (selection: ReaderSelection) => Promise<void>;
   onStopAudio: () => void;
   /** Opens the long-press play menu (rest of surah / page start / surah start). */
@@ -117,10 +121,13 @@ function Toolbar({
   navbarHeight,
   isBookmarked,
   isWordSaved,
+  isDailyReadingReady,
+  isDailyReadingComplete,
   isAudioPlaying,
   onHighlightsChanged,
   onToggleBookmark,
   onToggleSaveWord,
+  onToggleDailyReading,
   onPlayAudio,
   onStopAudio,
   onOpenPlayMenu,
@@ -263,8 +270,45 @@ function Toolbar({
           .flatMap((ayah) => ayah.words.slice(0, 2))
           .map((word) => word.textUthmani)
           .join(' ');
+  const selectedAyahReferences: AyahReference[] =
+    selection.type === 'range'
+      ? selection.ayahs.map((ayah) => ({
+          surahNumber: selection.surahNumber,
+          ayahNumber: ayah.ayahNumber,
+        }))
+      : [{
+          surahNumber: selection.surahNumber,
+          ayahNumber: selection.ayah.ayahNumber,
+        }];
 
   const activeColor = highlightColors[0]?.color ?? null;
+
+  async function toggleSelectedAyahsReadStatus(): Promise<void> {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await onToggleDailyReading(selectedAyahReferences);
+      setMessage(
+        isDailyReadingComplete
+          ? 'تم إلغاء احتساب القراءة.'
+          : selectedAyahReferences.length === 1
+            ? 'تم احتساب الآية ضمن خطة اليوم.'
+            : 'تم احتساب الآيات ضمن خطة اليوم.',
+      );
+    } catch (toggleError) {
+      setError(
+        toggleError instanceof Error
+          ? `تعذر تحديث خطة القراءة: ${toggleError.message}`
+          : 'تعذر تحديث خطة القراءة.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function refreshSavedItems(): Promise<void> {
     if (!target) {
@@ -547,6 +591,7 @@ function Toolbar({
     icon: IconName;
     label: string;
     active?: boolean;
+    disabled?: boolean;
     onPress: () => void;
     onLongPress?: () => void;
   };
@@ -562,6 +607,21 @@ function Toolbar({
       onLongPress: onOpenPlayMenu,
     },
   ];
+
+  actions.push({
+    key: 'daily-reading',
+    icon: isDailyReadingComplete ? 'checkmark-circle' : 'checkmark-circle-outline',
+    label: isDailyReadingComplete
+      ? isRange
+        ? 'إلغاء إتمام الآيات'
+        : 'إلغاء إتمام الآية'
+      : isRange
+        ? 'تمت قراءة الآيات'
+        : 'تمت قراءة الآية',
+    active: isDailyReadingComplete,
+    disabled: !isDailyReadingReady,
+    onPress: () => void toggleSelectedAyahsReadStatus(),
+  });
 
   if (isWord) {
     actions.push({
@@ -747,7 +807,7 @@ function Toolbar({
                   accessibilityRole="button"
                   accessibilityLabel={action.label}
                   accessibilityState={{ selected: action.active === true }}
-                  disabled={busy}
+                  disabled={busy || action.disabled}
                   hitSlop={6}
                   onPress={action.onPress}
                   onLongPress={action.onLongPress}
@@ -757,8 +817,8 @@ function Toolbar({
                       backgroundColor: action.active ? palette.primary : palette.surface,
                       borderColor: action.active ? palette.primary : palette.border,
                     },
-                    busy && styles.disabled,
-                    pressed && !busy && styles.pressed,
+                    (busy || action.disabled) && styles.disabled,
+                    pressed && !busy && !action.disabled && styles.pressed,
                   ]}>
                   <Ionicons
                     name={action.icon}

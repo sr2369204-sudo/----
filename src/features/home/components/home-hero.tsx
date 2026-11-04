@@ -51,6 +51,7 @@ export function HomeHero({
           transition={1000}
         />
         <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+        <View pointerEvents="none" style={styles.backgroundTint} />
       </View>
 
       <View style={[styles.content, { paddingTop: insets.top + Spacing.two }]}>
@@ -84,8 +85,14 @@ export function HomeHero({
           <View
             ref={searchContainerRef}
             onLayout={handleSearchLayout}
-            style={[styles.searchContainer, { backgroundColor: colors.surface }]}>
-            <Ionicons name="search" size={20} color={colors.primary} style={styles.searchIcon} />
+            style={[
+              styles.searchContainer,
+              {
+                backgroundColor: colors.surface,
+                borderColor: `${colors.accent}88`,
+              },
+            ]}>
+            <Ionicons name="search" size={20} color={colors.accent} style={styles.searchIcon} />
             <TextInput
               accessibilityLabel="ابحث باسم السورة أو آية أو كلمة من القرآن"
               placeholder="ابحث باسم السورة أو آية أو كلمة من القرآن..."
@@ -118,14 +125,19 @@ const styles = StyleSheet.create({
   background: {
     ...StyleSheet.absoluteFill,
     overflow: 'hidden',
-    borderBottomLeftRadius: Radius.xl,
-    borderBottomRightRadius: Radius.xl,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(216,181,109,0.5)',
   },
   backgroundImage: {
     ...StyleSheet.absoluteFill,
   },
   overlay: {
     ...StyleSheet.absoluteFill,
+  },
+  backgroundTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(7,62,47,0.16)',
   },
   content: {
     flex: 1,
@@ -191,6 +203,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     paddingHorizontal: Spacing.three,
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,

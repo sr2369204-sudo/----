@@ -15,7 +15,13 @@ type ActionItem = {
   href: Href;
 };
 
-export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number }) {
+export function HomeActionsGrid({
+  savedWordsCount,
+  continueHref = '/reader',
+}: {
+  savedWordsCount?: number;
+  continueHref?: Href;
+}) {
   const colors = useTheme();
 
   const ACTIONS: ActionItem[] = [
@@ -33,7 +39,7 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
       sublabel: 'من حيث توقفت',
       icon: 'book',
       color: colors.primary,
-      href: '/reader',
+      href: continueHref,
     },
     {
       id: 'offline',
