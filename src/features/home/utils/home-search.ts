@@ -1,5 +1,7 @@
 import type { QuranSurahSummary } from '../../quran/types';
 
+export const HOME_SEARCH_RESULTS_LIMIT = 20;
+
 export type AyahSearchReference = {
   surahNumber: number;
   ayahNumber: number;

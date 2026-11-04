@@ -2,16 +2,23 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { HomeHero } from '@/features/home/components/home-hero';
+import {
+  HomeSearchResults,
+  type SearchAnchor,
+} from '@/features/home/components/home-search-results';
 import { SurahFilters, type RevelationFilter } from '@/features/home/components/surah-filters';
 import { SurahGridItemModern } from '@/features/home/components/surah-list-item-modern';
-import { resolveAyahSearchReference } from '@/features/home/utils/home-search';
+import {
+  HOME_SEARCH_RESULTS_LIMIT,
+  resolveAyahSearchReference,
+} from '@/features/home/utils/home-search';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
@@ -24,6 +31,7 @@ export default function HomeScreen() {
   const database = useSQLiteContext();
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
+  const [searchAnchor, setSearchAnchor] = useState<SearchAnchor | null>(null);
   const [revelationFilter, setRevelationFilter] = useState<RevelationFilter>('all');
 
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
@@ -65,7 +73,7 @@ export default function HomeScreen() {
       )) {
         return [];
       }
-      return quranContentProvider.searchAyahs(submittedSearch, 20);
+      return quranContentProvider.searchAyahs(submittedSearch, HOME_SEARCH_RESULTS_LIMIT);
     },
   });
 
@@ -100,12 +108,10 @@ export default function HomeScreen() {
   );
 
   const renderSurah = useCallback(
-    ({ item, index }: { item: QuranSurahSummary; index: number }) => (
-      <Animated.View
-        entering={FadeInRight.duration(420).delay(Math.min(index * 38, 342))}
-        style={styles.surahEntry}>
+    ({ item }: { item: QuranSurahSummary }) => (
+      <View style={styles.surahEntry}>
         <SurahGridItemModern surah={item} />
-      </Animated.View>
+      </View>
     ),
     [],
   );
@@ -126,19 +132,7 @@ export default function HomeScreen() {
             <HomeHero
               searchValue={search}
               onSearchChange={setSearch}
-              surahResults={search.trim() ? searchMatchedSurahs : []}
-              surahNameByNumber={surahNames}
-              ayahResults={
-                search.trim() === submittedSearch && !ayahSearch.isPending && !ayahSearch.error
-                  ? ayahSearch.data ?? []
-                  : []
-              }
-              searchLoading={
-                search.trim().length > 0 &&
-                (search.trim() !== submittedSearch || ayahSearch.isPending)
-              }
-              searchError={Boolean(ayahSearch.error && search.trim() === submittedSearch)}
-              onRetrySearch={() => void ayahSearch.refetch()}
+              onSearchAnchorChange={setSearchAnchor}
             />
             <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
 
@@ -183,9 +177,27 @@ export default function HomeScreen() {
           ) : undefined
         }
         keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
         initialNumToRender={10}
         windowSize={5}
       />
+      {search.trim().length > 0 && searchAnchor && (
+        <HomeSearchResults
+          anchor={searchAnchor}
+          surahResults={searchMatchedSurahs}
+          surahNameByNumber={surahNames}
+          ayahResults={
+            search.trim() === submittedSearch && !ayahSearch.isPending && !ayahSearch.error
+              ? ayahSearch.data ?? []
+              : []
+          }
+          searchLoading={
+            search.trim() !== submittedSearch || ayahSearch.isPending
+          }
+          searchError={Boolean(ayahSearch.error && search.trim() === submittedSearch)}
+          onRetrySearch={() => void ayahSearch.refetch()}
+        />
+      )}
     </View>
   );
 }
@@ -201,8 +213,8 @@ const styles = StyleSheet.create({
   headerContent: {
     gap: Spacing.four,
     marginBottom: Spacing.two,
-    zIndex: 25,
-    elevation: 25,
+    zIndex: 1000,
+    elevation: 1000,
   },
   sectionHeader: {
     paddingHorizontal: Spacing.four,
