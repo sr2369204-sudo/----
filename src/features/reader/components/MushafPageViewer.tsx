@@ -551,77 +551,85 @@ body {
   min-height: 0;
 }
 .surah-title-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  display: block;
   width: 100%;
   position: relative;
+  min-height: 40px;
 }
 .surah-info-circle {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1.5px solid ${isDark ? '#caa14e' : '#13684E'};
-  background: ${isDark ? '#241d12' : '#fefcf8'};
-  position: relative;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.18);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px 4px;
+  border: 1px solid rgba(224, 188, 112, 0.72);
+  background: linear-gradient(145deg, #12384a, #0b5144);
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  box-shadow: 0 2px 6px rgba(5, 24, 31, 0.2);
   z-index: 2;
+}
+.surah-info-circle.start {
+  right: 4px;
+}
+.surah-info-circle.end {
+  left: 4px;
 }
 .surah-info-circle::before {
   content: '';
   position: absolute;
   inset: 2px;
-  border-radius: 50%;
-  border: 1px dashed ${isDark ? 'rgba(202, 161, 78, 0.45)' : 'rgba(19, 104, 78, 0.35)'};
+  border-radius: 7px 3px;
+  border: 1px solid rgba(244, 221, 169, 0.2);
 }
 .info-label {
   font-size: 7px;
-  color: ${isDark ? '#caa14e' : '#13684E'};
+  color: #e4c47f;
   margin-bottom: -1px;
   font-weight: 600;
 }
 .info-value {
   font-size: 12px;
   font-weight: 700;
-  color: ${isDark ? '#f6e3b4' : '#0d4a37'};
+  color: #fff4dc;
   font-family: "Noto Naskh Arabic", serif;
 }
 .surah-title-box {
-  flex: 1 1 auto;
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   min-width: 0;
-  padding: 6px 16px;
-  border-radius: 10px;
-  border: 1.5px solid ${isDark ? 'rgba(202, 161, 78, 0.85)' : 'rgba(255, 255, 255, 0.55)'};
-  background: ${isDark
-    ? 'linear-gradient(180deg, #3b2f19 0%, #2b2213 100%)'
-    : 'linear-gradient(180deg, #1a7b5e 0%, #13684E 55%, #0e523c 100%)'};
-  box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+  min-height: 40px;
+  padding: 6px 46px;
+  border-radius: 13px 5px;
+  border: 1px solid rgba(224, 188, 112, 0.78);
+  background: linear-gradient(112deg, #102d42 0%, #104b48 58%, #0b5a46 100%);
+  box-shadow: 0 3px 9px rgba(7, 31, 38, 0.2);
+  clip-path: polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%);
   z-index: 1;
 }
 .surah-title-box::before {
   content: '';
   position: absolute;
   inset: 3px;
-  border: 1px solid ${isDark ? 'rgba(202, 161, 78, 0.3)' : 'rgba(255, 255, 255, 0.28)'};
-  border-radius: 7px;
+  border: 1px solid rgba(244, 221, 169, 0.23);
+  border-radius: 9px 3px;
+  clip-path: polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%);
+  pointer-events: none;
 }
 .surah-title-text {
   position: relative;
   font-size: min(20px, 6cqi);
   font-weight: 700;
-  color: ${isDark ? '#f6e3b4' : '#fdf9ef'};
+  color: #fff8e9;
   font-family: "Noto Naskh Arabic", serif;
   text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  white-space: nowrap;
 }
 .opening-basmala {
   color: ${isDark ? '#f2ead8' : '#263a30'};
