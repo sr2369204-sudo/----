@@ -307,11 +307,12 @@ export class QuranComContentProvider implements QuranContentProvider {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
       throw new RangeError('Search limit must be an integer between 1 and 50.');
     }
+    const searchQuery = getArabicSearchWords(trimmed).join(' ') || trimmed;
     // `language=ar` makes this endpoint answer 204 with an empty body, which
     // reaches the client as unparsable JSON. The default language serves the
     // Arabic source text just as well.
     const payload = await this.requestJson(
-      `/search?q=${encodeURIComponent(trimmed)}&size=${limit}&page=1`,
+      `/search?q=${encodeURIComponent(searchQuery)}&size=${limit}&page=1`,
     );
 
     if (!isRecord(payload) || !isRecord(payload.search) || !Array.isArray(payload.search.results)) {

@@ -392,7 +392,7 @@ test('filters approximate search hits and orders exact Quran matches by referenc
   });
 
   const provider = new QuranComContentProvider();
-  const results = await provider.searchAyahs('الرحمن', 20);
+  const results = await provider.searchAyahs('الرَّحْمَٰن', 20);
 
   assert.deepEqual(results, [
     { surahNumber: 1, ayahNumber: 1, text: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ' },

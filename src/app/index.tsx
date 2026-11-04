@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
 
+import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
@@ -17,6 +19,7 @@ import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types
 import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
+  const introFinished = useContext(IntroAnimationContext);
   const colors = useTheme();
   const database = useSQLiteContext();
   const [search, setSearch] = useState('');
@@ -97,9 +100,19 @@ export default function HomeScreen() {
   );
 
   const renderSurah = useCallback(
-    ({ item }: { item: QuranSurahSummary }) => <SurahGridItemModern surah={item} />,
+    ({ item, index }: { item: QuranSurahSummary; index: number }) => (
+      <Animated.View
+        entering={FadeInRight.duration(420).delay(Math.min(index * 38, 342))}
+        style={styles.surahEntry}>
+        <SurahGridItemModern surah={item} />
+      </Animated.View>
+    ),
     [],
   );
+
+  if (!introFinished) {
+    return <View style={[styles.container, { backgroundColor: colors.background }]} />;
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -129,21 +142,23 @@ export default function HomeScreen() {
             />
             <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
 
-            <View style={styles.sectionHeader}>
+            <Animated.View
+              entering={FadeInDown.duration(520).delay(220)}
+              style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>سور القرآن</Text>
                 <View style={[styles.dot, { backgroundColor: colors.accent }]} />
               </View>
               <SurahFilters value={revelationFilter} onChange={setRevelationFilter} />
-            </View>
+            </Animated.View>
 
             {surahDirectory.isPending && (
-              <View style={styles.statusRow}>
+              <Animated.View entering={FadeIn.duration(400).delay(360)} style={styles.statusRow}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[styles.statusText, { color: colors.textSecondary }]}>
                   جارٍ تحميل السور…
                 </Text>
-              </View>
+              </Animated.View>
             )}
 
             {surahDirectory.error && (
@@ -192,6 +207,9 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: Spacing.four,
     gap: Spacing.three,
+  },
+  surahEntry: {
+    width: '100%',
   },
   sectionTitleRow: {
     flexDirection: 'row-reverse',

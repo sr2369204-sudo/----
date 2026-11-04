@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -43,14 +44,6 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
       href: '/settings',
     },
     {
-      id: 'library',
-      label: 'المكتبة القرآنية',
-      sublabel: 'تصفح السور والآيات',
-      icon: 'library',
-      color: '#2DCE89',
-      href: '/library',
-    },
-    {
       id: 'bookmarks',
       label: 'الإشارات المرجعية',
       sublabel: 'الآيات التي حفظتها',
@@ -61,24 +54,26 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
   ];
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface }]}>
+    <Animated.View
+      entering={FadeInDown.duration(560).delay(120)}
+      style={[styles.card, { backgroundColor: colors.surface }]}>
       <View style={styles.grid}>
-        {ACTIONS.map((action, index) => (
+        {ACTIONS.map((action) => (
           <Link key={action.id} href={action.href} asChild>
             <Pressable
               style={StyleSheet.flatten([
                 styles.item,
-                index === ACTIONS.length - 1 && ACTIONS.length % 2 !== 0
-                  ? styles.lastItem
-                  : undefined,
+                { backgroundColor: colors.background, borderColor: colors.border },
               ])}>
               <View style={[styles.iconContainer, { backgroundColor: `${action.color}15` }]}>
                 <Ionicons name={action.icon} size={24} color={action.color} />
               </View>
               <View style={styles.textContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>{action.label}</Text>
+                <Text numberOfLines={1} style={[styles.label, { color: colors.text }]}>
+                  {action.label}
+                </Text>
                 {action.sublabel && (
-                  <Text style={[styles.sublabel, { color: colors.textSecondary }]}>
+                  <Text numberOfLines={1} style={[styles.sublabel, { color: colors.textSecondary }]}>
                     {action.sublabel}
                   </Text>
                 )}
@@ -87,14 +82,14 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
           </Link>
         ))}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: Spacing.four,
-    marginTop: -Spacing.five, // Pull up to overlap hero slightly
+    marginTop: -Spacing.three,
     borderRadius: Radius.xl,
     padding: Spacing.two,
     shadowColor: '#000',
@@ -106,36 +101,38 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: Spacing.two,
   },
   item: {
-    width: '50%', // 2 columns
+    width: '48%',
+    height: 66,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.two,
-    gap: 10,
-  },
-  lastItem: {
-    width: '100%',
+    gap: Spacing.two,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.md,
   },
   textContainer: {
     flex: 1,
     alignItems: 'flex-end',
   },
   iconContainer: {
-    width: 48,
-    height: 48,
+    width: 38,
+    height: 38,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontSize: TypeScale.label,
+    fontSize: TypeScale.micro,
     fontWeight: '800',
     textAlign: 'right',
   },
   sublabel: {
-    fontSize: TypeScale.micro,
+    fontSize: TypeScale.micro - 1,
     textAlign: 'right',
   },
 });

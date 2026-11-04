@@ -1,18 +1,24 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/theme';
-import { BrandIntro } from '@/components/brand-intro';
+import { BrandIntro, IntroAnimationContext } from '@/components/brand-intro';
 import { initializeDatabase } from '@/core/database/migrations';
 import {
   DEFAULT_RECITER_ID,
   useReaderPreferencesStore,
 } from '@/features/reader/state/reader-preferences-store';
+
+if (Platform.OS !== 'web') {
+  SplashScreen.setOptions({ duration: 500, fade: true });
+  void SplashScreen.preventAutoHideAsync();
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +31,7 @@ const queryClient = new QueryClient({
 
 function AppLayout() {
   const database = useSQLiteContext();
+  const [introFinished, setIntroFinished] = useState(false);
   const colorScheme = useColorScheme();
   const themePreference = useReaderPreferencesStore((state) => state.themePreference);
   const setPreferences = useReaderPreferencesStore((state) => state.setPreferences);
@@ -45,6 +52,14 @@ function AppLayout() {
       border: palette.border,
     },
   };
+  const handleIntroReady = useCallback(() => {
+    if (Platform.OS !== 'web') {
+      void SplashScreen.hideAsync();
+    }
+  }, []);
+  const handleIntroFinished = useCallback(() => {
+    setIntroFinished(true);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -81,9 +96,11 @@ function AppLayout() {
 
   return (
     <ThemeProvider value={theme}>
-      <StatusBar hidden />
-      <Stack screenOptions={{ headerShown: false }} />
-      <BrandIntro />
+      <IntroAnimationContext.Provider value={introFinished}>
+        <StatusBar hidden />
+        <Stack screenOptions={{ headerShown: false }} />
+        <BrandIntro onReady={handleIntroReady} onFinished={handleIntroFinished} />
+      </IntroAnimationContext.Provider>
     </ThemeProvider>
   );
 }
@@ -94,6 +111,12 @@ function isThemePreference(value: string): value is 'system' | 'light' | 'dark' 
 
 export default function RootLayout() {
   const [dbError, setDbError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    if (dbError && Platform.OS !== 'web') {
+      void SplashScreen.hideAsync();
+    }
+  }, [dbError]);
 
   if (dbError) {
     const isLockError =

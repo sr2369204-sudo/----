@@ -45,6 +45,9 @@ export function HomeHero({
   const insets = useSafeAreaInsets();
   const showResults = searchValue.trim().length > 0;
   const hasResults = surahResults.length > 0 || ayahResults.length > 0;
+  const visibleSurahResults = surahResults.slice(0, 3);
+  const visibleAyahResults = ayahResults.slice(0, 4);
+  const visibleResultCount = visibleSurahResults.length + visibleAyahResults.length;
   const isDark = colors.text === '#F3F8F5';
 
   return (
@@ -124,7 +127,7 @@ export function HomeHero({
             <Text style={[styles.resultsCount, { color: colors.textSecondary }]}>
               {searchLoading
                 ? 'جارٍ البحث…'
-                : toArabicNumbers(surahResults.length + ayahResults.length)}
+                : toArabicNumbers(visibleResultCount)}
             </Text>
           </View>
           {searchLoading ? (
@@ -148,7 +151,25 @@ export function HomeHero({
               style={styles.resultsScroll}
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled>
-              {surahResults.slice(0, 3).map((surah) => (
+              {visibleAyahResults.length > 0 && (
+                <Text style={[styles.resultSectionTitle, { color: colors.primary }]}>
+                  آيات مطابقة
+                </Text>
+              )}
+              {visibleAyahResults.map((result) => (
+                <SearchAyahResultItem
+                  key={`${result.surahNumber}:${result.ayahNumber}`}
+                  result={result}
+                  surahName={surahNameByNumber.get(result.surahNumber)
+                    ?? `رقم ${toArabicNumbers(result.surahNumber)}`}
+                />
+              ))}
+              {visibleSurahResults.length > 0 && (
+                <Text style={[styles.resultSectionTitle, { color: colors.primary }]}>
+                  السور
+                </Text>
+              )}
+              {visibleSurahResults.map((surah) => (
                 <Link
                   key={`surah-${surah.surahNumber}`}
                   href={{ pathname: '/reader', params: { surahNumber: String(surah.surahNumber) } }}
@@ -171,14 +192,6 @@ export function HomeHero({
                   </Pressable>
                 </Link>
               ))}
-              {ayahResults.slice(0, 4).map((result) => (
-                <SearchAyahResultItem
-                  key={`${result.surahNumber}:${result.ayahNumber}`}
-                  result={result}
-                  surahName={surahNameByNumber.get(result.surahNumber)
-                    ?? `رقم ${toArabicNumbers(result.surahNumber)}`}
-                />
-              ))}
             </ScrollView>
           ) : (
             <View style={styles.resultsMessage}>
@@ -195,7 +208,7 @@ export function HomeHero({
 
 const styles = StyleSheet.create({
   container: {
-    height: 280,
+    height: 236,
     width: '100%',
     overflow: 'visible',
     zIndex: 20,
@@ -217,7 +230,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: Spacing.four,
     justifyContent: 'space-between',
-    paddingBottom: Spacing.four,
+    paddingBottom: Spacing.three,
     zIndex: 1,
   },
   topRow: {
@@ -272,7 +285,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   searchContainer: {
-    height: 56,
+    height: 50,
     borderRadius: Radius.md,
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -326,6 +339,14 @@ const styles = StyleSheet.create({
   },
   resultsScroll: {
     flexGrow: 0,
+  },
+  resultSectionTitle: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.one,
+    fontSize: TypeScale.caption,
+    fontWeight: '900',
+    textAlign: 'right',
   },
   resultsMessage: {
     minHeight: 76,

@@ -57,9 +57,6 @@ export const SurahGridItemModern = memo(function SurahGridItemModern({
           </View>
         </View>
 
-        <View style={[styles.navigationHint, { backgroundColor: `${tint}10` }]}>
-          <Ionicons name="chevron-back" size={16} color={tint} />
-        </View>
       </Pressable>
     </Link>
   );
@@ -68,26 +65,21 @@ export const SurahGridItemModern = memo(function SurahGridItemModern({
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    minHeight: 80,
+    minHeight: 68,
     marginHorizontal: 3,
     marginBottom: 9,
     borderWidth: 1,
     borderRightWidth: 3,
     borderRadius: Radius.md,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.two,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 5,
-    elevation: 1,
   },
   numberContainer: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -101,13 +93,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     alignItems: 'stretch',
-    gap: 6,
+    gap: Spacing.one,
   },
   name: {
-    width: '100%',
     fontSize: TypeScale.body,
     fontWeight: '900',
-    textAlign: 'center',
+    textAlign: 'right',
   },
   meta: {
     flexDirection: 'row-reverse',
@@ -134,12 +125,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.one,
-  },
-  navigationHint: {
-    width: 28,
-    height: 28,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

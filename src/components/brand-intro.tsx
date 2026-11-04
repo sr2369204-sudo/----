@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -9,51 +9,62 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 
-const INTRO_DURATION_MS = 2_800;
-const FADE_DURATION_MS = 360;
+export const IntroAnimationContext = createContext(false);
+
+const INTRO_DURATION_MS = 2_500;
+const FADE_DURATION_MS = 420;
+const PROGRESS_WIDTH = 132;
 const GOLD = '#E5B85F';
 const CREAM = '#FFF4DC';
 const SILHOUETTE = '#073747';
 
-export function BrandIntro() {
+export function BrandIntro({
+  onReady,
+  onFinished,
+}: {
+  onReady: () => void;
+  onFinished: () => void;
+}) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [exiting, setExiting] = useState(false);
   const [visible, setVisible] = useState(true);
+  const didReportReady = useRef(false);
   const reveal = useSharedValue(0);
   const fadeOut = useSharedValue(1);
-  const rotation = useSharedValue(0);
-  const markSize = Math.min(width * 0.39, 174);
+  const progress = useSharedValue(0);
+  const markSize = Math.min(width * 0.34, 148);
+
+  const handleLayout = useCallback(() => {
+    if (didReportReady.current) {
+      return;
+    }
+    didReportReady.current = true;
+    onReady();
+  }, [onReady]);
 
   useEffect(() => {
     reveal.value = withTiming(1, {
-      duration: 850,
+      duration: 1_000,
       easing: Easing.out(Easing.cubic),
       reduceMotion: ReduceMotion.System,
     });
-    rotation.value = withRepeat(
-      withTiming(360, {
-        duration: 1_500,
-        easing: Easing.linear,
-        reduceMotion: ReduceMotion.System,
-      }),
-      -1,
-      false,
-      undefined,
-      ReduceMotion.System,
-    );
+    progress.value = withTiming(1, {
+      duration: INTRO_DURATION_MS + FADE_DURATION_MS,
+      easing: Easing.linear,
+      reduceMotion: ReduceMotion.System,
+    });
 
     const introTimer = setTimeout(() => setExiting(true), INTRO_DURATION_MS);
     return () => {
       clearTimeout(introTimer);
       cancelAnimation(reveal);
-      cancelAnimation(rotation);
+      cancelAnimation(progress);
     };
-  }, [reveal, rotation]);
+  }, [progress, reveal]);
 
   useEffect(() => {
     if (!exiting) {
@@ -65,15 +76,18 @@ export function BrandIntro() {
       easing: Easing.in(Easing.quad),
       reduceMotion: ReduceMotion.System,
     });
-    const exitTimer = setTimeout(() => setVisible(false), FADE_DURATION_MS);
+    const exitTimer = setTimeout(() => {
+      setVisible(false);
+      onFinished();
+    }, FADE_DURATION_MS);
     return () => {
       clearTimeout(exitTimer);
       cancelAnimation(fadeOut);
     };
-  }, [exiting, fadeOut]);
+  }, [exiting, fadeOut, onFinished]);
 
   const overlayStyle = useAnimatedStyle(() => ({
-    opacity: reveal.value * fadeOut.value,
+    opacity: fadeOut.value,
   }));
   const markStyle = useAnimatedStyle(() => ({
     opacity: reveal.value,
@@ -86,8 +100,8 @@ export function BrandIntro() {
     opacity: interpolate(reveal.value, [0.25, 1], [0, 1], 'clamp'),
     transform: [{ translateY: interpolate(reveal.value, [0, 1], [12, 0]) }],
   }));
-  const spinnerStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
+  const progressStyle = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, [0, 1], [0, PROGRESS_WIDTH]),
   }));
 
   if (!visible) {
@@ -98,6 +112,7 @@ export function BrandIntro() {
     <Animated.View
       accessibilityViewIsModal
       accessibilityLabel="شاشة بدء المصحف الشريف"
+      onLayout={handleLayout}
       style={[styles.container, overlayStyle]}>
       <View pointerEvents="none" style={styles.background}>
         <View style={[styles.topGlow, { width: width * 1.28, height: width * 1.28 }]} />
@@ -114,7 +129,7 @@ export function BrandIntro() {
           {
             width: markSize,
             height: markSize * 1.08,
-            top: height * 0.155,
+            top: height * 0.19,
           },
           markStyle,
         ]}>
@@ -131,8 +146,8 @@ export function BrandIntro() {
         />
       </Animated.View>
 
-      <Animated.View style={[styles.titleBlock, { top: height * 0.438 }, titleStyle]}>
-        <Text style={[styles.title, { fontSize: width < 370 ? 31 : 37 }]}>المصحف الشريف</Text>
+      <Animated.View style={[styles.titleBlock, { top: height * 0.455 }, titleStyle]}>
+        <Text style={[styles.title, { fontSize: width < 370 ? 29 : 34 }]}>المصحف الشريف</Text>
         <View style={styles.titleDivider}>
           <View style={styles.dividerLine} />
           <View style={styles.dividerDiamond} />
@@ -140,16 +155,10 @@ export function BrandIntro() {
         </View>
       </Animated.View>
 
-      <Animated.View style={[styles.loadingBlock, { top: height * 0.575 }, titleStyle]}>
-        <View style={styles.loadingRing}>
-          <Animated.View style={[styles.spinner, spinnerStyle]} />
-          <Ionicons name="book-outline" size={35} color={CREAM} />
-        </View>
-        <Text style={styles.loadingText}>جاري التحميل...</Text>
-        <View style={styles.loadingDots}>
-          <View style={[styles.dot, styles.dotDim]} />
-          <View style={[styles.dot, styles.dotMid]} />
-          <View style={[styles.dot, styles.dotBright]} />
+      <Animated.View style={[styles.loadingBlock, { top: height * 0.625 }, titleStyle]}>
+        <Text style={styles.loadingText}>رفيقك في رحاب القرآن</Text>
+        <View style={styles.progressTrack}>
+          <Animated.View style={[styles.progressFill, progressStyle]} />
         </View>
       </Animated.View>
 
@@ -342,53 +351,25 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     alignSelf: 'center',
-    gap: 16,
+    gap: 14,
   },
-  loadingRing: {
-    width: 106,
-    height: 106,
-    borderRadius: 53,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: 'rgba(207,227,221,0.2)',
-  },
-  spinner: {
-    ...StyleSheet.absoluteFill,
-    borderWidth: 4,
-    borderColor: 'transparent',
-    borderTopColor: '#FFD77F',
-    borderRightColor: '#FFD77F',
-    borderRadius: 53,
+  progressTrack: {
+    width: PROGRESS_WIDTH,
+    height: 2,
+    overflow: 'hidden',
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,244,220,0.2)',
   },
   loadingText: {
-    color: CREAM,
-    fontSize: 22,
-    fontWeight: '600',
+    color: 'rgba(255,244,220,0.8)',
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
-  loadingDots: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    marginTop: 1,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  dotDim: {
-    backgroundColor: 'rgba(215,232,224,0.34)',
-  },
-  dotMid: {
-    backgroundColor: 'rgba(255,241,207,0.7)',
-  },
-  dotBright: {
-    backgroundColor: '#FFD77F',
-    shadowColor: '#FFD77F',
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
+  progressFill: {
+    height: '100%',
+    borderRadius: 1,
+    backgroundColor: GOLD,
   },
   skyline: {
     position: 'absolute',

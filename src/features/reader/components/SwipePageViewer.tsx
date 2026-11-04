@@ -15,6 +15,7 @@ import Animated, {
 
 import type { Highlight } from '@/features/annotations/types';
 import type { CachedMushafPage } from '@/features/reader/services/mushaf-page-cache';
+import { resolvePagePull, resolvePageTurnIntent } from '@/features/reader/services/page-turn';
 import {
   MushafPageViewer,
   type ElementRect,
@@ -56,7 +57,6 @@ export type SwipePageViewerProps = {
 };
 
 const SWIPE_DISTANCE_RATIO = 0.18;
-const SWIPE_VELOCITY_THRESHOLD = 200;
 const ANIMATION_DURATION_MS = 220;
 const CANCEL_DURATION_MS = 180;
 /**
@@ -65,26 +65,6 @@ const CANCEL_DURATION_MS = 180;
  * always lands on an already prepared page.
  */
 const MAX_MOUNTED_PAGES = 3;
-
-/**
- * Horizontal pull of the strip for one pointer position.
- *
- * A direction without a prepared page behaves like a hard edge: the strip stays
- * at rest instead of following the finger and springing back on release, which
- * was read as the reader "going back on its own". The result is always a finite
- * number, so a blocked gesture can never leave the strip with a corrupted
- * offset that would break every later turn.
- */
-function resolvePull(dx: number, canGoPrev: boolean, canGoNext: boolean): number {
-  'worklet';
-  if (!Number.isFinite(dx)) {
-    return 0;
-  }
-  if (dx > 0) {
-    return canGoPrev ? dx : 0;
-  }
-  return canGoNext ? dx : 0;
-}
 
 export function SwipePageViewer({
   currentPage,
@@ -183,20 +163,15 @@ export function SwipePageViewer({
         return;
       }
       const distanceThreshold = Math.max(50, width * SWIPE_DISTANCE_RATIO);
-
-      // RTL: moving to the next page is a swipe from right to left (dx < 0).
-      const wantsNext =
-        dx < -distanceThreshold || (dx < -25 && vx < -SWIPE_VELOCITY_THRESHOLD);
-      const wantsPrev =
-        dx > distanceThreshold || (dx > 25 && vx > SWIPE_VELOCITY_THRESHOLD);
+      const intent = resolvePageTurnIntent(dx, vx, distanceThreshold);
 
       // The destination is the neighbour that is currently mounted and painted,
       // never a page number computed from data that may still be loading. A
       // swipe can therefore only ever land on a page that is already there.
       const target: { direction: PageTurnDirection; pageNumber: number } | null =
-        wantsNext && canGoNextOnUi.value && nextPage !== null
+        intent === 'next' && canGoNextOnUi.value && nextPage !== null
           ? { direction: 'next', pageNumber: nextPage.page.pageNumber }
-          : wantsPrev && canGoPrevOnUi.value && prevPage !== null
+          : intent === 'previous' && canGoPrevOnUi.value && prevPage !== null
             ? { direction: 'previous', pageNumber: prevPage.page.pageNumber }
             : null;
 
@@ -213,7 +188,7 @@ export function SwipePageViewer({
 
       isTransitioning.value = true;
       pull.value = withTiming(
-        target.direction === 'next' ? -width : width,
+        target.direction === 'next' ? width : -width,
         { duration: ANIMATION_DURATION_MS, easing: Easing.out(Easing.cubic) },
         (finished) => {
           'worklet';
@@ -298,10 +273,10 @@ export function SwipePageViewer({
       'worklet';
       if (isTransitioning.value) return;
 
-      pull.value = resolvePull(
+      pull.value = resolvePagePull(
         event.translationX,
-        canGoPrevOnUi.value,
         canGoNextOnUi.value,
+        canGoPrevOnUi.value,
       );
     })
     .onEnd((event) => {
@@ -319,7 +294,7 @@ export function SwipePageViewer({
       if (isTransitioning.value) {
         return;
       }
-      pull.value = resolvePull(dx, canGoPrevOnUi.value, canGoNextOnUi.value);
+      pull.value = resolvePagePull(dx, canGoNextOnUi.value, canGoPrevOnUi.value);
     },
     [canGoNextOnUi, canGoPrevOnUi, isTransitioning, pull],
   );
@@ -451,7 +426,7 @@ const PageSlot = memo(function PageSlot({
 }: PageSlotProps) {
   const pageNumber = data.page.pageNumber;
   const slotStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: (pageNumber - rowIndex.value) * width + pull.value }],
+    transform: [{ translateX: (rowIndex.value - pageNumber) * width + pull.value }],
   }));
   const handleReady = useCallback(() => {
     onReady(pageNumber);
