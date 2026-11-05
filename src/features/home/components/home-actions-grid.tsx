@@ -57,6 +57,14 @@ export function HomeActionsGrid({
       color: '#C07A44',
       href: '/bookmarks',
     },
+    {
+      id: 'tajweed',
+      label: 'موسوعة التجويد',
+      sublabel: 'أبواب وأحكام التجويد',
+      icon: 'library',
+      color: colors.primary,
+      href: '/tajweed',
+    },
   ];
 
   return (
