@@ -104,12 +104,12 @@ test('uses verified source portraits and leaves unknown reciters without a photo
   const saudPortrait = getReciterPortrait(10);
 
   assert.ok(husaryPortrait);
-  assert.match(husaryPortrait.imageUrl, /Hussary\.jpg/);
+  assert.equal(husaryPortrait.imageKey, 'husary');
   assert.equal(husaryPortrait.license, 'Public domain');
   assert.equal(getReciterPortrait(12)?.sourceUrl, husaryPortrait.sourceUrl);
   assert.ok(saudPortrait);
   assert.equal(saudPortrait.license, 'CC0');
-  assert.equal(getReciterPortrait(7), undefined);
+  assert.equal(getReciterPortrait(7)?.imageKey, 'mishary-rashid');
   assert.equal(getReciterPortrait(4), undefined);
 });
 

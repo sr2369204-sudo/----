@@ -2,7 +2,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useColorScheme,
+  View,
+} from 'react-native';
 import * as Updates from 'expo-updates';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -33,7 +43,11 @@ const queryClient = new QueryClient({
 function AppLayout() {
   const database = useSQLiteContext();
   const [introFinished, setIntroFinished] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<Updates.Manifest | null>(null);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState(false);
   const colorScheme = useColorScheme();
+  const { downloadProgress } = Updates.useUpdates();
   const themePreference = useReaderPreferencesStore((state) => state.themePreference);
   const setPreferences = useReaderPreferencesStore((state) => state.setPreferences);
   const setPreferenceError = useReaderPreferencesStore((state) => state.setError);
@@ -75,37 +89,9 @@ function AppLayout() {
           return;
         }
 
-        Alert.alert(
-          'تحديث جديد متاح',
-          'يتوفر إصدار جديد من التطبيق. هل تريد تنزيله وتثبيته الآن؟',
-          [
-            { text: 'لاحقاً', style: 'cancel' },
-            {
-              text: 'تحديث الآن',
-              onPress: () => {
-                void downloadAndReload();
-              },
-            },
-          ],
-        );
+        setAvailableUpdate(result.manifest);
       } catch (error) {
         console.error('تعذر التحقق من تحديث التطبيق.', error);
-      }
-    };
-
-    const downloadAndReload = async () => {
-      try {
-        const result = await Updates.fetchUpdateAsync();
-        if (!result.isNew) {
-          return;
-        }
-        await Updates.reloadAsync();
-      } catch (error) {
-        console.error('تعذر تنزيل تحديث التطبيق.', error);
-        Alert.alert(
-          'تعذر تحديث التطبيق',
-          'لم نتمكن من تنزيل التحديث. تحقق من اتصال الإنترنت وحاول مجدداً عند فتح التطبيق.',
-        );
       }
     };
 
@@ -148,12 +134,47 @@ function AppLayout() {
     };
   }, [database, setPreferenceError, setPreferences]);
 
+  const dismissUpdate = useCallback(() => {
+    if (!downloadingUpdate) {
+      setAvailableUpdate(null);
+      setUpdateError(false);
+    }
+  }, [downloadingUpdate]);
+
+  const downloadAndReload = useCallback(async () => {
+    setDownloadingUpdate(true);
+    setUpdateError(false);
+    try {
+      const result = await Updates.fetchUpdateAsync();
+      if (result.isNew) {
+        await Updates.reloadAsync();
+      } else {
+        setDownloadingUpdate(false);
+        setAvailableUpdate(null);
+      }
+    } catch (error) {
+      console.error('تعذر تنزيل تحديث التطبيق.', error);
+      setUpdateError(true);
+      setDownloadingUpdate(false);
+    }
+  }, []);
+
   return (
     <ThemeProvider value={theme}>
       <IntroAnimationContext.Provider value={introFinished}>
         <StatusBar hidden />
         <Stack screenOptions={{ headerShown: false }} />
         <BrandIntro onReady={handleIntroReady} onFinished={handleIntroFinished} />
+        <UpdateModal
+          visible={availableUpdate !== null}
+          notes={availableUpdate ? getUpdateNotes(availableUpdate) : []}
+          colors={palette}
+          downloading={downloadingUpdate}
+          progress={downloadProgress}
+          failed={updateError}
+          onDismiss={dismissUpdate}
+          onUpdate={() => void downloadAndReload()}
+        />
       </IntroAnimationContext.Provider>
     </ThemeProvider>
   );
@@ -162,6 +183,364 @@ function AppLayout() {
 function isThemePreference(value: string): value is 'system' | 'light' | 'dark' {
   return value === 'system' || value === 'light' || value === 'dark';
 }
+
+function getUpdateNotes(manifest: Updates.Manifest): string[] {
+  if (!('extra' in manifest)) {
+    return [];
+  }
+  const clientExtra = manifest.extra?.expoClient?.extra;
+  if (!clientExtra || typeof clientExtra !== 'object' || !('updateNotes' in clientExtra)) {
+    return [];
+  }
+  const notes = clientExtra.updateNotes;
+  return Array.isArray(notes)
+    ? notes.filter((note): note is string => typeof note === 'string' && note.trim().length > 0)
+    : [];
+}
+
+function UpdateModal({
+  visible,
+  notes,
+  colors,
+  downloading,
+  progress,
+  failed,
+  onDismiss,
+  onUpdate,
+}: {
+  visible: boolean;
+  notes: string[];
+  colors: (typeof Colors)[keyof typeof Colors];
+  downloading: boolean;
+  progress?: number;
+  failed: boolean;
+  onDismiss: () => void;
+  onUpdate: () => void;
+}) {
+  const normalizedProgress = typeof progress === 'number'
+    ? Math.max(0, Math.min(1, progress))
+    : 0;
+  const progressPercent = Math.round(normalizedProgress * 100);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onDismiss}
+      statusBarTranslucent>
+      <View style={updateStyles.overlay}>
+        <View style={[updateStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[updateStyles.hero, { backgroundColor: colors.backgroundSelected }]}>
+            <View style={[updateStyles.closeSlot, { backgroundColor: colors.surface }]}>
+              {!downloading && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="لاحقاً"
+                  onPress={onDismiss}
+                  hitSlop={10}>
+                  <Ionicons name="close" size={20} color={colors.textSecondary} />
+                </Pressable>
+              )}
+            </View>
+            <View style={[updateStyles.iconBadge, { backgroundColor: colors.primary }]}>
+              <Ionicons name="sparkles" size={28} color={colors.onPrimary} />
+            </View>
+            <View style={[updateStyles.updateBadge, { backgroundColor: colors.surface }]}>
+              <View style={[updateStyles.badgeDot, { backgroundColor: colors.accent }]} />
+              <Text style={[updateStyles.badgeText, { color: colors.primary }]}>
+                {downloading ? 'تحديث قيد التحميل' : 'تحديث جديد'}
+              </Text>
+            </View>
+            <Text style={[updateStyles.title, { color: colors.text }]}>
+              {downloading ? 'نجهّز لك نسخة أجمل' : 'تجربة جديدة للمصحف'}
+            </Text>
+            <Text style={[updateStyles.subtitle, { color: colors.textSecondary }]}>
+              {downloading
+                ? 'يتم تنزيل التحسينات بأمان، وسيُعاد تشغيل التطبيق بعد اكتمالها.'
+                : 'وصلت إضافات وتحسينات جديدة لتجعل قراءتك أيسر.'}
+            </Text>
+          </View>
+
+          <ScrollView
+            style={updateStyles.notesScroll}
+            contentContainerStyle={updateStyles.notesContent}
+            showsVerticalScrollIndicator={false}>
+            <Text style={[updateStyles.notesTitle, { color: colors.text }]}>أبرز الإضافات</Text>
+            {notes.length > 0 ? notes.map((note, index) => (
+              <View key={`${index}-${note}`} style={updateStyles.noteRow}>
+                <View style={[updateStyles.noteIcon, { backgroundColor: colors.backgroundSelected }]}>
+                  <Ionicons name="checkmark" size={15} color={colors.primary} />
+                </View>
+                <Text style={[updateStyles.noteText, { color: colors.textSecondary }]}>{note}</Text>
+              </View>
+            )) : (
+              <Text style={[updateStyles.noteText, { color: colors.textSecondary }]}>
+                تحسينات عامة وإصلاحات لتجربة أكثر سلاسة.
+              </Text>
+            )}
+          </ScrollView>
+
+          {downloading && (
+            <View style={updateStyles.progressSection}>
+              <View style={updateStyles.progressLabels}>
+                <Text style={[updateStyles.progressCaption, { color: colors.textSecondary }]}>
+                  جارٍ تحميل التحديث
+                </Text>
+                <Text style={[updateStyles.progressPercent, { color: colors.primary }]}>
+                  {toArabicDigits(progressPercent)}٪
+                </Text>
+              </View>
+              <View
+                accessibilityRole="progressbar"
+                accessibilityValue={{ min: 0, max: 100, now: progressPercent }}
+                style={[updateStyles.progressTrack, { backgroundColor: colors.backgroundSelected }]}>
+                <View
+                  style={[
+                    updateStyles.progressFill,
+                    { width: `${progressPercent}%`, backgroundColor: colors.primary },
+                  ]}
+                />
+              </View>
+              <Text style={[updateStyles.progressHint, { color: colors.textSecondary }]}>
+                لا تغلق التطبيق أثناء التحميل
+              </Text>
+            </View>
+          )}
+
+          {failed && (
+            <View style={[updateStyles.errorBox, { backgroundColor: colors.backgroundSelected }]}>
+              <Ionicons name="cloud-offline-outline" size={18} color={colors.primary} />
+              <Text style={[updateStyles.errorText, { color: colors.text }]}>
+                تعذر تنزيل التحديث. تحقق من اتصالك وحاول مرة أخرى.
+              </Text>
+            </View>
+          )}
+
+          <View style={updateStyles.actions}>
+            {!downloading && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={onDismiss}
+                style={[updateStyles.laterButton, { borderColor: colors.border }]}>
+                <Text style={[updateStyles.laterText, { color: colors.textSecondary }]}>لاحقاً</Text>
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              disabled={downloading}
+              onPress={onUpdate}
+              style={({ pressed }) => [
+                updateStyles.updateButton,
+                { backgroundColor: colors.primary },
+                pressed && !downloading && updateStyles.pressed,
+              ]}>
+              <Ionicons
+                name={downloading ? 'cloud-download-outline' : failed ? 'refresh' : 'download-outline'}
+                size={19}
+                color={colors.onPrimary}
+              />
+              <Text style={[updateStyles.updateButtonText, { color: colors.onPrimary }]}>
+                {downloading ? 'جاري التحميل' : failed ? 'إعادة المحاولة' : 'حدّث الآن'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function toArabicDigits(value: number): string {
+  return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
+}
+
+const updateStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(4, 17, 12, 0.62)',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 430,
+    maxHeight: '90%',
+    overflow: 'hidden',
+    borderRadius: 28,
+    borderWidth: 1,
+    paddingBottom: 20,
+  },
+  hero: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 22,
+  },
+  closeSlot: {
+    width: 34,
+    height: 34,
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
+  iconBadge: {
+    width: 62,
+    height: 62,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+    marginTop: 2,
+    marginBottom: 13,
+  },
+  updateBadge: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  badgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  title: {
+    marginTop: 12,
+    fontSize: 21,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  subtitle: {
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  notesScroll: {
+    flexShrink: 1,
+  },
+  notesContent: {
+    gap: 12,
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    paddingBottom: 14,
+  },
+  notesTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+    marginBottom: 2,
+  },
+  noteRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  noteIcon: {
+    width: 23,
+    height: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  noteText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 21,
+    textAlign: 'right',
+  },
+  progressSection: {
+    gap: 9,
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  progressLabels: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressCaption: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  progressPercent: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  progressTrack: {
+    height: 10,
+    overflow: 'hidden',
+    borderRadius: 99,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+  progressHint: {
+    fontSize: 11,
+    textAlign: 'right',
+  },
+  errorBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 9,
+    marginHorizontal: 22,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 14,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  actions: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    paddingHorizontal: 22,
+    paddingTop: 14,
+  },
+  laterButton: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 15,
+    paddingHorizontal: 17,
+  },
+  laterText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  updateButton: {
+    flex: 1,
+    minHeight: 48,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    borderRadius: 15,
+    paddingHorizontal: 16,
+  },
+  updateButtonText: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  pressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.98 }],
+  },
+});
 
 export default function RootLayout() {
   const [dbError, setDbError] = useState<Error | null>(null);

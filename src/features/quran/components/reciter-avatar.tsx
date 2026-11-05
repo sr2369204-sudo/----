@@ -1,8 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 
-import { getReciterPortrait } from '@/features/quran/services/reciter-portraits';
+import {
+  getReciterPortrait,
+  type ReciterPortraitImageKey,
+} from '@/features/quran/services/reciter-portraits';
+
+const portraitImages: Record<ReciterPortraitImageKey, ImageSourcePropType> = {
+  'abdul-basit': require('../../../../assets/images/reciters/abdul-basit.jpg'),
+  husary: require('../../../../assets/images/reciters/husary.jpg'),
+  minshawi: require('../../../../assets/images/reciters/minshawi.jpg'),
+  'mishary-rashid': require('../../../../assets/images/reciters/mishary-rashid.jpg'),
+  'saud-shuraim': require('../../../../assets/images/reciters/shuraim.png'),
+  sudais: require('../../../../assets/images/reciters/sudais.jpg'),
+  'yasser-al-dosari': require('../../../../assets/images/reciters/yasser-al-dosari.jpg'),
+};
 
 type Props = {
   reciterId: number;
@@ -18,8 +31,7 @@ export function ReciterAvatar({
   iconColor,
 }: Props) {
   const portrait = getReciterPortrait(reciterId);
-  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
-  const showImage = portrait !== undefined && failedImageUrl !== portrait.imageUrl;
+  const [failedImageKey, setFailedImageKey] = useState<ReciterPortraitImageKey | null>(null);
 
   return (
     <View
@@ -27,13 +39,13 @@ export function ReciterAvatar({
         styles.container,
         { width: size, height: size, borderRadius: size / 2, backgroundColor },
       ]}>
-      {showImage ? (
+      {portrait && failedImageKey !== portrait.imageKey ? (
         <Image
           accessibilityLabel="صورة القارئ"
-          source={{ uri: portrait.imageUrl }}
+          source={portraitImages[portrait.imageKey]}
           style={styles.image}
           resizeMode="cover"
-          onError={() => setFailedImageUrl(portrait.imageUrl)}
+          onError={() => setFailedImageKey(portrait.imageKey)}
         />
       ) : (
         <Ionicons name="person" size={Math.round(size * 0.48)} color={iconColor} />
