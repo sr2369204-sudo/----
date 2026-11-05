@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useLocalSearchParams } from 'expo-router';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,93 +18,154 @@ import {
 import type { TajweedLessonContent } from '@/features/tajweed/types';
 import { useTheme } from '@/hooks/use-theme';
 
-const CONTENT_SECTIONS: {
-  key: keyof TajweedLessonContent;
-  title: string;
-  icon: keyof typeof Ionicons.glyphMap;
-}[] = [
-  { key: 'definition', title: 'التعريف', icon: 'information-circle-outline' },
-  { key: 'explanation', title: 'الشرح', icon: 'book-outline' },
-  { key: 'letters', title: 'حروف الحكم', icon: 'text-outline' },
-  { key: 'examples', title: 'أمثلة قرآنية', icon: 'document-text-outline' },
-  { key: 'notes', title: 'ملاحظات وتنبيهات', icon: 'alert-circle-outline' },
-];
-
 export default function TajweedLessonScreen() {
   const { ruleId } = useLocalSearchParams<{ ruleId: string }>();
   const colors = useTheme();
   const lesson = getTajweedLesson(ruleId);
   const section = lesson ? getTajweedSection(lesson.sectionId) : undefined;
 
-  return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}>
-        <View style={styles.topRow}>
+  if (!lesson) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <View style={styles.notFoundContainer}>
+          <Ionicons name="alert-circle-outline" size={64} color={colors.textSecondary} />
+          <Text style={[styles.notFoundText, { color: colors.text }]}>الحكم غير موجود</Text>
           <Link href="/tajweed" asChild>
             <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="العودة إلى موسوعة التجويد"
               style={StyleSheet.flatten([
-                styles.backButton,
+                styles.backButtonLarge,
+                { backgroundColor: colors.primary },
+              ])}>
+              <Text style={[styles.backButtonText, { color: colors.onPrimary }]}>
+                العودة للموسوعة
+              </Text>
+            </Pressable>
+          </Link>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.header}>
+          <Link href="/tajweed" asChild>
+            <Pressable
+              style={StyleSheet.flatten([
+                styles.iconButton,
                 { backgroundColor: colors.surface, borderColor: colors.border },
               ])}>
               <Ionicons name="arrow-forward" size={20} color={colors.primary} />
             </Pressable>
           </Link>
-          <View style={styles.titleGroup}>
-            <Text style={[styles.eyebrow, { color: colors.primary }]}>
-              {section?.title ?? 'موسوعة التجويد'}
-            </Text>
-            <Text style={[styles.title, { color: colors.text }]}>
-              {lesson?.title ?? 'الحكم غير موجود'}
-            </Text>
+          <View style={styles.headerTitleGroup}>
+            <Text style={[styles.sectionTitle, { color: colors.primary }]}>{section?.title}</Text>
+            <Text style={[styles.lessonTitle, { color: colors.text }]}>{lesson.title}</Text>
           </View>
         </View>
 
-        {lesson ? (
-          <View style={styles.contentSections}>
-            {CONTENT_SECTIONS.map((contentSection) => {
-              const value = lesson.content[contentSection.key];
-              return (
-                <View
-                  key={contentSection.key}
-                  style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={styles.contentHeader}>
-                    <View style={[styles.contentIcon, { backgroundColor: colors.backgroundSelected }]}>
-                      <Ionicons name={contentSection.icon} size={19} color={colors.primary} />
-                    </View>
-                    <Text style={[styles.contentTitle, { color: colors.text }]}>
-                      {contentSection.title}
-                    </Text>
+        <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {/* Definition Section */}
+          {lesson.content.definition && (
+            <View style={styles.contentBlock}>
+              <View style={styles.blockHeader}>
+                <Ionicons name="information-circle" size={20} color={colors.accent} />
+                <Text style={[styles.blockTitle, { color: colors.text }]}>التعريف</Text>
+              </View>
+              <Text style={[styles.contentText, { color: colors.textSecondary }]}>
+                {lesson.content.definition}
+              </Text>
+            </View>
+          )}
+
+          {/* Ruling Badge */}
+          {lesson.content.ruling && (
+            <View style={[styles.rulingBox, { backgroundColor: colors.backgroundSelected }]}>
+              <Text style={[styles.rulingLabel, { color: colors.primary }]}>الحكم:</Text>
+              <Text style={[styles.rulingValue, { color: colors.text }]}>
+                {lesson.content.ruling}
+              </Text>
+            </View>
+          )}
+
+          {/* Letters Badge */}
+          {lesson.content.letters && (
+            <View style={styles.contentBlock}>
+              <View style={styles.blockHeader}>
+                <Ionicons name="text" size={20} color={colors.primary} />
+                <Text style={[styles.blockTitle, { color: colors.text }]}>حروف الحكم</Text>
+              </View>
+              <View style={styles.lettersContainer}>
+                {lesson.content.letters.split('،').map((letter, i) => (
+                  <View
+                    key={i}
+                    style={[styles.letterBadge, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <Text style={[styles.letterText, { color: colors.primary }]}>{letter.trim()}</Text>
                   </View>
-                  <Text style={[styles.placeholder, { color: colors.textSecondary }]}>
-                    {value ?? 'سيتم إضافة شرح هذا الحكم قريبًا'}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        ) : (
-          <View style={[styles.notFoundCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="help-circle-outline" size={34} color={colors.textSecondary} />
-            <Text style={[styles.notFoundText, { color: colors.textSecondary }]}>
-              لم يتم العثور على هذا الحكم في الموسوعة.
-            </Text>
-            <Link href="/tajweed" asChild>
-              <Pressable
-                style={StyleSheet.flatten([
-                  styles.returnButton,
-                  { backgroundColor: colors.primary },
-                ])}>
-                <Text style={[styles.returnButtonText, { color: colors.onPrimary }]}>
-                  العودة إلى الموسوعة
-                </Text>
-              </Pressable>
-            </Link>
-          </View>
-        )}
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Explanation */}
+          {lesson.content.explanation && (
+            <View style={styles.contentBlock}>
+              <View style={styles.blockHeader}>
+                <Ionicons name="book" size={20} color={colors.primary} />
+                <Text style={[styles.blockTitle, { color: colors.text }]}>الشرح والتفصيل</Text>
+              </View>
+              <Text style={[styles.contentText, { color: colors.textSecondary }]}>
+                {lesson.content.explanation}
+              </Text>
+            </View>
+          )}
+
+          {/* Cases */}
+          {lesson.content.cases && (
+            <View style={[styles.casesBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={styles.blockHeader}>
+                <Ionicons name="list" size={20} color={colors.accent} />
+                <Text style={[styles.blockTitle, { color: colors.text }]}>الحالات والأوجه</Text>
+              </View>
+              <Text style={[styles.contentText, { color: colors.textSecondary }]}>
+                {lesson.content.cases}
+              </Text>
+            </View>
+          )}
+
+          {/* Examples */}
+          {lesson.content.examples && (
+            <View style={styles.contentBlock}>
+              <View style={styles.blockHeader}>
+                <Ionicons name="document-text" size={20} color={colors.primary} />
+                <Text style={[styles.blockTitle, { color: colors.text }]}>أمثلة قرآنية</Text>
+              </View>
+              <View style={styles.examplesList}>
+                {lesson.content.examples.split('،').map((example, i) => (
+                  <View
+                    key={i}
+                    style={[styles.exampleItem, { backgroundColor: colors.backgroundSelected }]}>
+                    <Text style={[styles.exampleText, { color: colors.text }]}>{example.trim()}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Notes */}
+          {lesson.content.notes && (
+            <View style={[styles.notesBox, { borderColor: colors.accent + '40' }]}>
+              <View style={styles.blockHeader}>
+                <Ionicons name="bulb" size={20} color={colors.accent} />
+                <Text style={[styles.blockTitle, { color: colors.accent }]}>تنبيهات هامة</Text>
+              </View>
+              <Text style={[styles.contentText, { color: colors.textSecondary }]}>
+                {lesson.content.notes}
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -113,91 +175,139 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  content: {
-    width: '100%',
-    maxWidth: 800,
-    alignSelf: 'center',
-    gap: Spacing.four,
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
+  scrollContent: {
     paddingBottom: Spacing.six,
   },
-  topRow: {
+  header: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
+    marginBottom: Spacing.three,
     gap: Spacing.three,
   },
-  backButton: {
+  iconButton: {
     width: 44,
     height: 44,
-    borderRadius: Radius.pill,
+    borderRadius: 22,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  titleGroup: {
+  headerTitleGroup: {
     flex: 1,
     alignItems: 'flex-end',
-    gap: Spacing.one,
   },
-  eyebrow: {
+  sectionTitle: {
     fontSize: TypeScale.caption,
-    fontWeight: '700',
-    textAlign: 'right',
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
-  title: {
+  lessonTitle: {
     fontSize: TypeScale.display,
     fontWeight: '900',
-    textAlign: 'right',
   },
-  contentSections: {
-    gap: Spacing.three,
-  },
-  contentCard: {
-    gap: Spacing.three,
-    padding: Spacing.three,
+  mainCard: {
+    marginHorizontal: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: 24,
     borderWidth: 1,
-    borderRadius: Radius.lg,
+    gap: Spacing.four,
   },
-  contentHeader: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
+  contentBlock: {
     gap: Spacing.two,
   },
-  contentIcon: {
-    width: 36,
-    height: 36,
+  blockHeader: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.md,
+    gap: 8,
+    marginBottom: 4,
   },
-  contentTitle: {
+  blockTitle: {
     fontSize: TypeScale.heading,
     fontWeight: '800',
-    textAlign: 'right',
   },
-  placeholder: {
+  contentText: {
     fontSize: TypeScale.body,
-    lineHeight: 24,
+    lineHeight: 26,
     textAlign: 'right',
   },
-  notFoundCard: {
+  rulingBox: {
+    flexDirection: 'row-reverse',
+    padding: Spacing.three,
+    borderRadius: 14,
     alignItems: 'center',
-    gap: Spacing.three,
-    padding: Spacing.four,
-    borderRadius: Radius.lg,
+    gap: 8,
+  },
+  rulingLabel: {
+    fontSize: TypeScale.body,
+    fontWeight: '900',
+  },
+  rulingValue: {
+    flex: 1,
+    fontSize: TypeScale.body,
+    textAlign: 'right',
+  },
+  lettersContainer: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  letterBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     borderWidth: 1,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  letterText: {
+    fontSize: TypeScale.title,
+    fontWeight: '900',
+  },
+  casesBox: {
+    padding: Spacing.three,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  examplesList: {
+    gap: 8,
+    marginTop: 4,
+  },
+  exampleItem: {
+    padding: Spacing.three,
+    borderRadius: 12,
+  },
+  exampleText: {
+    fontSize: TypeScale.title,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Traditional Arabic' : 'serif',
+  },
+  notesBox: {
+    padding: Spacing.three,
+    borderRadius: 18,
+    borderWidth: 2,
+    backgroundColor: 'rgba(201, 151, 60, 0.05)',
+  },
+  notFoundContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.six,
+    gap: Spacing.three,
   },
   notFoundText: {
-    fontSize: TypeScale.body,
-    textAlign: 'center',
+    fontSize: TypeScale.title,
+    fontWeight: '800',
   },
-  returnButton: {
-    paddingHorizontal: Spacing.three,
+  backButtonLarge: {
+    paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.two,
-    borderRadius: Radius.md,
+    borderRadius: 14,
   },
-  returnButtonText: {
+  backButtonText: {
     fontSize: TypeScale.body,
     fontWeight: '800',
   },

@@ -1,17 +1,21 @@
 export type TajweedSectionId =
-  | 'letters-idgham'
+  | 'intro'
   | 'noon-sakinah'
   | 'meem-sakinah'
   | 'madd'
   | 'raa'
-  | 'waqf-ibtida';
+  | 'waqf-ibtida'
+  | 'qalqala'
+  | 'letters-idgham';
 
 export type TajweedLessonContent = {
   definition: string | null;
   explanation: string | null;
+  ruling: string | null;
   letters: string | null;
   examples: string | null;
   notes: string | null;
+  cases: string | null;
 };
 
 export type TajweedLesson = {

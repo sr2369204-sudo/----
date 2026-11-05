@@ -1194,11 +1194,13 @@ export default function ReaderScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="العودة للسور"
-            style={({ pressed }) => [
-              styles.navActionBtn,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-              pressed && { opacity: 0.75 },
-            ]}
+            style={({ pressed }) =>
+              StyleSheet.flatten([
+                styles.navActionBtn,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+                pressed && { opacity: 0.75 },
+              ])
+            }
           >
             <Ionicons name="chevron-forward" size={16} color={colors.text} />
             <Text style={[styles.navActionText, { color: colors.text }]}>السور</Text>
@@ -1253,11 +1255,13 @@ export default function ReaderScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
-              style={({ pressed }) => [
-                styles.navIconBtn,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-                pressed && { opacity: 0.75 },
-              ]}
+              style={({ pressed }) =>
+                StyleSheet.flatten([
+                  styles.navIconBtn,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  pressed && { opacity: 0.75 },
+                ])
+              }
             >
               <Ionicons name="settings-outline" size={18} color={colors.text} />
             </Pressable>
