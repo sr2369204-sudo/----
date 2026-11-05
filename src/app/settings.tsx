@@ -1,6 +1,7 @@
 import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
+import Constants from 'expo-constants';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -64,6 +65,7 @@ const ArabicReciterNames: Record<number, string> = {
 
 export default function SettingsScreen() {
   const colors = useTheme();
+  const appVersion = Constants.expoConfig?.version;
   const database = useSQLiteContext();
   const themePreference = useReaderPreferencesStore((state) => state.themePreference);
   const reciterId = useReaderPreferencesStore((state) => state.reciterId);
@@ -385,6 +387,11 @@ export default function SettingsScreen() {
         {(savedError || !recitersQuery.data?.some((reciter) => reciter.id === reciterId)) && (
           <Text accessibilityRole="alert" style={styles.error}>
             {savedError ?? 'القارئ المحفوظ غير موجود في قائمة المصدر. اختر قارئًا آخر.'}
+          </Text>
+        )}
+        {appVersion && (
+          <Text style={[styles.version, { color: colors.textSecondary }]}>
+            إصدار التطبيق {appVersion}
           </Text>
         )}
       </ScrollView>
@@ -1013,6 +1020,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     textAlign: 'right',
+  },
+  version: {
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: Spacing.two,
   },
   pickerOverlay: {
     flex: 1,
