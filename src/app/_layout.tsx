@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import * as Updates from 'expo-updates';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -60,6 +61,59 @@ function AppLayout() {
   const handleIntroFinished = useCallback(() => {
     setIntroFinished(true);
   }, []);
+
+  useEffect(() => {
+    if (!introFinished || Platform.OS === 'web' || !Updates.isEnabled) {
+      return;
+    }
+
+    let active = true;
+    const checkForUpdate = async () => {
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (!active || !result.isAvailable) {
+          return;
+        }
+
+        Alert.alert(
+          'تحديث جديد متاح',
+          'يتوفر إصدار جديد من التطبيق. هل تريد تنزيله وتثبيته الآن؟',
+          [
+            { text: 'لاحقاً', style: 'cancel' },
+            {
+              text: 'تحديث الآن',
+              onPress: () => {
+                void downloadAndReload();
+              },
+            },
+          ],
+        );
+      } catch (error) {
+        console.error('تعذر التحقق من تحديث التطبيق.', error);
+      }
+    };
+
+    const downloadAndReload = async () => {
+      try {
+        const result = await Updates.fetchUpdateAsync();
+        if (!result.isNew) {
+          return;
+        }
+        await Updates.reloadAsync();
+      } catch (error) {
+        console.error('تعذر تنزيل تحديث التطبيق.', error);
+        Alert.alert(
+          'تعذر تحديث التطبيق',
+          'لم نتمكن من تنزيل التحديث. تحقق من اتصال الإنترنت وحاول مجدداً عند فتح التطبيق.',
+        );
+      }
+    };
+
+    void checkForUpdate();
+    return () => {
+      active = false;
+    };
+  }, [introFinished]);
 
   useEffect(() => {
     let active = true;
