@@ -1234,6 +1234,7 @@ function computeRingLayout({
 
   const topLimit = insetTop + 2;
   const bottomLimit = windowHeight - insetBottom - 2;
+  const footerSpace = LABEL_GAP + CLOSE_SIZE + LABEL_GAP + 44;
 
   // Radius large enough to clear the word and to keep the buttons from colliding.
   const safeCount = Math.max(count, 1);
@@ -1253,7 +1254,7 @@ function computeRingLayout({
   const cy = clampWithin(
     centerY,
     topLimit + half + desiredRadius,
-    bottomLimit - half - desiredRadius,
+    bottomLimit - half - desiredRadius - footerSpace,
     (topLimit + bottomLimit) / 2,
   );
 
@@ -1263,7 +1264,7 @@ function computeRingLayout({
   );
   const radiusY = Math.max(
     BUTTON_SIZE * 0.95,
-    Math.min(desiredRadius, cy - topLimit - half, bottomLimit - cy - half),
+    Math.min(desiredRadius, cy - topLimit - half, bottomLimit - cy - half - footerSpace),
   );
 
   const points: { left: number; top: number }[] = [];
@@ -1275,17 +1276,17 @@ function computeRingLayout({
     });
   }
 
-  const closeAbove = cy - radiusY - half - LABEL_GAP - CLOSE_SIZE;
+  const closeBelow = cy + radiusY + half + LABEL_GAP;
   const closeTop = clampWithin(
-    closeAbove,
+    closeBelow,
     topLimit,
-    bottomLimit - CLOSE_SIZE,
-    topLimit,
+    bottomLimit - CLOSE_SIZE - LABEL_GAP - 44,
+    bottomLimit - CLOSE_SIZE - LABEL_GAP - 44,
   );
   const closeLeft = clampWithin(cx - CLOSE_SIZE / 2, RING_MARGIN, windowWidth - CLOSE_SIZE - RING_MARGIN, RING_MARGIN);
 
   const toastTop = clampWithin(
-    cy + radiusY + half + LABEL_GAP,
+    closeTop + CLOSE_SIZE + LABEL_GAP,
     topLimit,
     bottomLimit - 44,
     bottomLimit - 44,

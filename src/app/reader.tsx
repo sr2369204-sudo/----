@@ -26,7 +26,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import type { Highlight, SavedWord } from '@/features/annotations/types';
 import {
@@ -54,6 +54,7 @@ import {
   type RecitationQueue,
   type RecitationScope,
 } from '@/features/reader/services/recitation-queue';
+import { TajweedGuideDialog } from '@/features/reader/components/TajweedGuideDialog';
 import {
   loadDailyReadingPlan,
   saveLastReadingPosition,
@@ -118,6 +119,8 @@ export default function ReaderScreen() {
   const [interactionError, setInteractionError] = useState<string | null>(null);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [tajweedGuideOpen, setTajweedGuideOpen] = useState(false);
+  const [tajweedExampleSeed, setTajweedExampleSeed] = useState(0);
   const [navigationMode, setNavigationMode] = useState<NavigationMode>('surah');
   const [navigationValue, setNavigationValue] = useState('');
   const [navigationBusy, setNavigationBusy] = useState(false);
@@ -244,6 +247,16 @@ export default function ReaderScreen() {
 
   const showTajweed = displayPreferencesQuery.data?.showTajweed ?? true;
   const fontSize = displayPreferencesQuery.data?.fontSize ?? 44;
+  const toggleTajweed = useCallback(() => {
+    const preferences = displayPreferencesQuery.data;
+    if (!preferences) {
+      return;
+    }
+    queryClient.setQueryData(['reader', 'display-preferences'], {
+      ...preferences,
+      showTajweed: !preferences.showTajweed,
+    });
+  }, [displayPreferencesQuery.data, queryClient]);
   const displayPreferencesError =
     displaySaveError ??
     (displayPreferencesQuery.error instanceof Error
@@ -1209,6 +1222,22 @@ export default function ReaderScreen() {
         <View style={styles.navLeftActions}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="دليل أحكام التجويد"
+            onPress={() => {
+              setTajweedExampleSeed(Math.random());
+              setTajweedGuideOpen(true);
+            }}
+            style={({ pressed }) => [
+              styles.navIconBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <Ionicons name="color-palette-outline" size={18} color={colors.text} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="فهرس الصفحات والسور"
             onPress={() => setNavigationOpen(true)}
             style={({ pressed }) => [
@@ -1269,7 +1298,7 @@ export default function ReaderScreen() {
           nextPage={nextPageQuery.data ?? null}
           fontSize={fontSize}
           showTajweed={showTajweed}
-          isDark={colors.background === Colors.dark.background}
+          isDark={false}
           highlights={highlights}
           selectedElementIds={selectedElementIds}
           activeAyahId={activeAyahId}
@@ -1381,6 +1410,18 @@ export default function ReaderScreen() {
         onSubmit={() => void navigateTo(navigationMode, navigationValue)}
         onChoose={(mode, value) => void navigateTo(mode, String(value))}
         onDirectoryRetry={() => void directoryQuery.refetch()}
+      />
+
+      <TajweedGuideDialog
+        visible={tajweedGuideOpen}
+        page={page}
+        colors={colors}
+        showTajweed={showTajweed}
+        canToggleTajweed={Boolean(displayPreferencesQuery.data)}
+        exampleSeed={tajweedExampleSeed}
+        onToggleTajweed={toggleTajweed}
+        onRandomize={() => setTajweedExampleSeed(Math.random())}
+        onClose={() => setTajweedGuideOpen(false)}
       />
 
       {scopeDialogOpen && (
