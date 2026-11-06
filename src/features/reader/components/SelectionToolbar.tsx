@@ -13,9 +13,7 @@ import {
 import { Directory, File, Paths } from 'expo-file-system';
 import {
   ActivityIndicator,
-  Animated,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -156,17 +154,6 @@ function Toolbar({
   const recorderState = useAudioRecorderState(recorder, 200);
   const voicePlayer = useAudioPlayer();
   const voiceStatus = useAudioPlayerStatus(voicePlayer);
-
-  const [animation] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    Animated.spring(animation, {
-      toValue: 1,
-      useNativeDriver: Platform.OS !== 'web',
-      damping: 18,
-      stiffness: 220,
-      mass: 0.7,
-    }).start();
-  }, [animation]);
 
   const isWord = selection.type === 'word';
   const isRange = selection.type === 'range';
@@ -764,8 +751,8 @@ function Toolbar({
   return (
     <>
       <View style={styles.overlay} pointerEvents="box-none">
-        <Animated.View
-          style={[styles.ring, { opacity: animation }]}
+        <View
+          style={styles.ring}
           pointerEvents="box-none">
           <Pressable
             accessibilityRole="button"
@@ -786,21 +773,13 @@ function Toolbar({
           {actions.map((action, index) => {
             const point = layout.points[index];
             return (
-              <Animated.View
+              <View
                 key={action.key}
                 style={[
                   styles.iconWrap,
                   {
                     left: point.left,
                     top: point.top,
-                    transform: [
-                      {
-                        scale: animation.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.6, 1],
-                        }),
-                      },
-                    ],
                   },
                 ]}>
                 <Pressable
@@ -826,10 +805,10 @@ function Toolbar({
                     color={action.active ? palette.background : palette.text}
                   />
                 </Pressable>
-              </Animated.View>
+              </View>
             );
           })}
-        </Animated.View>
+        </View>
 
         {(message || error) && (
           <View
