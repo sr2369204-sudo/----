@@ -2,7 +2,7 @@ import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -34,6 +34,11 @@ import {
   OfflineLibrary,
   type OfflineStatus,
 } from '@/features/reader/services/offline-library';
+import { downloadRecitationSurahs } from '@/features/reader/services/recitation-offline';
+import {
+  getRecitationSurahStatuses,
+  type RecitationDownloadProgress,
+} from '@/features/reader/services/recitation-offline';
 import { useOfflineDownloadStore } from '@/features/reader/state/offline-download-store';
 import {
   useReaderPreferencesStore,
@@ -74,8 +79,12 @@ export default function SettingsScreen() {
   const setPreferenceError = useReaderPreferencesStore((state) => state.setError);
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [recitationPickerOpen, setRecitationPickerOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [statusRevision, setStatusRevision] = useState(0);
+  const [recitationDownloading, setRecitationDownloading] = useState(false);
+  const [recitationProgress, setRecitationProgress] = useState<RecitationDownloadProgress | null>(null);
+  const [recitationStatuses, setRecitationStatuses] = useState<Record<number, boolean>>({});
 
   const offlineRevision = useOfflineDownloadStore((state) => state.revision);
   const offlineRunning = useOfflineDownloadStore((state) => state.running);
@@ -138,7 +147,37 @@ export default function SettingsScreen() {
         error instanceof Error ? `تعذر حذف الصفحات المحفوظة: ${error.message}` : 'تعذر حذف الصفحات المحفوظة.',
       );
     }
+
   }
+
+  async function downloadRecitations(surahNumbers: number[]): Promise<void> {
+    setRecitationDownloading(true);
+    setPreferenceError(null);
+    try {
+      await downloadRecitationSurahs(reciterId, surahNumbers, setRecitationProgress);
+      if (directoryQuery.data?.surahs) {
+        setRecitationStatuses(
+          await getRecitationSurahStatuses(reciterId, directoryQuery.data.surahs),
+        );
+      }
+    } catch (error) {
+      setPreferenceError(
+        error instanceof Error ? `تعذر تحميل التلاوة: ${error.message}` : 'تعذر تحميل التلاوة.',
+      );
+    } finally {
+      setRecitationDownloading(false);
+      setRecitationProgress(null);
+    }
+  }
+
+  const refreshRecitationStatuses = useCallback(async (): Promise<void> => {
+    if (!directoryQuery.data?.surahs) {
+      return;
+    }
+    setRecitationStatuses(
+      await getRecitationSurahStatuses(reciterId, directoryQuery.data.surahs),
+    );
+  }, [directoryQuery.data, reciterId]);
 
   const status = offlineStatusQuery.data;
   const progress = offlineTotal > 0 ? offlineDone / offlineTotal : 0;
@@ -188,6 +227,27 @@ export default function SettingsScreen() {
               );
             })}
           </View>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIcon, { backgroundColor: colors.backgroundSelected }]}>
+              <Ionicons name="musical-notes-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.sectionHeading}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>تلاوات بلا إنترنت</Text>
+              <Text style={[styles.body, { color: colors.textSecondary }]}>
+                حمّل تلاوات السور للقارئ الحالي واستمع إليها دون اتصال.
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setRecitationPickerOpen(true)}
+            style={[styles.wideButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+            <Ionicons name="download-outline" size={18} color={colors.background} />
+            <Text style={[styles.primaryButtonText, { color: colors.background }]}>اختيار السور للتلاوة</Text>
+          </Pressable>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -272,13 +332,15 @@ export default function SettingsScreen() {
             </Pressable>
           ) : (
             <View style={styles.offlineActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void startDownload(database, 'all')}
-                style={[styles.primaryButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-                <Ionicons name="cloud-download" size={18} color={colors.background} />
-                <Text style={[styles.primaryButtonText, { color: colors.background }]}>تحميل الكل</Text>
-              </Pressable>
+              {status?.cachedPages !== status?.totalPages && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void startDownload(database, 'all')}
+                  style={[styles.primaryButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                  <Ionicons name="cloud-download" size={18} color={colors.background} />
+                  <Text style={[styles.primaryButtonText, { color: colors.background }]}>تحميل الكل</Text>
+                </Pressable>
+              )}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setPickerOpen(true)}
@@ -407,7 +469,31 @@ export default function SettingsScreen() {
         onRetry={() => void directoryQuery.refetch()}
         onDownload={(surahNumbers) => void startDownload(database, surahNumbers)}
         onDownloadAll={() => void startDownload(database, 'all')}
+        onDownloadRecitation={(surahNumbers) => downloadRecitations(surahNumbers)}
+        recitationDownloading={recitationDownloading}
+        recitationStatuses={recitationStatuses}
+        recitationProgress={recitationProgress}
+        mode="pages"
         onClose={() => setPickerOpen(false)}
+      />
+      <SurahDownloadPicker
+        visible={recitationPickerOpen}
+        colors={colors}
+        surahs={directoryQuery.data?.surahs}
+        loading={directoryQuery.isPending}
+        failed={Boolean(directoryQuery.error)}
+        statuses={undefined}
+        running={false}
+        onRetry={() => void directoryQuery.refetch()}
+        onDownload={() => undefined}
+        onDownloadAll={() => undefined}
+        onDownloadRecitation={(surahNumbers) => downloadRecitations(surahNumbers)}
+        recitationDownloading={recitationDownloading}
+        recitationStatuses={recitationStatuses}
+        recitationProgress={recitationProgress}
+        mode="recitation"
+        onOpen={refreshRecitationStatuses}
+        onClose={() => setRecitationPickerOpen(false)}
       />
     </SafeAreaView>
   );
@@ -432,6 +518,12 @@ function SurahDownloadPicker({
   onRetry,
   onDownload,
   onDownloadAll,
+  onDownloadRecitation,
+  recitationDownloading,
+  recitationStatuses,
+  recitationProgress,
+  mode,
+  onOpen,
   onClose,
 }: {
   visible: boolean;
@@ -444,11 +536,26 @@ function SurahDownloadPicker({
   onRetry: () => void;
   onDownload: (surahNumbers: number[]) => void;
   onDownloadAll: () => void;
+  onDownloadRecitation: (surahNumbers: number[]) => Promise<void>;
+  recitationDownloading: boolean;
+  recitationStatuses: Record<number, boolean>;
+  recitationProgress: RecitationDownloadProgress | null;
+  mode: 'pages' | 'recitation';
+  onOpen?: () => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<SurahFilter>('all');
   const [selected, setSelected] = useState<number[]>([]);
+  useEffect(() => {
+    if (visible && mode === 'recitation') {
+      onOpen?.();
+    }
+  }, [mode, onOpen, visible]);
+  const allComplete =
+    surahs !== undefined &&
+    surahs.length > 0 &&
+    surahs.every((surah) => statuses?.[surah.surahNumber] === 'complete');
 
   /** Clears the selection so the sheet always opens fresh. */
   function closePicker(): void {
@@ -545,6 +652,30 @@ function SurahDownloadPicker({
             </Pressable>
           ) : (
             <>
+              {mode === 'recitation' && recitationProgress && (
+                <View style={styles.pickerProgress}>
+                  <View style={styles.progressHeader}>
+                    <Text style={[styles.progressTitle, { color: colors.text }]}>
+                      {`تحميل التلاوة: ${toArabicNumbers(recitationProgress.done)} من ${toArabicNumbers(recitationProgress.total)}`}
+                    </Text>
+                    <Text style={[styles.progressPercent, { color: colors.primary }]}>
+                      {`${toArabicNumbers(
+                        recitationProgress.total > 0
+                          ? Math.round((recitationProgress.done / recitationProgress.total) * 100)
+                          : 0,
+                      )}٪`}
+                    </Text>
+                  </View>
+                  <DownloadProgressBar
+                    progress={
+                      recitationProgress.total > 0
+                        ? recitationProgress.done / recitationProgress.total
+                        : 0
+                    }
+                    colors={colors}
+                  />
+                </View>
+              )}
               <View style={[styles.searchField, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <Ionicons name="search" size={16} color={colors.textSecondary} />
                 <TextInput
@@ -617,6 +748,7 @@ function SurahDownloadPicker({
                 }
                 renderItem={({ item }) => {
                   const surahStatus = statuses?.[item.surahNumber] ?? 'none';
+                  const recitationDownloaded = recitationStatuses[item.surahNumber] === true;
                   const checked = selected.includes(item.surahNumber);
                   return (
                     <Pressable
@@ -658,10 +790,21 @@ function SurahDownloadPicker({
                           {item.nameArabic}
                         </Text>
                         <Text style={[styles.pickerMeta, { color: colors.textSecondary }]}>
-                          {`${toArabicNumbers(item.ayahCount)} آية`}
+                          {mode === 'recitation'
+                            ? recitationDownloaded
+                              ? 'التلاوة محمّلة'
+                              : 'التلاوة غير محمّلة'
+                            : `${toArabicNumbers(item.ayahCount)} آية`}
                         </Text>
                       </View>
-                      {surahStatus === 'complete' && (
+                      {mode === 'recitation' && (
+                        <Ionicons
+                          name={recitationDownloaded ? 'checkmark-circle' : 'cloud-download-outline'}
+                          size={20}
+                          color={recitationDownloaded ? colors.primary : colors.textSecondary}
+                        />
+                      )}
+                      {mode === 'pages' && surahStatus === 'complete' && (
                         <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
                       )}
                       {surahStatus === 'partial' && (
@@ -673,7 +816,8 @@ function SurahDownloadPicker({
               />
 
               <View style={styles.pickerFooter}>
-                <Pressable
+                {mode === 'pages' && (
+                  <Pressable
                   accessibilityRole="button"
                   disabled={running || selected.length === 0}
                   onPress={() => {
@@ -701,17 +845,34 @@ function SurahDownloadPicker({
                       ? 'اختر سورًا'
                       : `تحميل المحدد (${toArabicNumbers(selected.length)})`}
                   </Text>
-                </Pressable>
-                <Pressable
+                  </Pressable>
+                )}
+                {mode === 'recitation' && (
+                  <Pressable
                   accessibilityRole="button"
-                  disabled={running}
+                  disabled={recitationDownloading || selected.length === 0}
                   onPress={() => {
-                    onDownloadAll();
-                    closePicker();
+                    void onDownloadRecitation(selected).then(closePicker);
                   }}
-                  style={[styles.outlineButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                  <Text style={[styles.primaryButtonText, { color: colors.text }]}>تحميل الكل</Text>
-                </Pressable>
+                  style={[styles.primaryButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                  <Ionicons name="musical-notes-outline" size={18} color={colors.background} />
+                  <Text style={[styles.primaryButtonText, { color: colors.background }]}>
+                    {recitationDownloading ? 'جارٍ تحميل التلاوة…' : 'تحميل التلاوة'}
+                  </Text>
+                  </Pressable>
+                )}
+                {mode === 'pages' && !allComplete && (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={running || recitationDownloading}
+                    onPress={() => {
+                      onDownloadAll();
+                      closePicker();
+                    }}
+                    style={[styles.outlineButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <Text style={[styles.primaryButtonText, { color: colors.text }]}>تحميل الكل</Text>
+                  </Pressable>
+                )}
               </View>
             </>
           )}
@@ -1106,6 +1267,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     paddingVertical: Spacing.three,
+  },
+  pickerProgress: {
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
   },
   pickerListViewport: {
     flexGrow: 1,

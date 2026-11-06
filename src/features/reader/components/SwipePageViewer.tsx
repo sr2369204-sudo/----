@@ -41,8 +41,14 @@ export type SwipePageViewerProps = {
     ayahNumber: number,
     wordId: string,
     rect: ElementRect,
+    gesture: 'tap' | 'longPress',
   ) => void;
-  onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
+  onAyahPress: (
+    surahNumber: number,
+    ayahNumber: number,
+    rect: ElementRect,
+    gesture: 'tap' | 'longPress',
+  ) => void;
   /** Fired when a tap on the page misses every word and ayah. */
   onBackgroundPress: () => void;
   /**
@@ -386,8 +392,14 @@ type PageSlotProps = {
     ayahNumber: number,
     wordId: string,
     rect: ElementRect,
+    gesture: 'tap' | 'longPress',
   ) => void;
-  onAyahPress: (surahNumber: number, ayahNumber: number, rect: ElementRect) => void;
+  onAyahPress: (
+    surahNumber: number,
+    ayahNumber: number,
+    rect: ElementRect,
+    gesture: 'tap' | 'longPress',
+  ) => void;
   onBackgroundPress?: () => void;
   onInteractionError: (message: string) => void;
   onReady: (pageNumber: number) => void;

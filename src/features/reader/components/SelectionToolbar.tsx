@@ -769,7 +769,7 @@ function Toolbar({
           pointerEvents="box-none">
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="إغلاق"
+            accessibilityLabel="إغلاق التحديد"
             onPress={clearSelection}
             style={[
               styles.closeButton,
@@ -1276,17 +1276,16 @@ function computeRingLayout({
     });
   }
 
-  const closeBelow = cy + radiusY + half + LABEL_GAP;
   const closeTop = clampWithin(
-    closeBelow,
+    cy - CLOSE_SIZE / 2,
     topLimit,
-    bottomLimit - CLOSE_SIZE - LABEL_GAP - 44,
-    bottomLimit - CLOSE_SIZE - LABEL_GAP - 44,
+    bottomLimit - CLOSE_SIZE,
+    cy - CLOSE_SIZE / 2,
   );
   const closeLeft = clampWithin(cx - CLOSE_SIZE / 2, RING_MARGIN, windowWidth - CLOSE_SIZE - RING_MARGIN, RING_MARGIN);
 
   const toastTop = clampWithin(
-    closeTop + CLOSE_SIZE + LABEL_GAP,
+    cy + radiusY + half + LABEL_GAP,
     topLimit,
     bottomLimit - 44,
     bottomLimit - 44,

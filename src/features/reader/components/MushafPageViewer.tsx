@@ -51,11 +51,13 @@ type Props = {
     ayahNumber: number,
     wordId: string,
     rect: ElementRect,
+    gesture: 'tap' | 'longPress',
   ) => void;
   onAyahPress: (
     surahNumber: number,
     ayahNumber: number,
     rect: ElementRect,
+    gesture: 'tap' | 'longPress',
   ) => void;
   onInteractionError: (message: string) => void;
   /**
@@ -82,12 +84,14 @@ type PageMessage =
       ayahNumber: number;
       wordId: string;
       rect: ElementRect;
+      gesture: 'tap' | 'longPress';
     }
   | {
       type: 'ayah';
       surahNumber: number;
       ayahNumber: number;
       rect: ElementRect;
+      gesture: 'tap' | 'longPress';
     }
   | { type: 'background' }
   | { type: 'ready' }
@@ -191,11 +195,17 @@ export const MushafPageViewer = memo(function MushafPageViewer({
           onInteractionError('تعذر مطابقة الكلمة مع بيانات صفحة المصحف.');
           return;
         }
-        onWordPress(message.surahNumber, message.ayahNumber, message.wordId, message.rect);
+        onWordPress(
+          message.surahNumber,
+          message.ayahNumber,
+          message.wordId,
+          message.rect,
+          message.gesture,
+        );
         return;
       }
 
-      onAyahPress(message.surahNumber, message.ayahNumber, message.rect);
+      onAyahPress(message.surahNumber, message.ayahNumber, message.rect, message.gesture);
     },
     [
       handleReady,
@@ -412,7 +422,12 @@ ${basmalaFontBase64 ? `@font-face {
   font-family: "QcfBasmala";
   base-palette: 1;
 }
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body {
   display: flex;
@@ -443,6 +458,7 @@ body {
     : '0 10px 30px rgba(45, 35, 18, 0.14), 0 1px 4px rgba(45, 35, 18, 0.06)'};
   isolation: isolate;
   opacity: 0;
+  touch-action: manipulation;
 }
 .page.is-ready {
   opacity: 1;
@@ -767,6 +783,9 @@ body {
 <script>
 const linesElement = document.getElementById("mushaf-lines");
 const pageElement = document.querySelector(".page");
+
+document.addEventListener("contextmenu", (event) => event.preventDefault());
+document.addEventListener("selectstart", (event) => event.preventDefault());
 
 const SELECTION_BOX_PADDING = 2;
 
@@ -1103,6 +1122,8 @@ window.addEventListener("resize", () => {
 let pointerStart = null;
 let isPanning = false;
 let lastPostedDx = 0;
+let longPressTimer = null;
+let longPressTriggered = false;
 // A pointer that travelled across the page must not be reported as a tap: a
 // swipe that ends on a word would otherwise open the word toolbar a moment
 // after the page had already been turned, which the reader never asked for.
@@ -1117,10 +1138,18 @@ const PAN_UPDATE_THRESHOLD_PX = 2;
 pageElement.addEventListener("pointerdown", (event) => {
   swallowClick = false;
   gestureTravel = 0;
-  if (event.button !== 0 || event.target.closest("button[data-kind]")) {
+  const button = event.target.closest("button[data-kind]");
+  if (event.button !== 0) {
     pointerStart = null;
     isPanning = false;
     return;
+  }
+  if (button && !recitationFocus) {
+    longPressTriggered = false;
+    longPressTimer = window.setTimeout(() => {
+      longPressTriggered = true;
+      emitSelection(button, "longPress");
+    }, 500);
   }
   pageElement.setPointerCapture(event.pointerId);
   pointerStart = { x: event.clientX, y: event.clientY, time: Date.now() };
@@ -1133,6 +1162,10 @@ pageElement.addEventListener("pointermove", (event) => {
   const dx = event.clientX - pointerStart.x;
   const dy = event.clientY - pointerStart.y;
   gestureTravel = Math.max(gestureTravel, Math.abs(dx), Math.abs(dy));
+  if (gestureTravel > TAP_SLOP_PX && longPressTimer !== null) {
+    window.clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
   if (!isPanning && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) {
     isPanning = true;
     lastPostedDx = dx;
@@ -1153,15 +1186,23 @@ pageElement.addEventListener("pointerup", (event) => {
   const dt = Math.max(1, Date.now() - pointerStart.time);
   const vx = (dx / dt) * 1000;
   const wasPanning = isPanning;
+  if (longPressTimer !== null) {
+    window.clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
   pointerStart = null;
   isPanning = false;
-  swallowClick = gestureTravel > TAP_SLOP_PX;
+  swallowClick = gestureTravel > TAP_SLOP_PX || longPressTriggered;
   if (wasPanning) {
     postPageMessage({ type: "pan-end", dx: dx, vx: vx });
   }
 });
 
 pageElement.addEventListener("pointercancel", () => {
+  if (longPressTimer !== null) {
+    window.clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
   if (isPanning) {
     postPageMessage({ type: "pan-cancel" });
   }
@@ -1191,22 +1232,25 @@ document.addEventListener("click", (event) => {
     postPageMessage({ type: "background" });
     return;
   }
+  emitSelection(button, "tap");
+});
+
+function emitSelection(button, gesture) {
   const rect = button.getBoundingClientRect();
-  const message = {
+  postPageMessage({
     type: button.dataset.kind,
     surahNumber: Number(button.dataset.surah),
     ayahNumber: Number(button.dataset.ayah),
     wordId: button.dataset.wordId,
+    gesture: gesture,
     rect: {
       x: rect.left,
       y: rect.top,
       width: rect.width,
       height: rect.height
     }
-  };
-  selectMushafElements([button.id]);
-  postPageMessage(message);
-});
+  });
+}
 
 window.addEventListener("message", (event) => {
   if (event.data && event.data.source === "mushaf-page-parent") {
@@ -1246,6 +1290,9 @@ function isPageMessage(value: unknown): value is PageMessage {
     return true;
   }
   if (value.type === 'ready') {
+    return true;
+  }
+  if (value.type === 'background') {
     return true;
   }
   if (

@@ -34,6 +34,7 @@ import {
   quranContentProvider,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
+import { resolveOfflineTracks } from '@/features/reader/services/recitation-offline';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
@@ -629,7 +630,15 @@ export default function ReaderScreen() {
     ayahNumber: number,
     wordId: string,
     rect: ElementRect,
+    gesture: 'tap' | 'longPress',
   ) => {
+    if (recitationQueue) {
+      setPlayerHidden((hidden) => !hidden);
+      return;
+    }
+    if (gesture !== 'longPress') {
+      return;
+    }
     const ayah = page?.ayahs.find(
       (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
     );
@@ -647,18 +656,36 @@ export default function ReaderScreen() {
     setSelectionAnchor(rect);
     selectWord(surahNumber, ayah, word, 'compact');
     showNavbar();
-  }, [page, player, rememberReadingPosition, selectWord, showNavbar]);
+  }, [page, player, recitationQueue, rememberReadingPosition, selectWord, showNavbar]);
 
   const onAyahPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
     rect: ElementRect,
+    gesture: 'tap' | 'longPress',
   ) => {
+    if (recitationQueue) {
+      setPlayerHidden((hidden) => !hidden);
+      return;
+    }
     const ayah = page?.ayahs.find(
       (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
     );
     if (!ayah) {
       setInteractionError('تعذر مطابقة الآية مع بيانات صفحة المصحف.');
+      return;
+    }
+    const current = useReaderSelectionStore.getState().selection;
+    if (gesture === 'tap') {
+      if (
+        !current ||
+        current.surahNumber !== surahNumber ||
+        (current.type !== 'ayah' && current.type !== 'range')
+      ) {
+        return;
+      }
+    }
+    if (gesture === 'longPress' && current?.type === 'range') {
       return;
     }
     if (page) {
@@ -671,7 +698,6 @@ export default function ReaderScreen() {
 
     // A second tap on another ayah of the same surah stretches the selection
     // into a range, so ayah 3 followed by ayah 5 selects 3–5 as one frame.
-    const current = useReaderSelectionStore.getState().selection;
     const anchorAyah =
       current && current.surahNumber === surahNumber && current.type !== 'word'
         ? current.type === 'ayah'
@@ -698,7 +724,7 @@ export default function ReaderScreen() {
 
     selectAyah(surahNumber, ayah, 'compact');
     showNavbar();
-  }, [page, player, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar]);
+  }, [page, player, recitationQueue, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar]);
 
   /**
    * Swaps the playlist contents for a freshly built queue and starts it. When
@@ -744,6 +770,7 @@ export default function ReaderScreen() {
     audioRequest.current += 1;
     player.pause();
     const queue = await buildRecitationQueue(reciterId, scope);
+    queue.tracks = resolveOfflineTracks(reciterId, queue.tracks);
     loadRecitationQueue(queue, null);
   }, [loadRecitationQueue, player, reciterId]);
 
@@ -899,6 +926,7 @@ export default function ReaderScreen() {
     setRecitationBusy(true);
     buildRecitationQueue(nextReciterId, recitationQueue.scope)
       .then((queue) => {
+        queue.tracks = resolveOfflineTracks(nextReciterId, queue.tracks);
         loadRecitationQueue(queue, resumeTrack);
         setRecitationError(null);
       })
@@ -1134,24 +1162,6 @@ export default function ReaderScreen() {
     }
   }, [selection, isPlayingAudio, navVisible, hideNavbar]);
 
-  useEffect(() => {
-    // Automatically close the recitation player when the playlist finishes
-    // and is no longer playing. This keeps the screen clear once the
-    // requested passage has been heard.
-    if (
-      recitationQueue &&
-      !recitationStatus.playing &&
-      recitationStatus.currentIndex === recitationStatus.trackCount - 1 &&
-      recitationStatus.currentTime >= (recitationStatus.duration - 100) && // near the end
-      recitationStatus.duration > 0
-    ) {
-      const task = setTimeout(() => {
-        closeRecitation();
-      }, 1500);
-      return () => clearTimeout(task);
-    }
-  }, [closeRecitation, recitationQueue, recitationStatus.currentIndex, recitationStatus.currentTime, recitationStatus.duration, recitationStatus.playing, recitationStatus.trackCount]);
-
   const initialError = startLocationQuery.error;
   const pageError = pageQuery.error;
   const pageLoading = startLocationQuery.isPending || activePageNumber === null || pageQuery.isPending;
@@ -1349,7 +1359,6 @@ export default function ReaderScreen() {
           reciterId={reciterId}
           onSelectReciter={selectReciter}
           hidden={playerHidden}
-          onToggleVisibility={() => setPlayerHidden((h) => !h)}
         />
       )}
 

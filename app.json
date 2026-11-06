@@ -3,11 +3,11 @@
   "expo": {
     "name": "المصحف الشريف",
     "slug": "mushaf",
-    "version": "1.0.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mushaf",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -58,7 +58,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "يحتاج التطبيق إلى الميكروفون لتسجيل ملاحظاتك الصوتية على كلمات المصحف.",
+          "microphonePermission": "يحتاج التطبيق إلى الميكروفون لت      سجيل ملاحظاتك الصوتية على كلمات المصحف.",
           "recordAudioAndroid": true,
           "enableBackgroundPlayback": false
         }
@@ -70,8 +70,9 @@
     },
     "extra": {
       "updateNotes": [
-        "موسوعة التجويد الآن معرض صور للأحكام مرتب في عمودين.",
-        "افتح أي صورة لعرضها بالحجم الكامل مع إمكانية التكبير والتصغير."
+        "حدد الكلمات والآيات بالضغط المطول، وحدد نطاقًا من الآيات بضغطة على الآية التالية.",
+        "حمّل تلاوات السور واقرأ واستمع إليها دون اتصال بالإنترنت.",
+        "تحسينات على التحديد، وإغلاقه من زر X، مع اعتماد المظهر الفاتح افتراضيًا."
       ],
       "eas": {
         "projectId": "a06ed7ab-9c05-41a7-9833-492a0821f2dd"

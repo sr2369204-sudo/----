@@ -112,7 +112,7 @@ function AppLayout() {
           return;
         }
         const settings = new Map(rows.map((row) => [row.key, row.value]));
-        const savedTheme = settings.get('theme') ?? 'system';
+        const savedTheme = settings.get('theme') ?? 'light';
         const savedReciter = Number(settings.get('reciterId') ?? DEFAULT_RECITER_ID);
         if (!isThemePreference(savedTheme)) {
           throw new Error('إعداد المظهر المحفوظ غير صالح.');

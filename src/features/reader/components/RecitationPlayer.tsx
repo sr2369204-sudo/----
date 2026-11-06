@@ -54,7 +54,6 @@ type PlayerProps = {
   reciterId: number;
   onSelectReciter: (reciterId: number) => void;
   hidden?: boolean;
-  onToggleVisibility?: () => void;
 };
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
@@ -79,7 +78,6 @@ export function RecitationPlayer({
   reciterId,
   onSelectReciter,
   hidden,
-  onToggleVisibility,
 }: PlayerProps) {
   const progress =
     status.duration > 0 ? Math.min(1, Math.max(0, status.currentTime / status.duration)) : 0;
@@ -294,23 +292,6 @@ export function RecitationPlayer({
         </>
       )}
 
-      {onToggleVisibility && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={hidden ? 'إظهار المشغل' : 'إخفاء المشغل'}
-          onPress={onToggleVisibility}
-          style={({ pressed }) => [
-            styles.visibilityToggle,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-            pressed && styles.pressed,
-          ]}>
-          <Ionicons
-            name={hidden ? 'musical-notes' : 'eye-off-outline'}
-            size={18}
-            color={colors.primary}
-          />
-        </Pressable>
-      )}
     </View>
   );
 }
