@@ -1,5 +1,6 @@
 import {
   ContentUnavailableError,
+  isFullSurahReciter,
   quranContentProvider,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
@@ -61,6 +62,12 @@ export async function resolveVerseKeyTracks(
   }
 
   const chapters = [...new Set(wanted.map((item) => item.surahNumber))];
+  if (isFullSurahReciter(reciterId)) {
+    const chapterTracks = await Promise.all(
+      chapters.map((chapter) => quranContentProvider.getChapterRecitation(reciterId, chapter)),
+    );
+    return chapterTracks.flat();
+  }
   const chapterTracks = await Promise.all(
     chapters.map((chapter) => quranContentProvider.getChapterRecitation(reciterId, chapter)),
   );

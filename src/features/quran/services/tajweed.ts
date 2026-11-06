@@ -5,6 +5,25 @@ export type TajweedSegment = {
   rule: string | null;
 };
 
+function mergeLeadingMarks(segments: TajweedSegment[]): TajweedSegment[] {
+  const merged: TajweedSegment[] = [];
+  for (const segment of segments) {
+    if (
+      merged.length > 0 &&
+      /^\p{M}/u.test(segment.text) &&
+      segment.text.length > 0
+    ) {
+      merged[merged.length - 1] = {
+        text: merged[merged.length - 1].text + segment.text,
+        rule: merged[merged.length - 1].rule,
+      };
+    } else {
+      merged.push(segment);
+    }
+  }
+  return merged;
+}
+
 const tajweedTag = /<tajweed class=([a-z_]+)>|<\/tajweed>|<span class=end>|<\/span>/g;
 
 export const tajweedRuleColors: Record<string, string> = {
@@ -148,7 +167,7 @@ export function parseTajweedMarkup(value: string): TajweedSegment[] {
     });
   }
 
-  return segments;
+  return mergeLeadingMarks(segments);
 }
 
 export function getWordTajweedSegments(ayah: QuranAyah): Map<string, TajweedSegment[]> {

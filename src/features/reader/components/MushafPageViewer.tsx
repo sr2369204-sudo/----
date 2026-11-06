@@ -673,6 +673,12 @@ body {
   font-size: var(--quran-rendered-font-size, var(--quran-font-size));
   line-height: 1.15;
   direction: rtl;
+  white-space: nowrap;
+  letter-spacing: 0;
+  font-kerning: normal;
+  font-variant-ligatures: contextual;
+  text-rendering: geometricPrecision;
+  unicode-bidi: isolate;
   ${showTajweed ? '' : 'filter: grayscale(1);'}
 }
 .ayah-marker {

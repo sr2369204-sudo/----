@@ -8,7 +8,6 @@ import { quranContentProvider } from '@/features/quran/services/content-provider
 import {
   getTafkhimExampleSegments,
   getWordTajweedSegments,
-  tajweedRuleColors,
   tajweedRuleGuide,
   type TajweedSegment,
 } from '@/features/quran/services/tajweed';
@@ -140,6 +139,10 @@ export function TajweedGuideDialog({
             showsVerticalScrollIndicator={false}>
             {tajweedRuleGuide.map((rule) => {
               const example = examples.get(rule.id);
+              const coloredText = example?.segments
+                .filter((segment) => segment.rule && rule.classes.includes(segment.rule))
+                .map((segment) => segment.text)
+                .join('');
               return (
                 <View
                   key={rule.id}
@@ -153,19 +156,20 @@ export function TajweedGuideDialog({
                   </View>
                   {example ? (
                     <View style={styles.exampleRow}>
-                      <Text style={[styles.exampleWord, { color: colors.text }]}>
-                        {example.segments.map((segment, index) => (
-                          <Text
-                            key={`${rule.id}:${index}`}
-                            style={{
-                              color: segment.rule && rule.classes.includes(segment.rule)
-                                ? tajweedRuleColors[segment.rule] ?? rule.color
-                                : colors.text,
-                            }}>
-                            {segment.text}
+                      <View style={styles.exampleWordWrap}>
+                        <Text
+                          style={[styles.exampleWord, { color: colors.text }]}
+                          allowFontScaling={false}
+                          textBreakStrategy="simple">
+                          {example.segments.map((segment) => segment.text).join('')}
+                        </Text>
+                        <View style={styles.exampleRuleBadge}>
+                          <View style={[styles.exampleRuleBadgeDot, { backgroundColor: rule.color }]} />
+                          <Text style={[styles.exampleRuleBadgeText, { color: rule.color }]}>
+                            {coloredText || 'الحرف الملوّن'}
                           </Text>
-                        ))}
-                      </Text>
+                        </View>
+                      </View>
                       <Text style={[styles.exampleReference, { color: colors.textSecondary }]}>
                         {`سورة ${example.surahName} · الآية ${toArabicDigits(example.ayahNumber)}`}
                       </Text>
@@ -298,10 +302,10 @@ const styles = StyleSheet.create({
   dialog: {
     width: '100%',
     maxWidth: 480,
-    maxHeight: '88%',
+    maxHeight: '90%',
     borderWidth: 1,
     borderRadius: 22,
-    padding: 16,
+    padding: 14,
     gap: 12,
   },
   header: {
@@ -311,6 +315,7 @@ const styles = StyleSheet.create({
   },
   headerCopy: {
     flex: 1,
+    minWidth: 0,
     gap: 3,
   },
   title: {
@@ -380,20 +385,43 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   exampleRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 5,
+    minWidth: 0,
   },
   exampleWord: {
     fontSize: 19,
     fontWeight: '800',
     textAlign: 'right',
+    writingDirection: 'rtl',
+    flexShrink: 1,
+  },
+  exampleWordWrap: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  exampleRuleBadge: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  exampleRuleBadgeDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  exampleRuleBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
   },
   exampleReference: {
-    flexShrink: 1,
     fontSize: 10,
-    textAlign: 'left',
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   unavailable: {
     fontSize: 11,

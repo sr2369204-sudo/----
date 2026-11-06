@@ -12,10 +12,8 @@ import {
   View,
 } from 'react-native';
 
-import { ExternalLink } from '@/components/external-link';
 import { Spacing } from '@/constants/theme';
 import { ReciterAvatar } from '@/features/quran/components/reciter-avatar';
-import { getReciterPortrait } from '@/features/quran/services/reciter-portraits';
 import type { QuranReciter } from '@/features/quran/services/content-provider';
 import type { QuranSurahSummary } from '@/features/quran/types';
 import type { RecitationScope } from '@/features/reader/services/recitation-queue';
@@ -345,7 +343,6 @@ export function ReciterPickerDialog({
             showsVerticalScrollIndicator={false}>
             {reciters.map((reciter) => {
               const selected = reciter.id === reciterId;
-              const portrait = getReciterPortrait(reciter.id);
               return (
                 <View key={reciter.id} style={styles.reciterItemGroup}>
                   <Pressable
@@ -373,17 +370,10 @@ export function ReciterPickerDialog({
                         { color: selected ? colors.primary : colors.text },
                         selected && { fontWeight: '900' },
                       ]}>
-                      {reciter.name}
+                      {getArabicReciterName(reciter)}
                     </Text>
                     {selected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
                   </Pressable>
-                  {portrait && (
-                    <ExternalLink href={portrait.sourceUrl} style={styles.photoCredit}>
-                      <Text style={styles.photoCreditText}>
-                        {`مصدر الصورة: ${portrait.credit} · ${portrait.license}`}
-                      </Text>
-                    </ExternalLink>
-                  )}
                 </View>
               );
             })}
@@ -424,6 +414,7 @@ type ScopeDialogProps = {
   onSelectReciter: (reciterId: number) => void;
   onConfirm: (scope: RecitationScope) => void;
   onClose: () => void;
+  chapterOnly: boolean;
 };
 
 export function RecitationScopeDialog({
@@ -441,22 +432,23 @@ export function RecitationScopeDialog({
   onSelectReciter,
   onConfirm,
   onClose,
+  chapterOnly,
 }: ScopeDialogProps) {
-  const [mode, setMode] = useState<Mode>('current');
+  const [mode, setMode] = useState<Mode>(() => (chapterOnly ? 'surah' : 'current'));
   const [surahValue, setSurahValue] = useState(String(currentSurahNumber));
   const [juzValue, setJuzValue] = useState(String(currentJuzNumber));
   const [fromPage, setFromPage] = useState(String(currentPageNumber));
   const [toPage, setToPage] = useState(String(Math.min(604, currentPageNumber + 4)));
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const modes: { key: Mode; label: string }[] = [
-    { key: 'current', label: 'من هنا' },
-    { key: 'surah', label: 'سورة' },
-    { key: 'juz', label: 'جزء' },
-    { key: 'pages', label: 'صفحات' },
-  ];
-
-  const surahName = surahs?.find((surah) => surah.surahNumber === parseNumber(surahValue));
+  const modes: { key: Mode; label: string }[] = chapterOnly
+    ? [{ key: 'surah', label: 'سورة' }]
+    : [
+        { key: 'current', label: 'من هنا' },
+        { key: 'surah', label: 'سورة' },
+        { key: 'juz', label: 'جزء' },
+        { key: 'pages', label: 'صفحات' },
+      ];
 
   function submit(): void {
     setLocalError(null);
@@ -531,7 +523,7 @@ export function RecitationScopeDialog({
           </View>
 
           <View style={styles.dialogContent}>
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>القارئ</Text>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>اختر القارئ</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -550,18 +542,24 @@ export function RecitationScopeDialog({
                       accessibilityState={{ selected }}
                       onPress={() => onSelectReciter(reciter.id)}
                       style={[
-                        styles.chip,
+                        styles.reciterChoice,
                         {
                           backgroundColor: selected ? colors.primary : colors.backgroundSelected,
                           borderColor: selected ? colors.primary : colors.border,
                         },
                       ]}>
+                      <ReciterAvatar
+                        reciterId={reciter.id}
+                        size={42}
+                        backgroundColor={selected ? colors.background : colors.surface}
+                        iconColor={selected ? colors.primary : colors.textSecondary}
+                      />
                       <Text
                         style={[
-                          styles.chipLabel,
+                          styles.reciterChoiceLabel,
                           { color: selected ? colors.background : colors.text },
                         ]}>
-                        {reciter.name}
+                        {getArabicReciterName(reciter)}
                       </Text>
                     </Pressable>
                   );
@@ -570,6 +568,14 @@ export function RecitationScopeDialog({
             </ScrollView>
 
             <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>النطاق</Text>
+            {chapterOnly && (
+              <View style={[styles.chapterOnlyNotice, { backgroundColor: colors.backgroundSelected }]}>
+                <Ionicons name="information-circle-outline" size={19} color={colors.primary} />
+                <Text style={[styles.chapterOnlyNoticeText, { color: colors.text }]}>
+                  هذا القارئ متاح بتسجيل السورة كاملة فقط. اختر السورة من بدايتها، ولا يدعم التشغيل آية بآية أو من منتصف الصفحة.
+                </Text>
+              </View>
+            )}
             <View style={styles.modeRow}>
               {modes.map((option) => {
                 const selected = mode === option.key;
@@ -607,42 +613,58 @@ export function RecitationScopeDialog({
           )}
 
           {mode === 'surah' && (
-            <View style={styles.inputGroup}>
-              <TextInput
-                accessibilityLabel="رقم السورة"
-                keyboardType="number-pad"
-                value={surahValue}
-                onChangeText={setSurahValue}
-                placeholder="رقم السورة (١–١١٤)"
-                placeholderTextColor={colors.textSecondary}
-                style={[
-                  styles.input,
-                  { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                ]}
-              />
-              <Text style={[styles.hintText, { color: colors.textSecondary }]}>
-                {surahName ? `سورة ${surahName.nameArabic}` : 'أدخل رقم السورة من ١ إلى ١١٤.'}
-              </Text>
-            </View>
+            <ScrollView style={styles.scopeList} contentContainerStyle={styles.scopeListContent}>
+              {(surahs ?? []).map((surah) => {
+                const selected = surah.surahNumber === parseNumber(surahValue);
+                return (
+                  <Pressable
+                    key={surah.surahNumber}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setSurahValue(String(surah.surahNumber))}
+                    style={[
+                      styles.scopeChoice,
+                      {
+                        backgroundColor: selected ? colors.backgroundSelected : colors.background,
+                        borderColor: selected ? colors.primary : colors.border,
+                      },
+                    ]}>
+                    <Text style={[styles.scopeChoiceNumber, { color: colors.primary }]}>
+                      {toArabicDigits(surah.surahNumber)}
+                    </Text>
+                    <Text style={[styles.scopeChoiceName, { color: colors.text }]}>
+                      {surah.nameArabic}
+                    </Text>
+                    {selected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           )}
 
           {mode === 'juz' && (
-            <View style={styles.inputGroup}>
-              <TextInput
-                accessibilityLabel="رقم الجزء"
-                keyboardType="number-pad"
-                value={juzValue}
-                onChangeText={setJuzValue}
-                placeholder="رقم الجزء (١–٣٠)"
-                placeholderTextColor={colors.textSecondary}
-                style={[
-                  styles.input,
-                  { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                ]}
-              />
-              <Text style={[styles.hintText, { color: colors.textSecondary }]}>
-                سيتم تشغيل كل آيات الجزء بالترتيب.
-              </Text>
+            <View style={styles.juzGrid}>
+              {Array.from({ length: 30 }, (_, index) => index + 1).map((juz) => {
+                const selected = juz === parseNumber(juzValue);
+                return (
+                  <Pressable
+                    key={juz}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setJuzValue(String(juz))}
+                    style={[
+                      styles.juzChoice,
+                      {
+                        backgroundColor: selected ? colors.backgroundSelected : colors.background,
+                        borderColor: selected ? colors.primary : colors.border,
+                      },
+                    ]}>
+                    <Text style={[styles.juzChoiceLabel, { color: selected ? colors.primary : colors.text }]}>
+                      الجزء {toArabicDigits(juz)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           )}
 
@@ -833,6 +855,45 @@ function parseNumber(value: string): number {
     String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)),
   );
   return Number(normalized.trim());
+}
+
+function getArabicReciterName(reciter: QuranReciter): string {
+  const namesById: Record<number, string> = {
+    1: 'عبد الباسط عبد الصمد — مجوّد',
+    2: 'عبد الباسط عبد الصمد',
+    3: 'عبد الرحمن السديس',
+    4: 'أبو بكر الشاطري',
+    5: 'هاني الرفاعي',
+    6: 'محمود خليل الحصري',
+    7: 'مشاري راشد العفاسي',
+    9: 'محمد صديق المنشاوي',
+    10: 'سعود الشريم',
+    12: 'محمود خليل الحصري',
+    97: 'ياسر الدوسري',
+    161: 'خليفة الطنيجي',
+    168: 'محمد صديق المنشاوي — أطفال',
+    173: 'مشاري راشد العفاسي — بث مباشر',
+    92: 'ياسر الدوسري',
+    178: 'إبراهيم الدوسري',
+    217: 'بندر بليلة',
+    253: 'إسلام صبحي',
+    102: 'ماهر المعيقلي',
+  };
+  if (namesById[Math.abs(reciter.id)]) {
+    return namesById[Math.abs(reciter.id)];
+  }
+  const name = reciter.name.toLowerCase();
+  if (name.includes('abdul basit') || name.includes('abdulbasit')) return 'عبد الباسط عبد الصمد';
+  if (name.includes('husary') || name.includes('hussary')) return 'محمود خليل الحصري';
+  if (name.includes('minshawi') || name.includes('minshawy')) return 'محمد صديق المنشاوي';
+  if (name.includes('mishary')) return 'مشاري راشد العفاسي';
+  if (name.includes('sudais')) return 'عبد الرحمن السديس';
+  if (name.includes('shuraim')) return 'سعود الشريم';
+  if (name.includes('dosari')) return 'ياسر الدوسري';
+  if (name.includes('swayed') || name.includes('suwayed')) return 'أيمن سويد';
+  if (name.includes('sobhi')) return 'إسلام صبحي';
+  if (name.includes('massad') || name.includes('masad')) return 'عبد الرحمن مسعد';
+  return reciter.name;
 }
 
 function toArabicDigits(value: number): string {
@@ -1083,17 +1144,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'right',
   },
-  photoCredit: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  photoCreditText: {
-    color: '#777',
-    fontSize: 10,
-    textAlign: 'right',
-    textDecorationLine: 'underline',
-  },
   optionsList: {
     gap: 10,
     marginTop: Spacing.one,
@@ -1147,9 +1197,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  reciterChoice: {
+    width: 112,
+    minHeight: 104,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1.5,
+  },
+  reciterChoiceLabel: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
   modeRow: {
     flexDirection: 'row-reverse',
     gap: Spacing.two,
+  },
+  chapterOnlyNotice: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+  },
+  chapterOnlyNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'right',
   },
   modeChip: {
     flex: 1,
@@ -1164,6 +1243,51 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     gap: Spacing.one,
+  },
+  scopeList: {
+    maxHeight: 220,
+  },
+  scopeListContent: {
+    gap: 7,
+    paddingVertical: 2,
+  },
+  scopeChoice: {
+    minHeight: 46,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  scopeChoiceNumber: {
+    width: 28,
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  scopeChoiceName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  juzGrid: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  juzChoice: {
+    width: '31%',
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    borderWidth: 1,
+  },
+  juzChoiceLabel: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   input: {
     minHeight: 46,

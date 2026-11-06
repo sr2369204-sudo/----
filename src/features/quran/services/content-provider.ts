@@ -16,6 +16,10 @@ export type AyahWordMeaning = {
   meaning: string;
 };
 
+export function isFullSurahReciter(reciterId: number): boolean {
+  return reciterId < 0 && Math.abs(reciterId) !== MAHER_MP3QURAN_RECITER_ID;
+}
+
 export class ContentUnavailableError extends Error {
   readonly reason: ContentUnavailableReason;
 
@@ -55,6 +59,7 @@ const API_BASE_URL = 'https://api.quran.com/api/v4';
  */
 const QDC_API_BASE_URL = 'https://api.qurancdn.com/api/qdc';
 const AYAH_AUDIO_BASE_URL = 'https://verses.quran.com/';
+const MAHER_AYAH_AUDIO_BASE_URL = 'https://everyayah.com/data/Maher_AlMuaiqly_64kbps/';
 const WORD_AUDIO_BASE_URL = 'https://audio.qurancdn.com/';
 /**
  * QuranEnc publishes «السراج في بيان غريب القرآن»: an Arabic explanation of the
@@ -63,6 +68,7 @@ const WORD_AUDIO_BASE_URL = 'https://audio.qurancdn.com/';
  * translation in another language.
  */
 const WORD_MEANING_BASE_URL = 'https://quranenc.com/api/v1/translation/aya/arabic_seraj';
+const MP3QURAN_API_BASE_URL = 'https://api.mp3quran.net/api_2';
 const SOURCE_ID = 'quran-com-api';
 const CONTENT_VERSION = 'api-v4';
 const API_REQUEST_TIMEOUT_MS = 15_000;
@@ -85,11 +91,22 @@ export type RecitationTrack = {
   url: string;
 };
 
+type Mp3QuranRecitation = {
+  id: number;
+  name: string;
+  server: string;
+  surahs: Set<number>;
+};
+
+const FEATURED_MP3QURAN_RECITER_IDS = new Set([92, 102, 178, 217, 253]);
+const MAHER_MP3QURAN_RECITER_ID = 102;
+
 const VERSE_KEY_PAGE_SIZE = 300;
 
 export class QuranComContentProvider implements QuranContentProvider {
   private surahDirectoryPromise: Promise<QuranSurahDirectory> | null = null;
   private basmalaWordsPromise: Promise<{ codeV2: string; textUthmani: string }[]> | null = null;
+  private mp3QuranRecitersPromise: Promise<Mp3QuranRecitation[]> | null = null;
 
   async getSurahDirectory(): Promise<QuranSurahDirectory> {
     if (!this.surahDirectoryPromise) {
@@ -378,7 +395,6 @@ export class QuranComContentProvider implements QuranContentProvider {
   ): Promise<string> {
     if (
       !Number.isInteger(reciterId) ||
-      reciterId < 1 ||
       !Number.isInteger(surahNumber) ||
       surahNumber < 1 ||
       surahNumber > 114 ||
@@ -386,6 +402,17 @@ export class QuranComContentProvider implements QuranContentProvider {
       ayahNumber < 1
     ) {
       throw new RangeError('Reciter, surah, and ayah must be valid positive integers.');
+    }
+    if (reciterId < 0 && Math.abs(reciterId) === MAHER_MP3QURAN_RECITER_ID) {
+      return this.getMaherAyahAudioUrl(surahNumber, ayahNumber);
+    }
+    if (isFullSurahReciter(reciterId)) {
+      const tracks = await this.getChapterRecitation(reciterId, surahNumber);
+      const track = tracks.find((candidate) => candidate.ayahNumber === 0);
+      if (!track) {
+        throw new ContentUnavailableError('invalid-data', 'لا يتوفر تسجيل للسورة المطلوبة.');
+      }
+      return track.url;
     }
 
     const payload = await this.requestJson(
@@ -460,10 +487,54 @@ export class QuranComContentProvider implements QuranContentProvider {
         'Quran.com did not provide a playable reciter.',
       );
     }
-    return playableReciters;
+    let mp3QuranReciters: Mp3QuranRecitation[] = [];
+    try {
+      mp3QuranReciters = await this.getMp3QuranReciters();
+    } catch (error) {
+      if (!(error instanceof ContentUnavailableError)) {
+        throw error;
+      }
+    }
+    return [
+      ...playableReciters,
+      ...mp3QuranReciters.map((reciter) => ({
+        id: -reciter.id,
+        name: reciter.name,
+        style: 'تلاوة السورة كاملة',
+      })),
+    ];
   }
 
   async getChapterRecitation(reciterId: number, surahNumber: number): Promise<RecitationTrack[]> {
+    if (reciterId < 0 && Math.abs(reciterId) === MAHER_MP3QURAN_RECITER_ID) {
+      const surah = await this.getSurahDirectory().then((directory) =>
+        directory.surahs.find((candidate) => candidate.surahNumber === surahNumber),
+      );
+      if (!surah) {
+        throw new ContentUnavailableError('invalid-data', 'لا تتوفر السورة المطلوبة.');
+      }
+      return Array.from({ length: surah.ayahCount }, (_, index) => {
+        const ayahNumber = index + 1;
+        return {
+          surahNumber,
+          ayahNumber,
+          url: this.getMaherAyahAudioUrl(surahNumber, ayahNumber),
+        };
+      });
+    }
+    if (isFullSurahReciter(reciterId)) {
+      const reciter = (await this.getMp3QuranReciters()).find(
+        (candidate) => candidate.id === Math.abs(reciterId),
+      );
+      if (!reciter || !reciter.surahs.has(surahNumber)) {
+        throw new ContentUnavailableError('invalid-data', 'لا تتوفر هذه السورة للقارئ المختار.');
+      }
+      return [{
+        surahNumber,
+        ayahNumber: 0,
+        url: `${reciter.server}/${String(surahNumber).padStart(3, '0')}.mp3`,
+      }];
+    }
     if (!Number.isInteger(reciterId) || reciterId < 1) {
       throw new RangeError('Reciter id must be a positive integer.');
     }
@@ -511,6 +582,54 @@ export class QuranComContentProvider implements QuranContentProvider {
       throw new ContentUnavailableError('invalid-data', 'Chapter recitation is empty.');
     }
     return tracks.sort((left, right) => left.ayahNumber - right.ayahNumber);
+  }
+
+  private getMaherAyahAudioUrl(surahNumber: number, ayahNumber: number): string {
+    return `${MAHER_AYAH_AUDIO_BASE_URL}${String(surahNumber).padStart(3, '0')}${String(ayahNumber).padStart(3, '0')}.mp3`;
+  }
+
+  private async getMp3QuranReciters(): Promise<Mp3QuranRecitation[]> {
+    if (!this.mp3QuranRecitersPromise) {
+      this.mp3QuranRecitersPromise = this.loadMp3QuranReciters();
+    }
+    return this.mp3QuranRecitersPromise;
+  }
+
+  private async loadMp3QuranReciters(): Promise<Mp3QuranRecitation[]> {
+    const payload = await this.requestJson('/reads?language=ar', MP3QURAN_API_BASE_URL);
+    if (!isRecord(payload) || !Array.isArray(payload.reads)) {
+      throw new ContentUnavailableError('invalid-data', 'قائمة القراء الإضافية غير صالحة.');
+    }
+    const result: Mp3QuranRecitation[] = [];
+    for (const item of payload.reads) {
+      if (!isRecord(item) || typeof item.id !== 'number' || typeof item.name !== 'string') {
+        continue;
+      }
+      const moshaf = Array.isArray(item.moshaf)
+        ? item.moshaf.find(
+            (entry) =>
+              isRecord(entry) &&
+              typeof entry.Server === 'string' &&
+              typeof entry.suras === 'string',
+          )
+        : null;
+      if (!isRecord(moshaf)) continue;
+      const serverValue = moshaf.Server;
+      const surahsValue = moshaf.suras;
+      if (typeof serverValue !== 'string' || typeof surahsValue !== 'string') continue;
+      const server = serverValue.replace(/\/+$/, '');
+      const surahs = new Set(
+        surahsValue.split(',').map((value: string) => Number(value)).filter(
+          (value) => Number.isInteger(value) && value >= 1 && value <= 114,
+        ),
+      );
+      if (server && surahs.size > 0) {
+        if (FEATURED_MP3QURAN_RECITER_IDS.has(item.id)) {
+          result.push({ id: item.id, name: item.name, server, surahs });
+        }
+      }
+    }
+    return result;
   }
 
   async getVerseKeysForPage(pageNumber: number): Promise<string[]> {

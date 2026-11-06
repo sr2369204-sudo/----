@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Animated,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -31,6 +32,7 @@ import { SqliteAnnotationRepository } from '@/features/annotations/repositories/
 import type { Highlight, SavedWord } from '@/features/annotations/types';
 import {
   ContentUnavailableError,
+  isFullSurahReciter,
   quranContentProvider,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
@@ -137,6 +139,34 @@ export default function ReaderScreen() {
   const [playerHidden, setPlayerHidden] = useState(false);
   // True while the long-press play menu is open.
   const [playMenuOpen, setPlayMenuOpen] = useState(false);
+  const [recitationFabPan] = useState(() => new Animated.ValueXY());
+  const recitationFabOffset = useRef({ x: 0, y: 0 });
+  const recitationFabResponder = useMemo(
+    () =>
+      // PanResponder reads these values only from gesture callbacks.
+      // eslint-disable-next-line react-hooks/refs
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
+        onPanResponderGrant: () => {
+          recitationFabPan.setOffset(recitationFabOffset.current);
+          recitationFabPan.setValue({ x: 0, y: 0 });
+        },
+        onPanResponderMove: Animated.event(
+          [null, { dx: recitationFabPan.x, dy: recitationFabPan.y }],
+          { useNativeDriver: false },
+        ),
+        onPanResponderRelease: (_, gesture) => {
+          recitationFabOffset.current = {
+            x: recitationFabOffset.current.x + gesture.dx,
+            y: recitationFabOffset.current.y + gesture.dy,
+          };
+          recitationFabPan.flattenOffset();
+        },
+      }),
+    [recitationFabPan],
+  );
   // Snapshot of the playback state read from inside the page's background-tap
   // callback, which must keep a stable identity while the status ticks.
   const playbackRef = useRef<{ hasPlaylist: boolean }>({ hasPlaylist: false });
@@ -949,6 +979,12 @@ export default function ReaderScreen() {
     setRecitationBusy(true);
     setRecitationError(null);
     try {
+      if (isFullSurahReciter(reciterId) && scope.type !== 'surah') {
+        setRecitationError(
+          'هذا القارئ يدعم تشغيل السورة كاملة من بدايتها فقط، ولا يدعم التشغيل آية بآية.',
+        );
+        return;
+      }
       // Focus mode: the word tools and the navbar go away as soon as a
       // recitation starts, leaving the page and the floating player alone.
       useReaderSelectionStore.getState().clearSelection();
@@ -961,7 +997,7 @@ export default function ReaderScreen() {
     } finally {
       setRecitationBusy(false);
     }
-  }, [runRecitation]);
+  }, [reciterId, runRecitation]);
 
   const closeRecitation = useCallback(() => {
     recitationPlaylist.pause();
@@ -1223,9 +1259,12 @@ export default function ReaderScreen() {
           onPress={() => setNavigationOpen(true)}
           style={({ pressed }) => [styles.navCenterInfo, pressed && { opacity: 0.75 }]}
         >
-          <Text style={[styles.navSurahTitle, { color: colors.text }]}>
-            سورة {currentSurahName}
-          </Text>
+          <View style={styles.navTitleRow}>
+            <Ionicons name="navigate-outline" size={16} color={colors.primary} />
+            <Text style={[styles.navSurahTitle, { color: colors.text }]}>
+              سورة {currentSurahName}
+            </Text>
+          </View>
           <Text style={[styles.navPageSubtitle, { color: colors.textSecondary }]}>
             صفحة {toArabicDigits(activePageNumber ?? 1)} · الجزء {toArabicDigits(page?.juzNumber ?? 1)}
           </Text>
@@ -1246,19 +1285,6 @@ export default function ReaderScreen() {
             ]}
           >
             <Ionicons name="color-palette-outline" size={18} color={colors.text} />
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="فهرس الصفحات والسور"
-            onPress={() => setNavigationOpen(true)}
-            style={({ pressed }) => [
-              styles.navIconBtn,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-              pressed && { opacity: 0.75 },
-            ]}
-          >
-            <Ionicons name="list-outline" size={18} color={colors.text} />
           </Pressable>
 
           <Link href="/settings" asChild>
@@ -1325,6 +1351,28 @@ export default function ReaderScreen() {
           loadingColor={colors.primary}
         />
       ) : null}
+
+      {!recitationQueue && (
+        <Animated.View
+          {...recitationFabResponder.panHandlers}
+          style={[
+            styles.recitationFab,
+            {
+              backgroundColor: colors.primary,
+              borderColor: colors.surface,
+              bottom: insets.bottom + 24,
+              transform: recitationFabPan.getTranslateTransform(),
+            },
+          ]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="فتح مشغل التلاوة"
+            onPress={() => setScopeDialogOpen(true)}
+            style={({ pressed }) => [styles.recitationFabButton, pressed && styles.recitationFabPressed]}>
+            <Ionicons name="musical-notes" size={22} color={colors.background} />
+          </Pressable>
+        </Animated.View>
+      )}
 
       {recitationQueue && (
         <RecitationPlayer
@@ -1439,6 +1487,7 @@ export default function ReaderScreen() {
 
       {scopeDialogOpen && (
         <RecitationScopeDialog
+           key={reciterId}
           visible
           colors={colors}
           reciters={recitersQuery.data ?? []}
@@ -1452,6 +1501,7 @@ export default function ReaderScreen() {
           error={recitationError}
           onSelectReciter={selectReciter}
           onConfirm={(scope) => void startRecitation(scope)}
+          chapterOnly={isFullSurahReciter(reciterId)}
           onClose={() => {
             setScopeDialogOpen(false);
             setRecitationError(null);
@@ -1732,6 +1782,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
+  navTitleRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+  },
   navSurahTitle: {
     fontSize: 15,
     fontWeight: 'bold',
@@ -1754,6 +1809,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  recitationFab: {
+    position: 'absolute',
+    left: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    zIndex: 30,
+  },
+  recitationFabButton: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recitationFabPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.95 }],
   },
   navIconGlyph: {
     fontSize: 16,

@@ -1,7 +1,10 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 import type { RecitationTrack } from '@/features/quran/services/content-provider';
-import { quranContentProvider } from '@/features/quran/services/content-provider';
+import {
+  isFullSurahReciter,
+  quranContentProvider,
+} from '@/features/quran/services/content-provider';
 import type { QuranSurahSummary } from '@/features/quran/types';
 
 const RECITATION_DIRECTORY = 'recitations';
@@ -62,6 +65,14 @@ export async function getRecitationSurahStatuses(
 ): Promise<Record<number, boolean>> {
   const statuses: Record<number, boolean> = {};
   for (const surah of surahs) {
+    if (isFullSurahReciter(reciterId)) {
+      statuses[surah.surahNumber] = getOfflineTrackFile(reciterId, {
+        surahNumber: surah.surahNumber,
+        ayahNumber: 0,
+        url: '',
+      }).exists;
+      continue;
+    }
     let complete = true;
     for (let ayahNumber = 1; ayahNumber <= surah.ayahCount; ayahNumber += 1) {
       if (!getOfflineTrackFile(reciterId, { surahNumber: surah.surahNumber, ayahNumber, url: '' }).exists) {

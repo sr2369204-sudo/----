@@ -23,10 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { Spacing } from '@/constants/theme';
-import { ExternalLink } from '@/components/external-link';
 import { ReciterAvatar } from '@/features/quran/components/reciter-avatar';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
-import { getReciterPortrait } from '@/features/quran/services/reciter-portraits';
 import type { QuranSurahSummary } from '@/features/quran/types';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
@@ -53,7 +51,7 @@ const themeOptions: { value: ThemePreference; label: string }[] = [
 ];
 
 const ArabicReciterNames: Record<number, string> = {
-  1: 'عبد الباسط عبد الصمد · مجوّد',
+  1: 'عبد الباسط عبد الصمد — مجوّد',
   2: 'عبد الباسط عبد الصمد',
   3: 'عبد الرحمن السديس',
   4: 'أبو بكر الشاطري',
@@ -62,10 +60,16 @@ const ArabicReciterNames: Record<number, string> = {
   7: 'مشاري راشد العفاسي',
   9: 'محمد صديق المنشاوي',
   10: 'سعود الشريم',
+  12: 'محمود خليل الحصري',
   97: 'ياسر الدوسري',
   161: 'خليفة الطنيجي',
-  168: 'محمد صديق المنشاوي · ترديد',
-  173: 'مشاري العفاسي · بث',
+  168: 'محمد صديق المنشاوي — أطفال',
+  173: 'مشاري راشد العفاسي — بث مباشر',
+  92: 'ياسر الدوسري',
+  178: 'إبراهيم الدوسري',
+  217: 'بندر بليلة',
+  253: 'إسلام صبحي',
+  102: 'ماهر المعيقلي',
 };
 
 export default function SettingsScreen() {
@@ -397,7 +401,6 @@ export default function SettingsScreen() {
             <View style={styles.reciterList}>
               {recitersQuery.data?.map((reciter) => {
                 const selected = reciterId === reciter.id;
-                const portrait = getReciterPortrait(reciter.id);
                 return (
                   <View key={reciter.id} style={styles.reciterOptionGroup}>
                     <Pressable
@@ -420,7 +423,7 @@ export default function SettingsScreen() {
                       />
                       <View style={styles.reciterInfo}>
                         <Text style={[styles.reciterName, { color: colors.text }]}>
-                          {ArabicReciterNames[reciter.id] ?? reciter.name}
+                          {ArabicReciterNames[Math.abs(reciter.id)] ?? reciter.name}
                         </Text>
                         <Text style={[styles.reciterStyle, { color: colors.textSecondary }]}>
                           {reciter.style}
@@ -430,15 +433,6 @@ export default function SettingsScreen() {
                         {selected ? '●' : '○'}
                       </Text>
                     </Pressable>
-                    {portrait && (
-                      <ExternalLink
-                        href={portrait.sourceUrl}
-                        style={styles.photoCredit}>
-                        <Text style={[styles.photoCreditText, { color: colors.textSecondary }]}>
-                          {`مصدر الصورة: ${portrait.credit} · ${portrait.license}`}
-                        </Text>
-                      </ExternalLink>
-                    )}
                   </View>
                 );
               })}
