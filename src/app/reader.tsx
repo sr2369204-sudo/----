@@ -51,6 +51,7 @@ import {
 } from '@/features/reader/components/RecitationPlayer';
 import { SwipePageViewer } from '@/features/reader/components/SwipePageViewer';
 import { SelectionToolbar } from '@/features/reader/components/SelectionToolbar';
+import { Tasmi3Panel } from '@/features/reader/components/Tasmi3Panel';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
 import {
   buildRecitationQueue,
@@ -114,6 +115,11 @@ export default function ReaderScreen() {
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [recitationBusy, setRecitationBusy] = useState(false);
   const [recitationError, setRecitationError] = useState<string | null>(null);
+  const [tasmi3Session, setTasmi3Session] = useState<{
+    scope: RecitationScope;
+    tracks: RecitationTrack[];
+  } | null>(null);
+  const [tasmi3Revealed, setTasmi3Revealed] = useState(false);
   const [selectionAnchor, setSelectionAnchor] = useState<ElementRect | null>(null);
   const [highlightRevision, setHighlightRevision] = useState(0);
   const [displaySaveError, setDisplaySaveError] = useState<string | null>(null);
@@ -407,6 +413,14 @@ export default function ReaderScreen() {
   const activeAyahId = activeTrack
     ? `ayah-${activeTrack.surahNumber}-${activeTrack.ayahNumber}`
     : null;
+  const tasmi3HiddenAyahIds = useMemo(() => {
+    if (!tasmi3Session || tasmi3Revealed) {
+      return [];
+    }
+    // The learner should not see any ayah while memorisation mode is active,
+    // including pages reached by swiping beyond the selected range.
+    return ['*'];
+  }, [tasmi3Revealed, tasmi3Session]);
 
   // Focus mode: while the recitation is actually playing, the reader keeps the
   // chrome out of the way and follows the reciting ayah alone.
@@ -803,6 +817,44 @@ export default function ReaderScreen() {
     queue.tracks = resolveOfflineTracks(reciterId, queue.tracks);
     loadRecitationQueue(queue, null);
   }, [loadRecitationQueue, player, reciterId]);
+
+  const startTasmi3 = useCallback(async (requestedScope: RecitationScope) => {
+    setRecitationBusy(true);
+    setRecitationError(null);
+    try {
+      const selectedScope =
+        requestedScope.type === 'pageRange' &&
+        requestedScope.fromPage === requestedScope.toPage &&
+        selection?.type === 'ayah'
+          ? {
+              type: 'ayah',
+              surahNumber: selection.surahNumber,
+              ayahNumber: selection.ayah.ayahNumber,
+            } as RecitationScope
+          : requestedScope.type === 'pageRange' &&
+              requestedScope.fromPage === requestedScope.toPage &&
+              selection?.type === 'range'
+            ? {
+                type: 'ayahRange',
+                surahNumber: selection.surahNumber,
+                fromAyah: selection.startAyah,
+                toAyah: selection.endAyah,
+              } as RecitationScope
+            : requestedScope;
+      audioRequest.current += 1;
+      player.pause();
+      recitationPlaylist.pause();
+      const queue = await buildRecitationQueue(reciterId, selectedScope);
+      setTasmi3Session({ scope: selectedScope, tracks: queue.tracks });
+      setTasmi3Revealed(false);
+      setScopeDialogOpen(false);
+      useReaderSelectionStore.getState().clearSelection();
+    } catch (error) {
+      setRecitationError(error instanceof Error ? error.message : 'تعذر تجهيز التسميع.');
+    } finally {
+      setRecitationBusy(false);
+    }
+  }, [player, recitationPlaylist, reciterId, selection]);
 
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
     if (currentSelection.type === 'range') {
@@ -1340,6 +1392,7 @@ export default function ReaderScreen() {
           showTajweed={showTajweed}
           isDark={false}
           highlights={highlights}
+          hiddenAyahIds={tasmi3HiddenAyahIds}
           selectedElementIds={selectedElementIds}
           activeAyahId={activeAyahId}
           recitationFocus={isReciting}
@@ -1352,7 +1405,7 @@ export default function ReaderScreen() {
         />
       ) : null}
 
-      {!recitationQueue && (
+      {!recitationQueue && !tasmi3Session && (
         <Animated.View
           {...recitationFabResponder.panHandlers}
           style={[
@@ -1501,6 +1554,7 @@ export default function ReaderScreen() {
           error={recitationError}
           onSelectReciter={selectReciter}
           onConfirm={(scope) => void startRecitation(scope)}
+          onTasmi3={(scope) => void startTasmi3(scope)}
           chapterOnly={isFullSurahReciter(reciterId)}
           onClose={() => {
             setScopeDialogOpen(false);
@@ -1533,6 +1587,18 @@ export default function ReaderScreen() {
           reciterId={reciterId}
           onSelect={selectReciter}
           onClose={() => setReciterPickerOpen(false)}
+        />
+      )}
+      {tasmi3Session && (
+        <Tasmi3Panel
+          visible
+          scope={tasmi3Session.scope}
+          onHide={() => setTasmi3Revealed(false)}
+          onReveal={() => setTasmi3Revealed(true)}
+          onExit={() => {
+            setTasmi3Session(null);
+            setTasmi3Revealed(false);
+          }}
         />
       )}
     </View>

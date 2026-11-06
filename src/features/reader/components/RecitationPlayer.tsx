@@ -265,7 +265,7 @@ export function RecitationPlayer({
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="إغلاق المشغل"
+                  accessibilityLabel="إيقاف التلاوة"
                   hitSlop={6}
                   onPress={onClose}
                   style={({ pressed }) => [
@@ -273,7 +273,7 @@ export function RecitationPlayer({
                     { backgroundColor: colors.backgroundSelected },
                     pressed && styles.pressed,
                   ]}>
-                  <Ionicons name="close" size={17} color={colors.text} />
+                  <Ionicons name="stop-circle-outline" size={18} color={colors.text} />
                 </Pressable>
               </View>
             </View>
@@ -329,11 +329,6 @@ export function ReciterPickerDialog({
             <View style={styles.sheetHandle} />
             <View style={styles.headerRow}>
               <Text style={[styles.dialogTitle, { color: colors.text }]}>اختر القارئ</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={onClose} hitSlop={12}>
-                <View style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
-                  <Ionicons name="close" size={18} color={colors.textSecondary} />
-                </View>
-              </Pressable>
             </View>
           </View>
 
@@ -413,6 +408,7 @@ type ScopeDialogProps = {
   error: string | null;
   onSelectReciter: (reciterId: number) => void;
   onConfirm: (scope: RecitationScope) => void;
+  onTasmi3: (scope: RecitationScope) => void;
   onClose: () => void;
   chapterOnly: boolean;
 };
@@ -431,6 +427,7 @@ export function RecitationScopeDialog({
   error,
   onSelectReciter,
   onConfirm,
+  onTasmi3,
   onClose,
   chapterOnly,
 }: ScopeDialogProps) {
@@ -450,45 +447,42 @@ export function RecitationScopeDialog({
         { key: 'pages', label: 'صفحات' },
       ];
 
+  function getSelectedScope(): RecitationScope {
+    if (mode === 'current') {
+      return { type: 'pageRange', fromPage: currentPageNumber, toPage: currentPageNumber };
+    }
+    if (mode === 'surah') {
+      const surahNumber = parseNumber(surahValue);
+      if (!Number.isInteger(surahNumber) || surahNumber < 1 || surahNumber > 114) {
+        throw new RangeError('رقم السورة يجب أن يكون بين ١ و١١٤.');
+      }
+      return { type: 'surah', surahNumber };
+    }
+    if (mode === 'juz') {
+      const juzNumber = parseNumber(juzValue);
+      if (!Number.isInteger(juzNumber) || juzNumber < 1 || juzNumber > 30) {
+        throw new RangeError('رقم الجزء يجب أن يكون بين ١ و٣٠.');
+      }
+      return { type: 'juz', juzNumber };
+    }
+    const start = parseNumber(fromPage);
+    const end = parseNumber(toPage);
+    if (
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < 1 ||
+      end > 604 ||
+      start > end
+    ) {
+      throw new RangeError('نطاق الصفحات يجب أن يكون بين ١ و٦٠٤.');
+    }
+    return { type: 'pageRange', fromPage: start, toPage: end };
+  }
+
   function submit(): void {
     setLocalError(null);
     try {
-      if (mode === 'current') {
-        onConfirm({
-          type: 'pageRange',
-          fromPage: currentPageNumber,
-          toPage: currentPageNumber,
-        });
-        return;
-      }
-      if (mode === 'surah') {
-        const surahNumber = parseNumber(surahValue);
-        if (!Number.isInteger(surahNumber) || surahNumber < 1 || surahNumber > 114) {
-          throw new RangeError('رقم السورة يجب أن يكون بين ١ و١١٤.');
-        }
-        onConfirm({ type: 'surah', surahNumber });
-        return;
-      }
-      if (mode === 'juz') {
-        const juzNumber = parseNumber(juzValue);
-        if (!Number.isInteger(juzNumber) || juzNumber < 1 || juzNumber > 30) {
-          throw new RangeError('رقم الجزء يجب أن يكون بين ١ و٣٠.');
-        }
-        onConfirm({ type: 'juz', juzNumber });
-        return;
-      }
-      const start = parseNumber(fromPage);
-      const end = parseNumber(toPage);
-      if (
-        !Number.isInteger(start) ||
-        !Number.isInteger(end) ||
-        start < 1 ||
-        end > 604 ||
-        start > end
-      ) {
-        throw new RangeError('نطاق الصفحات يجب أن يكون بين ١ و٦٠٤.');
-      }
-      onConfirm({ type: 'pageRange', fromPage: start, toPage: end });
+      onConfirm(getSelectedScope());
     } catch (validationError) {
       setLocalError(
         validationError instanceof Error ? validationError.message : 'تحقق من القيم المدخلة.',
@@ -514,10 +508,29 @@ export function RecitationScopeDialog({
             <View style={styles.sheetHandle} />
             <View style={styles.headerRow}>
               <Text style={[styles.dialogTitle, { color: colors.text }]}>إعدادات التلاوة</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={onClose} hitSlop={12}>
-                <View style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
-                  <Ionicons name="close" size={18} color={colors.textSecondary} />
-                </View>
+              <Pressable
+                accessibilityRole="button"
+                disabled={busy}
+                onPress={() => {
+                  setLocalError(null);
+                  try {
+                    onTasmi3(getSelectedScope());
+                  } catch (validationError) {
+                    setLocalError(
+                      validationError instanceof Error
+                        ? validationError.message
+                        : 'تحقق من القيم المدخلة.',
+                    );
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.secondaryConfirmButton,
+                  { borderColor: colors.primary },
+                  busy && styles.disabled,
+                  pressed && styles.pressed,
+                ]}>
+                <Ionicons name="mic-outline" size={17} color={colors.primary} />
+                <Text style={[styles.secondaryConfirmLabel, { color: colors.primary }]}>تسميع</Text>
               </Pressable>
             </View>
           </View>
@@ -801,11 +814,6 @@ export function RecitationPlayMenu({
             <View style={styles.sheetHandle} />
             <View style={styles.headerRow}>
               <Text style={[styles.dialogTitle, { color: colors.text }]}>تشغيل التلاوة</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={onClose} hitSlop={12}>
-                <View style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
-                  <Ionicons name="close" size={18} color={colors.textSecondary} />
-                </View>
-              </Pressable>
             </View>
           </View>
 
@@ -1328,6 +1336,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   confirmLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  secondaryConfirmButton: {
+    marginTop: Spacing.one,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryConfirmLabel: {
     fontSize: 15,
     fontWeight: '800',
   },

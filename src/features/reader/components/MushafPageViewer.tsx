@@ -35,6 +35,8 @@ type Props = {
    * selection, so a range of ayahs reads as one continuous frame.
    */
   selectedElementIds: string[] | null;
+  /** Ayah ids whose text is hidden during memorisation recording. */
+  hiddenAyahIds?: string[];
   /**
    * Document id of the ayah being recited right now, drawn as its own frame so
    * the reader can follow the reciter without opening the word/ayah tools.
@@ -109,6 +111,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   isDark,
   highlights,
   selectedElementIds,
+  hiddenAyahIds = [],
   activeAyahId,
   recitationFocus = false,
   onWordPress,
@@ -260,6 +263,19 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     }
   }, [recitationFocus]);
 
+  const syncHiddenAyahs = useCallback(() => {
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(
+        { source: 'mushaf-page-parent', hiddenAyahIds },
+        '*',
+      );
+    } else {
+      webViewRef.current?.injectJavaScript(
+        `window.setTasmi3Hidden?.(${JSON.stringify(hiddenAyahIds)}); true;`,
+      );
+    }
+  }, [hiddenAyahIds]);
+
   const syncHighlights = useCallback((entries: HighlightElementMap) => {
     if (Platform.OS === 'web') {
       iframeRef.current?.contentWindow?.postMessage(
@@ -277,18 +293,24 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     syncSelectedElement();
     syncRecitationAyah();
     syncRecitationFocus();
+    syncHiddenAyahs();
     syncHighlights(highlightEntries);
   }, [
     highlightEntries,
     syncHighlights,
     syncRecitationAyah,
     syncRecitationFocus,
+    syncHiddenAyahs,
     syncSelectedElement,
   ]);
 
   useEffect(() => {
     syncHighlights(highlightEntries);
   }, [highlightEntries, syncHighlights]);
+
+  useEffect(() => {
+    syncHiddenAyahs();
+  }, [hiddenAyahIds, syncHiddenAyahs]);
 
   const onNativeMessage = useCallback(
     (event: WebViewMessageEvent): void => {
@@ -703,6 +725,17 @@ body {
   box-shadow: 0 0 0 1.5px ${isDark ? 'rgba(217, 169, 74, 0.9)' : 'rgba(75, 110, 67, 0.7)'};
   outline: none;
 }
+.tasmi3-hidden {
+  filter: blur(9px);
+  user-select: none;
+}
+body.tasmi3-hidden-page .word,
+body.tasmi3-hidden-page .ayah-marker,
+body.tasmi3-hidden-page .basmala-word,
+body.tasmi3-hidden-page .surah-title-text {
+  filter: blur(9px);
+  user-select: none;
+}
 /* The ayah selection is drawn as an overlay box, never as a class on the
    words themselves: the frame then reads as one continuous rectangle around a
    whole ayah (or a run of ayahs) instead of a per-word highlight. */
@@ -930,6 +963,16 @@ function selectRecitationAyah(id) {
   );
 }
 window.selectRecitationAyah = selectRecitationAyah;
+
+function setTasmi3Hidden(ids) {
+  const hidden = new Set(Array.isArray(ids) ? ids : []);
+  document.body.classList.toggle("tasmi3-hidden-page", hidden.has("*"));
+  document.querySelectorAll("[data-surah][data-ayah]").forEach((element) => {
+    const id = "ayah-" + element.dataset.surah + "-" + element.dataset.ayah;
+    element.classList.toggle("tasmi3-hidden", hidden.has(id));
+  });
+}
+window.setTasmi3Hidden = setTasmi3Hidden;
 
 /**
  * Applies saved highlights without touching the document markup.
@@ -1268,6 +1311,9 @@ window.addEventListener("message", (event) => {
     }
     if (event.data.recitationFocus !== undefined) {
       setRecitationFocus(event.data.recitationFocus);
+    }
+    if (event.data.hiddenAyahIds !== undefined) {
+      setTasmi3Hidden(event.data.hiddenAyahIds);
     }
     if (event.data.highlights !== undefined) {
       applyMushafHighlights(event.data.highlights);

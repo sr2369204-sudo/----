@@ -32,6 +32,7 @@ export type SwipePageViewerProps = {
   highlights: Highlight[];
   /** Document ids of the selected elements: one word, or a run of ayahs. */
   selectedElementIds: string[] | null;
+  hiddenAyahIds?: string[];
   /** Document id of the ayah being recited right now, if any. */
   activeAyahId: string | null;
   /** True while a recitation is running: only its frame is drawn. */
@@ -81,6 +82,7 @@ export function SwipePageViewer({
   isDark,
   highlights,
   selectedElementIds,
+  hiddenAyahIds = [],
   activeAyahId,
   recitationFocus,
   onWordPress,
@@ -341,6 +343,9 @@ export function SwipePageViewer({
                     isDark={isDark}
                     highlights={isCurrent ? highlights : NO_HIGHLIGHTS}
                     selectedElementIds={isCurrent ? selectedElementIds : null}
+                    // Keep the memorisation mask on preloaded neighbours too,
+                    // so a page is blurred before it becomes visible after a swipe.
+                    hiddenAyahIds={hiddenAyahIds}
                     activeAyahId={isCurrent ? activeAyahId : null}
                     recitationFocus={isCurrent ? recitationFocus : false}
                     isInteractive={isCurrent}
@@ -382,6 +387,7 @@ type PageSlotProps = {
   highlights: Highlight[];
   /** Document ids of the selected elements: one word, or a run of ayahs. */
   selectedElementIds: string[] | null;
+  hiddenAyahIds: string[];
   /** Document id of the ayah being recited right now, if any. */
   activeAyahId: string | null;
   /** True while a recitation is running: only its frame is drawn. */
@@ -423,6 +429,7 @@ const PageSlot = memo(function PageSlot({
   isDark,
   highlights,
   selectedElementIds,
+  hiddenAyahIds,
   activeAyahId,
   recitationFocus,
   isInteractive,
@@ -457,6 +464,7 @@ const PageSlot = memo(function PageSlot({
         isDark={isDark}
         highlights={highlights}
         selectedElementIds={selectedElementIds}
+        hiddenAyahIds={hiddenAyahIds}
         activeAyahId={activeAyahId}
         recitationFocus={recitationFocus}
         onWordPress={onWordPress}
