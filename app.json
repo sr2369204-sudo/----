@@ -9,7 +9,7 @@
     "scheme": "mushaf",
     "userInterfaceStyle": "light",
     "runtimeVersion": {
-      "policy": "fingerprint"
+      "policy": "appVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/a06ed7ab-9c05-41a7-9833-492a0821f2dd",

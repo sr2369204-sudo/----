@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Link } from 'expo-router';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useCallback, useRef } from 'react';
@@ -15,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LinearGradient } from '@/components/ui/optional-native-views';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import type { SearchAnchor } from '@/features/home/components/home-search-results';
 

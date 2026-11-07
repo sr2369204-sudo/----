@@ -1,8 +1,7 @@
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { Image, Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { BlurView, LinearGradient } from '@/components/ui/optional-native-views';
 import { Radius } from '@/constants/theme';
 import { useIsDarkTheme } from '@/hooks/use-theme';
 
