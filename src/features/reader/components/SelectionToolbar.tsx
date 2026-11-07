@@ -43,6 +43,7 @@ import {
   useReaderSelectionStore,
   type ReaderSelection,
 } from '@/features/reader/state/selection-store';
+import type { ReaderToolbarShape } from '@/features/reader/state/reader-preferences-store';
 import type { AyahReference } from '@/features/reader/services/reading-progress';
 import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
 import { useTheme } from '@/hooks/use-theme';
@@ -75,7 +76,7 @@ type Props = {
   /** Height of the reader navbar, which the ring has to stay clear of. */
   navbarHeight: number;
   buttonSize?: number;
-  buttonShape?: 'round' | 'rounded';
+  buttonShape?: ReaderToolbarShape;
   isBookmarked: boolean;
   isWordSaved: boolean;
   isDailyReadingReady: boolean;
@@ -667,10 +668,12 @@ function Toolbar({
     });
   }
 
+  const buttonMetrics = computeButtonMetrics(buttonShape, buttonSize);
   const layout = computeRingLayout({
     anchorRect,
     count: actions.length,
-    buttonSize,
+    buttonWidth: buttonMetrics.width,
+    buttonHeight: buttonMetrics.height,
     windowWidth,
     windowHeight,
     // The navbar is revealed together with the ring, so the ring has to start
@@ -739,7 +742,7 @@ function Toolbar({
                   onLongPress={action.onLongPress}
                   style={({ pressed }) => [
                     styles.iconButton,
-                    { width: buttonSize, height: buttonSize, borderRadius: buttonShape === 'rounded' ? 12 : buttonSize / 2 },
+                    buttonMetrics,
                     {
                       backgroundColor: action.active ? palette.primary : palette.surface,
                       borderColor: action.active ? palette.primary : palette.border,
@@ -749,7 +752,7 @@ function Toolbar({
                   ]}>
                   <Ionicons
                     name={action.icon}
-                    size={21}
+                    size={Math.round(Math.min(buttonMetrics.width, buttonMetrics.height) * 0.52)}
                     color={action.active ? palette.background : palette.text}
                   />
                 </Pressable>
@@ -1125,7 +1128,8 @@ function Toolbar({
 type RingLayoutInput = {
   anchorRect: ElementRect | null;
   count: number;
-  buttonSize: number;
+  buttonWidth: number;
+  buttonHeight: number;
   windowWidth: number;
   windowHeight: number;
   insetTop: number;
@@ -1135,10 +1139,34 @@ type RingLayoutInput = {
   offsetY: number;
 };
 
+/**
+ * Box of a single tool button for the chosen shape. `slim` stretches the button
+ * lengthwise so the tools read as a vertical pill rather than a circle.
+ */
+function computeButtonMetrics(
+  shape: ReaderToolbarShape,
+  size: number,
+): { width: number; height: number; borderRadius: number } {
+  switch (shape) {
+    case 'rounded':
+      return { width: size, height: size, borderRadius: 12 };
+    case 'slim':
+      return {
+        width: Math.round(size * 0.62),
+        height: Math.round(size * 1.6),
+        borderRadius: Math.round(size * 0.31),
+      };
+    case 'round':
+    default:
+      return { width: size, height: size, borderRadius: size / 2 };
+  }
+}
+
 function computeRingLayout({
   anchorRect,
   count,
-  buttonSize,
+  buttonWidth,
+  buttonHeight,
   windowWidth,
   windowHeight,
   insetTop,
@@ -1150,7 +1178,11 @@ function computeRingLayout({
   close: { left: number; top: number };
   toastTop: number;
 } {
-  const half = buttonSize / 2;
+  const halfW = buttonWidth / 2;
+  const halfH = buttonHeight / 2;
+  // Ring spacing works off the larger side so a tall/slim button still clears
+  // its neighbours along the circle.
+  const footprint = Math.max(buttonWidth, buttonHeight);
   const anchor = anchorRect ?? {
     x: windowWidth / 2 - 30,
     y: windowHeight / 2 - 14,
@@ -1168,40 +1200,40 @@ function computeRingLayout({
   // Radius large enough to clear the word and to keep the buttons from colliding.
   const safeCount = Math.max(count, 1);
   const desiredRadius = Math.max(
-    wordHalf + buttonSize * 0.85,
-    (safeCount * (buttonSize + 8)) / (2 * Math.PI),
-    buttonSize * 1.4,
+    wordHalf + footprint * 0.85,
+    (safeCount * (footprint + 8)) / (2 * Math.PI),
+    footprint * 1.4,
   );
 
   // Shift the ring center so the whole ring fits on screen when possible.
   const cx = clampWithin(
     centerX,
-    RING_MARGIN + half + desiredRadius,
-    windowWidth - RING_MARGIN - half - desiredRadius,
+    RING_MARGIN + halfW + desiredRadius,
+    windowWidth - RING_MARGIN - halfW - desiredRadius,
     windowWidth / 2,
   );
   const cy = clampWithin(
     centerY,
-    topLimit + half + desiredRadius,
-    bottomLimit - half - desiredRadius - footerSpace,
+    topLimit + halfH + desiredRadius,
+    bottomLimit - halfH - desiredRadius - footerSpace,
     (topLimit + bottomLimit) / 2,
   );
 
   const radiusX = Math.max(
-    buttonSize * 0.95,
-    Math.min(desiredRadius, cx - RING_MARGIN - half, windowWidth - cx - RING_MARGIN - half),
+    footprint * 0.95,
+    Math.min(desiredRadius, cx - RING_MARGIN - halfW, windowWidth - cx - RING_MARGIN - halfW),
   );
   const radiusY = Math.max(
-    buttonSize * 0.95,
-    Math.min(desiredRadius, cy - topLimit - half, bottomLimit - cy - half - footerSpace),
+    footprint * 0.95,
+    Math.min(desiredRadius, cy - topLimit - halfH, bottomLimit - cy - halfH - footerSpace),
   );
 
   const points: { left: number; top: number }[] = [];
   for (let index = 0; index < safeCount; index += 1) {
     const angle = -Math.PI / 2 + (index * 2 * Math.PI) / safeCount;
     points.push({
-      left: cx + radiusX * Math.cos(angle) - half,
-      top: cy + radiusY * Math.sin(angle) - half,
+      left: cx + radiusX * Math.cos(angle) - halfW,
+      top: cy + radiusY * Math.sin(angle) - halfH,
     });
   }
 
@@ -1214,7 +1246,7 @@ function computeRingLayout({
   const closeLeft = clampWithin(cx - CLOSE_SIZE / 2, RING_MARGIN, windowWidth - CLOSE_SIZE - RING_MARGIN, RING_MARGIN);
 
   const toastTop = clampWithin(
-    cy + radiusY + half + LABEL_GAP,
+    cy + radiusY + halfH + LABEL_GAP,
     topLimit,
     bottomLimit - 44,
     bottomLimit - 44,
@@ -1469,7 +1501,7 @@ function SearchPanel({
       return;
     }
     let active = true;
-    quranContentProvider
+    quranCache
       .searchAyahs(submitted, 30)
       .then((results) => {
         if (active) {
@@ -1488,7 +1520,7 @@ function SearchPanel({
     return () => {
       active = false;
     };
-  }, [reloadKey, requestKey, submitted]);
+  }, [quranCache, reloadKey, requestKey, submitted]);
 
   const searching = submitted.length > 0 && (!state || state.key !== requestKey);
 
@@ -1626,9 +1658,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   iconButton: {
-    width: BUTTON_SIZE,
-    height: BUTTON_SIZE,
-    borderRadius: BUTTON_SIZE / 2,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',

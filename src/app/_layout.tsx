@@ -21,6 +21,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '@/constants/theme';
 import { BrandIntro, IntroAnimationContext } from '@/components/brand-intro';
 import { initializeDatabase } from '@/core/database/migrations';
+import { OfflineLibrary } from '@/features/reader/services/offline-library';
+import { useOfflineDownloadStore } from '@/features/reader/state/offline-download-store';
 import {
   DEFAULT_RECITER_ID,
   useReaderPreferencesStore,
@@ -133,6 +135,42 @@ function AppLayout() {
       active = false;
     };
   }, [database, setPreferenceError, setPreferences]);
+
+  // Reading should work with no connection from the very first session, so the
+  // whole Mushaf is stored in the background once the app is ready — no screen
+  // ever asks the reader to download a page. Pages already stored are skipped,
+  // which makes this pass cheap on every later launch.
+  useEffect(() => {
+    if (!introFinished) {
+      return;
+    }
+    let active = true;
+    const library = new OfflineLibrary(database);
+    library
+      .isComplete()
+      .then(async (complete) => {
+        if (!active) {
+          return;
+        }
+        const store = useOfflineDownloadStore.getState();
+        if (!complete) {
+          void store.start(database, 'all');
+          return;
+        }
+        // Everything is already on the device, so the banner only has to say so
+        // and report how much room the library takes.
+        const pages = await library.getCachedPageCount();
+        if (active) {
+          store.markReady(pages);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('تعذر التحقق من المحتوى المحلي.', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [database, introFinished]);
 
   const dismissUpdate = useCallback(() => {
     if (!downloadingUpdate) {

@@ -60,6 +60,24 @@ export class OfflineLibrary {
     return row?.count ?? 0;
   }
 
+  /** True once every page is readable with no connection. */
+  async isComplete(): Promise<boolean> {
+    return (await this.getCachedPageCount()) >= LAST_MUSHAF_PAGE;
+  }
+
+  /** Bytes the stored pages occupy on the device, page fonts included. */
+  async getStoredBytes(): Promise<number> {
+    const row = await this.database.getFirstAsync<{ bytes: number | null }>(
+      `SELECT SUM(
+          length(CAST(page_json AS BLOB))
+          + length(font_data)
+          + COALESCE(length(basmala_font_data), 0)
+        ) AS bytes
+       FROM mushaf_page_cache WHERE mushaf_id = 19`,
+    );
+    return row?.bytes ?? 0;
+  }
+
   async getStatus(): Promise<OfflineStatus> {
     const rows = await this.database.getAllAsync<{ page_number: number }>(
       'SELECT page_number FROM mushaf_page_cache WHERE mushaf_id = 19',

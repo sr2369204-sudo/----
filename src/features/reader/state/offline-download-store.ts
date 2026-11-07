@@ -15,12 +15,15 @@ type OfflineDownloadState = {
   /** Bumped whenever the stored pages change, to refresh the status query. */
   revision: number;
   start: (database: SQLiteDatabase, target: OfflineDownloadTarget) => Promise<void>;
+  /** Reports a library that was already stored before this launch. */
+  markReady: (pages: number) => void;
   cancel: () => void;
 };
 
 /**
- * Lives outside the screen so a download keeps running while the reader
- * navigates away from settings, and returns to show its progress.
+ * Lives outside any screen so the whole-Mushaf download that starts as soon as
+ * the app is ready keeps running while the reader navigates around, and its
+ * progress stays available to whatever screen shows it.
  */
 export const useOfflineDownloadStore = create<OfflineDownloadState>((set, get) => ({
   running: false,
@@ -63,5 +66,14 @@ export const useOfflineDownloadStore = create<OfflineDownloadState>((set, get) =
     if (get().running) {
       set({ cancelling: true });
     }
+  },
+
+  markReady: (pages) => {
+    // A running download owns `done`/`total`, so this only fills the state the
+    // first time, when everything was already on the device before launch.
+    if (get().running || get().total > 0) {
+      return;
+    }
+    set({ done: pages, total: pages, error: null });
   },
 }));

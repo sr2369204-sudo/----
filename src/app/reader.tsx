@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/immutability -- expo-audio exposes `loop` and
    `playbackRate` on AudioPlayer/AudioPlaylist only as mutable properties. */
-import { Link, useLocalSearchParams } from 'expo-router';
+import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   useAudioPlayer,
@@ -66,6 +66,8 @@ import {
   type AyahReference,
 } from '@/features/reader/services/reading-progress';
 import {
+  DEFAULT_READER_TOOLBAR_SHAPE,
+  isReaderToolbarShape,
   useReaderPreferencesStore,
 } from '@/features/reader/state/reader-preferences-store';
 import {
@@ -77,6 +79,8 @@ import { useTheme } from '@/hooks/use-theme';
 type NavigationMode = 'page' | 'surah' | 'juz';
 type BookmarkedAyah = { surahNumber: number; ayahNumber: number };
 const PAGE_QUERY_RETRY_COUNT = 2;
+/** The page text is fitted to its column, so the reader always uses one natural size. */
+const MUSHAF_FONT_SIZE = 44;
 /** Gap between the floating recitation player and the bottom safe area. */
 const RECITATION_PLAYER_BOTTOM_GAP = 10;
 
@@ -262,43 +266,47 @@ export default function ReaderScreen() {
     queryFn: async () => {
       const rows = await database.getAllAsync<{ key: string; value: string }>(
         `SELECT key, value FROM app_settings
-         WHERE key IN ('reader.showTajweed', 'reader.fontSize', 'reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale')`,
+         WHERE key IN ('reader.showTajweed', 'reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale')`,
       );
       const preferences = new Map(rows.map((row) => [row.key, row.value]));
       const savedTajweed = preferences.get('reader.showTajweed');
-      const savedFontSize = preferences.get('reader.fontSize');
       const savedToolbarSize = Number(preferences.get('reader.toolbarSize') ?? 40);
-      const savedToolbarShape = preferences.get('reader.toolbarShape') ?? 'round';
+      const savedToolbarShape = preferences.get('reader.toolbarShape') ?? DEFAULT_READER_TOOLBAR_SHAPE;
       const savedMarkerScale = Number(preferences.get('reader.markerScale') ?? 1);
       if (savedTajweed !== undefined && savedTajweed !== 'true' && savedTajweed !== 'false') {
         throw new Error('إعداد ألوان التجويد المحفوظ غير صالح.');
       }
-      const parsedFontSize = savedFontSize === undefined ? 44 : Number(savedFontSize);
-      if (!Number.isInteger(parsedFontSize) || parsedFontSize < 20 || parsedFontSize > 80) {
-        throw new Error('حجم الخط المحفوظ غير صالح.');
-      }
       if (!Number.isInteger(savedToolbarSize) || savedToolbarSize < 32 || savedToolbarSize > 56) {
         throw new Error('حجم أدوات التحديد المحفوظ غير صالح.');
       }
-      if (savedToolbarShape !== 'round' && savedToolbarShape !== 'rounded') {
-        throw new Error('شكل أدوات التحديد المحفوظ غير صالح.');
-      }
+      // A shape stored by an older build may no longer exist, so an unknown
+      // value falls back to the shipped shape instead of breaking the reader.
+      const toolbarShape = isReaderToolbarShape(savedToolbarShape)
+        ? savedToolbarShape
+        : DEFAULT_READER_TOOLBAR_SHAPE;
       if (!Number.isFinite(savedMarkerScale) || savedMarkerScale < 0.8 || savedMarkerScale > 1.8) {
         throw new Error('حجم علامات الآيات والأرباع المحفوظ غير صالح.');
       }
       return {
         showTajweed: savedTajweed === undefined ? true : savedTajweed === 'true',
-        fontSize: parsedFontSize,
         toolbarSize: savedToolbarSize,
-        toolbarShape: savedToolbarShape as 'round' | 'rounded',
+        toolbarShape,
         markerScale: savedMarkerScale,
       };
     },
     staleTime: Infinity,
   });
 
+  // Display settings are edited on the settings screen, which writes straight
+  // to the database. The reader therefore re-reads them every time it comes back
+  // on screen instead of keeping whatever was cached when it first opened.
+  useFocusEffect(
+    useCallback(() => {
+      void queryClient.refetchQueries({ queryKey: ['reader', 'display-preferences'] });
+    }, [queryClient]),
+  );
+
   const showTajweed = displayPreferencesQuery.data?.showTajweed ?? true;
-  const fontSize = displayPreferencesQuery.data?.fontSize ?? 44;
   const toggleTajweed = useCallback(() => {
     const preferences = displayPreferencesQuery.data;
     if (!preferences) {
@@ -322,24 +330,23 @@ export default function ReaderScreen() {
       return;
     }
     let active = true;
-    Promise.all([
-      saveSetting(database, 'reader.showTajweed', String(showTajweed)),
-      saveSetting(database, 'reader.fontSize', String(fontSize)),
-    ]).then(() => {
-      if (active) {
-        setDisplaySaveError(null);
-      }
-    }).catch((error: unknown) => {
-      if (active) {
-        setDisplaySaveError(
-          error instanceof Error ? `تعذر حفظ إعداد القراءة: ${error.message}` : 'تعذر حفظ إعداد القراءة.',
-        );
-      }
-    });
+    saveSetting(database, 'reader.showTajweed', String(showTajweed))
+      .then(() => {
+        if (active) {
+          setDisplaySaveError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setDisplaySaveError(
+            error instanceof Error ? `تعذر حفظ إعداد القراءة: ${error.message}` : 'تعذر حفظ إعداد القراءة.',
+          );
+        }
+      });
     return () => {
       active = false;
     };
-  }, [database, displayPreferencesQuery.data, fontSize, showTajweed]);
+  }, [database, displayPreferencesQuery.data, showTajweed]);
 
   const pageQuery = useQuery({
     queryKey: ['quran', 'mushaf-page', 19, activePageNumber],
@@ -1403,7 +1410,7 @@ export default function ReaderScreen() {
           currentPage={pageQuery.data}
           prevPage={prevPageQuery.data ?? null}
           nextPage={nextPageQuery.data ?? null}
-          fontSize={fontSize}
+          fontSize={MUSHAF_FONT_SIZE}
           markerScale={displayPreferencesQuery.data?.markerScale ?? 1}
           showTajweed={showTajweed}
           isDark={false}
@@ -1504,7 +1511,7 @@ export default function ReaderScreen() {
           anchorRect={selectionAnchor}
           navbarHeight={navbarHeight}
           buttonSize={displayPreferencesQuery.data?.toolbarSize ?? 40}
-          buttonShape={displayPreferencesQuery.data?.toolbarShape ?? 'round'}
+          buttonShape={displayPreferencesQuery.data?.toolbarShape ?? DEFAULT_READER_TOOLBAR_SHAPE}
           isBookmarked={isBookmarked}
           isWordSaved={isWordSaved}
           isDailyReadingReady={dailyPlanQuery.data !== undefined}

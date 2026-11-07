@@ -8,6 +8,7 @@ import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
+import { OfflineDownloadBanner } from '@/features/home/components/offline-download-banner';
 import { DailyReadingPlan } from '@/features/home/components/daily-reading-plan';
 import { HomeHero } from '@/features/home/components/home-hero';
 import {
@@ -65,6 +66,17 @@ export default function HomeScreen() {
         normalizeSurahSearch,
       );
       if (reference) {
+        const storedText = await quranCache.getStoredAyah(
+          reference.surahNumber,
+          reference.ayahNumber,
+        );
+        if (storedText !== null) {
+          return [{
+            surahNumber: reference.surahNumber,
+            ayahNumber: reference.ayahNumber,
+            text: storedText,
+          }];
+        }
         const surah = await quranContentProvider.getSurah(reference.surahNumber);
         const ayah = surah.ayahs.find((item) => item.ayahNumber === reference.ayahNumber);
         return ayah
@@ -82,7 +94,7 @@ export default function HomeScreen() {
       )) {
         return [];
       }
-      return quranContentProvider.searchAyahs(submittedSearch, HOME_SEARCH_RESULTS_LIMIT);
+      return quranCache.searchAyahs(submittedSearch, HOME_SEARCH_RESULTS_LIMIT);
     },
   });
 
@@ -260,6 +272,7 @@ export default function HomeScreen() {
           onRetrySearch={() => void ayahSearch.refetch()}
         />
       )}
+      <OfflineDownloadBanner />
     </View>
   );
 }

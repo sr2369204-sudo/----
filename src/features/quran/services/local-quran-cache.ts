@@ -1,7 +1,8 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { quranContentProvider } from '@/features/quran/services/content-provider';
-import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
+import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
+import type { AyahSearchResult, MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 
 const DIRECTORY_KEY = 'surah-directory';
 const SURAH_FIRST_PAGES_KEY = 'surah-first-pages';
@@ -10,6 +11,9 @@ const LAST_MUSHAF_PAGE = 604;
 
 /** Inclusive page range covered by one surah. */
 export type SurahPageRange = { firstPage: number; lastPage: number };
+
+/** One searchable ayah pulled from the pages stored on the device. */
+type StoredAyahEntry = { surahNumber: number; ayahNumber: number; text: string };
 
 /**
  * Source-backed index kept on the device so the reader can resolve a surah,
@@ -20,6 +24,8 @@ export type SurahPageRange = { firstPage: number; lastPage: number };
 export class LocalQuranCache {
   private firstPages: Record<string, number> | null = null;
   private firstPagesDirty = false;
+  /** Ayah index built from the stored pages, rebuilt when their count changes. */
+  private storedAyahIndex: { pageCount: number; entries: StoredAyahEntry[] } | null = null;
 
   constructor(private readonly database: SQLiteDatabase) {}
 
@@ -93,9 +99,57 @@ export class LocalQuranCache {
     return quranContentProvider.getPageNumberForAyah(surahNumber, ayahNumber);
   }
 
+  /**
+   * Ayah search that keeps working with no connection. The pages saved on the
+   * device are searched first; the source is only asked while the device still
+   * holds no page, so a fresh install behaves exactly as before.
+   */
+  async searchAyahs(query: string, limit: number): Promise<AyahSearchResult[]> {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      throw new RangeError('بحث فارغ.');
+    }
+    const index = await this.loadStoredAyahIndex();
+    if (index.pageCount === 0) {
+      return quranContentProvider.searchAyahs(trimmed, limit);
+    }
+
+    const normalizedQuery = normalizeSurahSearch(trimmed);
+    if (normalizedQuery.length === 0) {
+      return [];
+    }
+
+    // The index is in Mushaf order, so the matches come out by surah then ayah
+    // exactly like the source search does.
+    const results: AyahSearchResult[] = [];
+    for (const entry of index.entries) {
+      if (!normalizeSurahSearch(entry.text).includes(normalizedQuery)) {
+        continue;
+      }
+      results.push({
+        surahNumber: entry.surahNumber,
+        ayahNumber: entry.ayahNumber,
+        text: entry.text,
+      });
+      if (results.length >= limit) {
+        break;
+      }
+    }
+    return results;
+  }
+
   /** Snapshot of the known first pages, used to measure download state. */
   async getKnownSurahFirstPages(): Promise<Record<string, number>> {
     return { ...(await this.loadFirstPages()) };
+  }
+
+  /** Text of one ayah taken from the stored pages, or null while unsaved. */
+  async getStoredAyah(surahNumber: number, ayahNumber: number): Promise<string | null> {
+    const index = await this.loadStoredAyahIndex();
+    const entry = index.entries.find(
+      (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
+    );
+    return entry ? entry.text : null;
   }
 
   /**
@@ -126,6 +180,53 @@ export class LocalQuranCache {
     const stored = await this.readJson<Record<string, number>>(SURAH_FIRST_PAGES_KEY);
     this.firstPages = stored && typeof stored === 'object' ? stored : {};
     return this.firstPages;
+  }
+
+  /**
+   * Reads every stored page once and keeps the ayahs in memory, so repeated
+   * searches do not re-parse the whole cache. The count is the cache key: the
+   * index is rebuilt only after more pages have been stored.
+   */
+  private async loadStoredAyahIndex(): Promise<{
+    pageCount: number;
+    entries: StoredAyahEntry[];
+  }> {
+    const countRow = await this.database.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM mushaf_page_cache WHERE mushaf_id = 19',
+    );
+    const pageCount = countRow?.count ?? 0;
+    if (this.storedAyahIndex && this.storedAyahIndex.pageCount === pageCount) {
+      return this.storedAyahIndex;
+    }
+
+    const rows = await this.database.getAllAsync<{ page_json: string }>(
+      'SELECT page_json FROM mushaf_page_cache WHERE mushaf_id = 19 ORDER BY page_number',
+    );
+    const entries: StoredAyahEntry[] = [];
+    for (const row of rows) {
+      let page: MushafPage;
+      try {
+        page = JSON.parse(row.page_json) as MushafPage;
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(page.ayahs)) {
+        continue;
+      }
+      for (const ayah of page.ayahs) {
+        if (!Array.isArray(ayah.words)) {
+          continue;
+        }
+        entries.push({
+          surahNumber: ayah.surahNumber,
+          ayahNumber: ayah.ayahNumber,
+          text: ayah.words.map((word) => word.textUthmani).join(' '),
+        });
+      }
+    }
+
+    this.storedAyahIndex = { pageCount, entries };
+    return this.storedAyahIndex;
   }
 
   private async findStoredAyahPage(
