@@ -27,6 +27,7 @@ export type SwipePageViewerProps = {
   prevPage: CachedMushafPage | null;
   nextPage: CachedMushafPage | null;
   fontSize: number;
+  markerScale?: number;
   showTajweed: boolean;
   isDark: boolean;
   highlights: Highlight[];
@@ -78,6 +79,7 @@ export function SwipePageViewer({
   prevPage,
   nextPage,
   fontSize,
+  markerScale = 1,
   showTajweed,
   isDark,
   highlights,
@@ -339,6 +341,7 @@ export function SwipePageViewer({
                     rowIndex={rowIndex}
                     pull={pull}
                     fontSize={fontSize}
+                    markerScale={markerScale}
                     showTajweed={showTajweed}
                     isDark={isDark}
                     highlights={isCurrent ? highlights : NO_HIGHLIGHTS}
@@ -382,6 +385,7 @@ type PageSlotProps = {
   rowIndex: SharedValue<number>;
   pull: SharedValue<number>;
   fontSize: number;
+  markerScale: number;
   showTajweed: boolean;
   isDark: boolean;
   highlights: Highlight[];
@@ -425,6 +429,7 @@ const PageSlot = memo(function PageSlot({
   rowIndex,
   pull,
   fontSize,
+  markerScale,
   showTajweed,
   isDark,
   highlights,
@@ -460,6 +465,7 @@ const PageSlot = memo(function PageSlot({
         fontBase64={data.fontBase64}
         basmalaFontBase64={data.basmalaFontBase64}
         fontSize={fontSize}
+        markerScale={markerScale}
         showTajweed={showTajweed}
         isDark={isDark}
         highlights={highlights}

@@ -116,7 +116,24 @@ export default function SettingsScreen() {
     staleTime: 0,
   });
 
-  async function savePreference(key: 'theme' | 'reciterId', value: string): Promise<void> {
+  const readerDisplayQuery = useQuery({
+    queryKey: ['reader', 'display-preferences'],
+    queryFn: async () => {
+      const rows = await database.getAllAsync<{ key: string; value: string }>(
+        `SELECT key, value FROM app_settings WHERE key IN ('reader.fontSize', 'reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale')`,
+      );
+      const values = new Map(rows.map((row) => [row.key, row.value]));
+      return {
+        fontSize: Math.min(80, Math.max(20, Number(values.get('reader.fontSize') ?? 44))),
+        toolbarSize: Math.min(56, Math.max(32, Number(values.get('reader.toolbarSize') ?? 40))),
+        toolbarShape: values.get('reader.toolbarShape') === 'rounded' ? 'rounded' as const : 'round' as const,
+        markerScale: Math.min(1.8, Math.max(0.8, Number(values.get('reader.markerScale') ?? 1))),
+      };
+    },
+    staleTime: Infinity,
+  });
+
+  async function savePreference(key: 'theme' | 'reciterId' | 'reader.fontSize' | 'reader.toolbarSize' | 'reader.toolbarShape' | 'reader.markerScale', value: string): Promise<void> {
     setSaving(true);
     setPreferenceError(null);
     try {
@@ -127,6 +144,10 @@ export default function SettingsScreen() {
         value,
         new Date().toISOString(),
       );
+      if (key.startsWith('reader.')) {
+        await readerDisplayQuery.refetch();
+        return;
+      }
       const nextTheme = key === 'theme' ? parseThemePreference(value) : themePreference;
       setPreferences(
         nextTheme,
@@ -229,6 +250,45 @@ export default function SettingsScreen() {
                   </Text>
                 </Pressable>
               );
+            })}
+          </View>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>عرض المصحف</Text>
+          <Text style={[styles.body, { color: colors.textSecondary }]}>عدّل حجم خط المصحف وأدوات التحديد. التغيير يظهر عند الرجوع للمصحف.</Text>
+          <DisplaySizeControl
+            label="حجم خط الآيات"
+            value={readerDisplayQuery.data?.fontSize ?? 44}
+            minimum={20}
+            maximum={80}
+            colors={colors}
+            disabled={saving}
+            onChange={(value) => void savePreference('reader.fontSize', String(value))}
+          />
+          <DisplaySizeControl
+            label="حجم أدوات التحديد"
+            value={readerDisplayQuery.data?.toolbarSize ?? 40}
+            minimum={32}
+            maximum={56}
+            colors={colors}
+            disabled={saving}
+            onChange={(value) => void savePreference('reader.toolbarSize', String(value))}
+          />
+          <DisplaySizeControl
+            label="حجم أرقام الآيات وعلامات الأرباع"
+            value={Math.round((readerDisplayQuery.data?.markerScale ?? 1) * 100)}
+            minimum={80}
+            maximum={180}
+            step={10}
+            colors={colors}
+            disabled={saving}
+            onChange={(value) => void savePreference('reader.markerScale', String(value / 100))}
+          />
+          <View style={styles.optionRow}>
+            {(['round', 'rounded'] as const).map((shape) => {
+              const selected = (readerDisplayQuery.data?.toolbarShape ?? 'round') === shape;
+              return <Pressable key={shape} accessibilityRole="button" accessibilityState={{ selected }} disabled={saving} onPress={() => void savePreference('reader.toolbarShape', shape)} style={[styles.option, { backgroundColor: selected ? colors.backgroundSelected : colors.background, borderColor: selected ? colors.primary : colors.border }]}><Text style={[styles.optionText, { color: selected ? colors.primary : colors.text }]}>{shape === 'round' ? 'دائري' : 'مربّع ناعم'}</Text></Pressable>;
             })}
           </View>
         </View>
@@ -494,6 +554,37 @@ export default function SettingsScreen() {
 }
 
 type SurahFilter = 'all' | 'missing' | 'saved';
+
+function DisplaySizeControl({
+  label,
+  value,
+  minimum,
+  maximum,
+  step = 2,
+  colors,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  minimum: number;
+  maximum: number;
+  step?: number;
+  colors: ReturnType<typeof useTheme>;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <View style={styles.displayControl}>
+      <Text style={[styles.body, { color: colors.text }]}>{label}</Text>
+      <View style={styles.displayControlActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`تصغير ${label}`} disabled={disabled || value <= minimum} onPress={() => onChange(value - step)} style={[styles.sizeButton, { backgroundColor: colors.background, borderColor: colors.border }]}><Text style={[styles.sizeButtonText, { color: colors.text }]}>−</Text></Pressable>
+        <Text style={[styles.sizeValue, { color: colors.primary }]}>{toArabicNumbers(value)}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`تكبير ${label}`} disabled={disabled || value >= maximum} onPress={() => onChange(value + step)} style={[styles.sizeButton, { backgroundColor: colors.background, borderColor: colors.border }]}><Text style={[styles.sizeButtonText, { color: colors.text }]}>+</Text></Pressable>
+      </View>
+    </View>
+  );
+}
 
 const surahFilters: { value: SurahFilter; label: string }[] = [
   { value: 'all', label: 'الكل' },
@@ -1129,6 +1220,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  displayControl: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  displayControlActions: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  sizeButton: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sizeButtonText: { fontSize: 22, fontWeight: '700' },
+  sizeValue: { minWidth: 28, fontSize: 16, fontWeight: '800', textAlign: 'center' },
   reciterList: {
     gap: Spacing.two,
     marginTop: Spacing.one,

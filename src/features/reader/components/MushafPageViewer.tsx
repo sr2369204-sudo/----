@@ -26,6 +26,7 @@ type Props = {
   fontBase64: string;
   basmalaFontBase64: string | null;
   fontSize: number;
+  markerScale?: number;
   showTajweed: boolean;
   isDark: boolean;
   highlights: Highlight[];
@@ -107,6 +108,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   fontBase64,
   basmalaFontBase64,
   fontSize,
+  markerScale = 1,
   showTajweed,
   isDark,
   highlights,
@@ -136,8 +138,8 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   );
   const html = useMemo(
     () =>
-      createMushafHtml(page, fontBase64, basmalaFontBase64, fontSize, showTajweed, isDark),
-    [basmalaFontBase64, fontBase64, fontSize, isDark, page, showTajweed],
+      createMushafHtml(page, fontBase64, basmalaFontBase64, fontSize, markerScale, showTajweed, isDark),
+    [basmalaFontBase64, fontBase64, fontSize, isDark, markerScale, page, showTajweed],
   );
   // A stable source object prevents react-native-webview from reloading the
   // document on unrelated parent re-renders, which would flash and re-fit.
@@ -400,6 +402,7 @@ function createMushafHtml(
   fontBase64: string,
   basmalaFontBase64: string | null,
   fontSize: number,
+  markerScale: number,
   showTajweed: boolean,
   isDark: boolean,
 ): string {
@@ -709,7 +712,7 @@ body {
   color: ${isDark ? '#e3d5ab' : '#514327'};
   font-family: "QcfTajweedPage";
   font-palette: ${isDark ? '--QcfDark' : '--QcfLight'};
-  font-size: 0.88em;
+  font-size: ${0.88 * markerScale}em;
   line-height: inherit;
   vertical-align: baseline;
 }
@@ -719,6 +722,7 @@ body {
   font-size: inherit;
   line-height: 1.2;
 }
+.rub-marker { font-size: ${markerScale}em; }
 .selected {
   border-radius: 4px;
   background: ${isDark ? 'rgba(217, 169, 74, 0.22)' : 'rgba(86, 125, 78, 0.2)'};
@@ -740,7 +744,8 @@ body.tasmi3-hidden-page .surah-title-text {
    words themselves: the frame then reads as one continuous rectangle around a
    whole ayah (or a run of ayahs) instead of a per-word highlight. */
 #selection-layer,
-#recitation-layer {
+#recitation-layer,
+#highlight-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -752,6 +757,12 @@ body.tasmi3-hidden-page .surah-title-text {
   border: 2px solid ${isDark ? 'rgba(217, 169, 74, 0.95)' : 'rgba(163, 122, 38, 0.9)'};
   background: ${isDark ? 'rgba(217, 169, 74, 0.14)' : 'rgba(217, 169, 74, 0.16)'};
   border-radius: 8px;
+}
+#highlight-layer { z-index: 0; }
+.ayah-highlight-box {
+  position: absolute;
+  border-radius: 3px;
+  background: var(--ayah-highlight-color);
 }
 .recitation-box {
   border-color: ${isDark ? 'rgba(122, 180, 235, 0.95)' : 'rgba(41, 98, 158, 0.85)'};
@@ -810,7 +821,7 @@ body.tasmi3-hidden-page .surah-title-text {
     <span class="header-ornament">۞</span>
     <span class="header-label" id="header-juz-label">${juzHeaderLabel}</span>
   </header>
-  <section class="lines" id="mushaf-lines">${linesHtml}<div id="selection-layer"></div><div id="recitation-layer"></div></section>
+  <section class="lines" id="mushaf-lines">${linesHtml}<div id="highlight-layer"></div><div id="selection-layer"></div><div id="recitation-layer"></div></section>
   <footer class="page-footer">
     <div class="page-number-ornament">
       <span class="page-num-bracket">۞</span>
@@ -907,6 +918,25 @@ function renderFrameBoxes(layer, rects, className) {
   }
 }
 
+function renderAyahHighlightBoxes(entries) {
+  const layer = document.getElementById("highlight-layer");
+  if (!layer) return;
+  layer.innerHTML = "";
+  const layerRect = layer.getBoundingClientRect();
+  for (const entry of entries) {
+    for (const rect of ayahFrameRects([entry.id])) {
+      const box = document.createElement("div");
+      box.className = "ayah-highlight-box";
+      box.style.setProperty("--ayah-highlight-color", entry.color);
+      box.style.left = rect.left - layerRect.left + "px";
+      box.style.top = rect.top - layerRect.top + "px";
+      box.style.width = rect.width + "px";
+      box.style.height = rect.height + "px";
+      layer.appendChild(box);
+    }
+  }
+}
+
 /**
  * Applies the current selection to the page.
  *
@@ -988,7 +1018,11 @@ function applyMushafHighlights(entries) {
     element.style.removeProperty("--hl-bg");
     element.style.removeProperty("--hl-marker-color");
   });
-  if (!entries || typeof entries !== "object") return;
+  if (!entries || typeof entries !== "object") {
+    renderAyahHighlightBoxes([]);
+    return;
+  }
+  const ayahHighlights = [];
   for (const id of Object.keys(entries)) {
     const element = document.getElementById(id);
     if (!element) continue;
@@ -1002,7 +1036,11 @@ function applyMushafHighlights(entries) {
       element.classList.add("hl-marker");
       element.style.setProperty("--hl-marker-color", entry.marker);
     }
+    if (entry.ayahBg && element.classList.contains("ayah-marker")) {
+      ayahHighlights.push({ id: id, color: entry.ayahBg });
+    }
   }
+  renderAyahHighlightBoxes(ayahHighlights);
 }
 window.applyMushafHighlights = applyMushafHighlights;
 

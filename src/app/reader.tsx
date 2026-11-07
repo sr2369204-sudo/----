@@ -262,11 +262,14 @@ export default function ReaderScreen() {
     queryFn: async () => {
       const rows = await database.getAllAsync<{ key: string; value: string }>(
         `SELECT key, value FROM app_settings
-         WHERE key IN ('reader.showTajweed', 'reader.fontSize')`,
+         WHERE key IN ('reader.showTajweed', 'reader.fontSize', 'reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale')`,
       );
       const preferences = new Map(rows.map((row) => [row.key, row.value]));
       const savedTajweed = preferences.get('reader.showTajweed');
       const savedFontSize = preferences.get('reader.fontSize');
+      const savedToolbarSize = Number(preferences.get('reader.toolbarSize') ?? 40);
+      const savedToolbarShape = preferences.get('reader.toolbarShape') ?? 'round';
+      const savedMarkerScale = Number(preferences.get('reader.markerScale') ?? 1);
       if (savedTajweed !== undefined && savedTajweed !== 'true' && savedTajweed !== 'false') {
         throw new Error('إعداد ألوان التجويد المحفوظ غير صالح.');
       }
@@ -274,9 +277,21 @@ export default function ReaderScreen() {
       if (!Number.isInteger(parsedFontSize) || parsedFontSize < 20 || parsedFontSize > 80) {
         throw new Error('حجم الخط المحفوظ غير صالح.');
       }
+      if (!Number.isInteger(savedToolbarSize) || savedToolbarSize < 32 || savedToolbarSize > 56) {
+        throw new Error('حجم أدوات التحديد المحفوظ غير صالح.');
+      }
+      if (savedToolbarShape !== 'round' && savedToolbarShape !== 'rounded') {
+        throw new Error('شكل أدوات التحديد المحفوظ غير صالح.');
+      }
+      if (!Number.isFinite(savedMarkerScale) || savedMarkerScale < 0.8 || savedMarkerScale > 1.8) {
+        throw new Error('حجم علامات الآيات والأرباع المحفوظ غير صالح.');
+      }
       return {
         showTajweed: savedTajweed === undefined ? true : savedTajweed === 'true',
         fontSize: parsedFontSize,
+        toolbarSize: savedToolbarSize,
+        toolbarShape: savedToolbarShape as 'round' | 'rounded',
+        markerScale: savedMarkerScale,
       };
     },
     staleTime: Infinity,
@@ -1389,6 +1404,7 @@ export default function ReaderScreen() {
           prevPage={prevPageQuery.data ?? null}
           nextPage={nextPageQuery.data ?? null}
           fontSize={fontSize}
+          markerScale={displayPreferencesQuery.data?.markerScale ?? 1}
           showTajweed={showTajweed}
           isDark={false}
           highlights={highlights}
@@ -1487,6 +1503,8 @@ export default function ReaderScreen() {
           surahName={currentSurahName}
           anchorRect={selectionAnchor}
           navbarHeight={navbarHeight}
+          buttonSize={displayPreferencesQuery.data?.toolbarSize ?? 40}
+          buttonShape={displayPreferencesQuery.data?.toolbarShape ?? 'round'}
           isBookmarked={isBookmarked}
           isWordSaved={isWordSaved}
           isDailyReadingReady={dailyPlanQuery.data !== undefined}

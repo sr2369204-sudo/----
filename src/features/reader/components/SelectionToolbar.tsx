@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -16,7 +15,6 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -60,7 +58,7 @@ const HIGHLIGHT_COLORS = [
   '#EF9A9A',
 ];
 
-const BUTTON_SIZE = 46;
+const BUTTON_SIZE = 40;
 const CLOSE_SIZE = 30;
 const RING_MARGIN = 8;
 const LABEL_GAP = 8;
@@ -76,6 +74,8 @@ type Props = {
   anchorRect: ElementRect | null;
   /** Height of the reader navbar, which the ring has to stay clear of. */
   navbarHeight: number;
+  buttonSize?: number;
+  buttonShape?: 'round' | 'rounded';
   isBookmarked: boolean;
   isWordSaved: boolean;
   isDailyReadingReady: boolean;
@@ -117,6 +117,8 @@ function Toolbar({
   surahName,
   anchorRect,
   navbarHeight,
+  buttonSize = BUTTON_SIZE,
+  buttonShape = 'round',
   isBookmarked,
   isWordSaved,
   isDailyReadingReady,
@@ -136,7 +138,6 @@ function Toolbar({
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const clearSelection = useReaderSelectionStore((state) => state.clearSelection);
-  const selectAyah = useReaderSelectionStore((state) => state.selectAyah);
   const repository = useMemo(() => new SqliteAnnotationRepository(database), [database]);
 
   const [panel, setPanel] = useState<Panel>('toolbar');
@@ -239,11 +240,6 @@ function Toolbar({
   const startAyah = selection.type === 'range' ? selection.startAyah : selection.ayah.ayahNumber;
   const endAyah = selection.type === 'range' ? selection.endAyah : selection.ayah.ayahNumber;
 
-  const selectedText = selection.type === 'word'
-    ? selection.word.textUthmani
-    : selection.type === 'ayah'
-      ? selection.ayah.words.map((word) => word.textUthmani).join(' ')
-      : (rangeAyahs ?? []).map((ayah) => ayah.words.map((word) => word.textUthmani).join(' ')).join(' ');
   const reference =
     startAyah === endAyah
       ? `${surahName} · الآية ${toArabicNumbers(startAyah)}`
@@ -512,32 +508,6 @@ function Toolbar({
     }
   }
 
-  async function copySelectedText(): Promise<void> {
-    setBusy(true);
-    setError(null);
-    try {
-      await Clipboard.setStringAsync(`${selectedText}\n${reference}`);
-      setMessage('تم نسخ النص والمرجع.');
-    } catch (copyError) {
-      setError(copyError instanceof Error ? `تعذر نسخ النص: ${copyError.message}` : 'تعذر نسخ النص.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function shareSelectedText(): Promise<void> {
-    setBusy(true);
-    setError(null);
-    try {
-      await Share.share({ message: `${selectedText}\n${reference}` });
-      clearSelection();
-    } catch (shareError) {
-      setError(shareError instanceof Error ? `تعذرت المشاركة: ${shareError.message}` : 'تعذرت المشاركة.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function playAudio(): Promise<void> {
     setBusy(true);
     setError(null);
@@ -697,33 +667,10 @@ function Toolbar({
     });
   }
 
-  actions.push(
-    {
-      key: 'copy',
-      icon: 'copy-outline',
-      label: 'نسخ',
-      onPress: () => void copySelectedText(),
-    },
-    {
-      key: 'share',
-      icon: 'share-social-outline',
-      label: 'مشاركة',
-      onPress: () => void shareSelectedText(),
-    },
-  );
-
-  if (isWord) {
-    actions.push({
-      key: 'ayah',
-      icon: 'expand-outline',
-      label: 'الآية كاملة',
-      onPress: () => selectAyah(selection.surahNumber, selection.ayah, 'full'),
-    });
-  }
-
   const layout = computeRingLayout({
     anchorRect,
     count: actions.length,
+    buttonSize,
     windowWidth,
     windowHeight,
     // The navbar is revealed together with the ring, so the ring has to start
@@ -792,6 +739,7 @@ function Toolbar({
                   onLongPress={action.onLongPress}
                   style={({ pressed }) => [
                     styles.iconButton,
+                    { width: buttonSize, height: buttonSize, borderRadius: buttonShape === 'rounded' ? 12 : buttonSize / 2 },
                     {
                       backgroundColor: action.active ? palette.primary : palette.surface,
                       borderColor: action.active ? palette.primary : palette.border,
@@ -1177,6 +1125,7 @@ function Toolbar({
 type RingLayoutInput = {
   anchorRect: ElementRect | null;
   count: number;
+  buttonSize: number;
   windowWidth: number;
   windowHeight: number;
   insetTop: number;
@@ -1189,6 +1138,7 @@ type RingLayoutInput = {
 function computeRingLayout({
   anchorRect,
   count,
+  buttonSize,
   windowWidth,
   windowHeight,
   insetTop,
@@ -1200,7 +1150,7 @@ function computeRingLayout({
   close: { left: number; top: number };
   toastTop: number;
 } {
-  const half = BUTTON_SIZE / 2;
+  const half = buttonSize / 2;
   const anchor = anchorRect ?? {
     x: windowWidth / 2 - 30,
     y: windowHeight / 2 - 14,
@@ -1218,9 +1168,9 @@ function computeRingLayout({
   // Radius large enough to clear the word and to keep the buttons from colliding.
   const safeCount = Math.max(count, 1);
   const desiredRadius = Math.max(
-    wordHalf + BUTTON_SIZE * 0.85,
-    (safeCount * (BUTTON_SIZE + 8)) / (2 * Math.PI),
-    BUTTON_SIZE * 1.4,
+    wordHalf + buttonSize * 0.85,
+    (safeCount * (buttonSize + 8)) / (2 * Math.PI),
+    buttonSize * 1.4,
   );
 
   // Shift the ring center so the whole ring fits on screen when possible.
@@ -1238,11 +1188,11 @@ function computeRingLayout({
   );
 
   const radiusX = Math.max(
-    BUTTON_SIZE * 0.95,
+    buttonSize * 0.95,
     Math.min(desiredRadius, cx - RING_MARGIN - half, windowWidth - cx - RING_MARGIN - half),
   );
   const radiusY = Math.max(
-    BUTTON_SIZE * 0.95,
+    buttonSize * 0.95,
     Math.min(desiredRadius, cy - topLimit - half, bottomLimit - cy - half - footerSpace),
   );
 

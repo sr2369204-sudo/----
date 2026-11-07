@@ -91,7 +91,8 @@ export function renderMushafLinesHtml(page: MushafPage): string {
     const wordsHtml = line.words
       .map((word) => {
         if (word.charType === 'word') {
-          return `<button type="button" class="word" data-surah="${word.surahNumber}" data-ayah="${word.ayahNumber}" id="word-${word.id}" data-kind="word" data-word-id="${word.id}" aria-label="${escapeHtml(word.textUthmani)}، كلمة ${word.position} من الآية ${word.ayahNumber}">${word.codeV2}</button>`;
+          const rubClass = word.textUthmani.includes('\u06de') ? ' rub-marker' : '';
+          return `<button type="button" class="word${rubClass}" data-surah="${word.surahNumber}" data-ayah="${word.ayahNumber}" id="word-${word.id}" data-kind="word" data-word-id="${word.id}" aria-label="${escapeHtml(word.textUthmani)}، كلمة ${word.position} من الآية ${word.ayahNumber}">${word.codeV2}</button>`;
         } else {
           const markerId = `ayah-${word.surahNumber}-${word.ayahNumber}`;
           return `<button type="button" class="ayah-marker" id="${markerId}" data-surah="${word.surahNumber}" data-ayah="${word.ayahNumber}" data-kind="ayah" aria-label="إجراءات الآية ${word.ayahNumber}">${word.codeV2}</button>`;
@@ -119,7 +120,7 @@ export function toArabicNumberString(value: number): string {
   return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
 }
 
-export type HighlightElement = { bg: string; marker?: string };
+export type HighlightElement = { bg: string; marker?: string; ayahBg?: string };
 
 /** Highlight payload for one rendered element, keyed by its document id. */
 export type HighlightElementMap = Record<string, HighlightElement>;
@@ -180,6 +181,7 @@ export function buildHighlightElements(
     if (ayahHighlight) {
       elements[`ayah-${ayah.surahNumber}-${ayah.ayahNumber}`] = {
         bg: toRgba(ayahHighlight.color, ayahHighlight.opacity * 0.4),
+        ayahBg: toRgba(ayahHighlight.color, ayahHighlight.opacity * 0.68),
       };
     }
   }
