@@ -7,12 +7,20 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useReaderPreferencesStore } from '@/features/reader/state/reader-preferences-store';
 
-export function useTheme() {
+/** Resolves the active theme name after applying the user's preference. */
+export function useThemeName() {
   const systemScheme = useColorScheme();
   const preference = useReaderPreferencesStore((state) => state.themePreference);
-  const theme = preference === 'system'
+  return preference === 'system'
     ? systemScheme === 'dark' ? 'dark' : 'light'
     : preference;
+}
 
-  return Colors[theme];
+export function useTheme() {
+  return Colors[useThemeName()];
+}
+
+/** `true` when the dark palette is active — used to pick glass tints. */
+export function useIsDarkTheme() {
+  return useThemeName() === 'dark';
 }

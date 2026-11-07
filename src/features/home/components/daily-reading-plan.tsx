@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import {
   DAILY_AYAH_TARGET_STEP,
@@ -62,9 +63,11 @@ export function DailyReadingPlan({
   }, [ambientPulse]);
 
   return (
-    <View
+    <GlassSurface
       accessibilityLabel="خطة القراءة اليومية"
-      style={[styles.card, { borderColor: `${colors.accent}66` }]}>
+      variant="emerald"
+      radius={Radius.xl}
+      contentStyle={styles.body}>
       <View pointerEvents="none" style={styles.cardGlow} />
       <View pointerEvents="none" style={styles.cornerOrnament} />
       <View style={[styles.topAccent, { backgroundColor: colors.accent }]} />
@@ -181,26 +184,15 @@ export function DailyReadingPlan({
           </Text>
         </View>
       )}
-    </View>
+    </GlassSurface>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  body: {
     position: 'relative',
-    overflow: 'hidden',
-    marginHorizontal: Spacing.four,
-    marginTop: Spacing.two,
     padding: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.xl,
-    backgroundColor: '#0B382D',
     gap: 12,
-    shadowColor: '#06251D',
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
-    elevation: 5,
   },
   cardGlow: {
     position: 'absolute',

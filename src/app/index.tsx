@@ -1,12 +1,23 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
+import { ContinueReadingCard } from '@/features/home/components/continue-reading-card';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { OfflineDownloadBanner } from '@/features/home/components/offline-download-banner';
 import { DailyReadingPlan } from '@/features/home/components/daily-reading-plan';
@@ -30,7 +41,9 @@ import {
 } from '@/features/reader/services/reading-progress';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types';
-import { useTheme } from '@/hooks/use-theme';
+import { useIsDarkTheme, useTheme } from '@/hooks/use-theme';
+
+const GRAIN_SOURCE = require('../../assets/images/glass-grain.png');
 
 export default function HomeScreen() {
   const introFinished = useContext(IntroAnimationContext);
@@ -168,6 +181,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AmbientBackdrop />
       <FlatList
         data={visibleSurahs}
         keyExtractor={(item) => String(item.surahNumber)}
@@ -180,20 +194,12 @@ export default function HomeScreen() {
               onSearchChange={setSearch}
               onSearchAnchorChange={setSearchAnchor}
             />
-            <HomeActionsGrid
-              savedWordsCount={savedWords.data?.length}
-              continueHref={
-                lastReadingPositionQuery.data
-                  ? {
-                      pathname: '/reader',
-                      params: {
-                        surahNumber: String(lastReadingPositionQuery.data.surahNumber),
-                        ayahNumber: String(lastReadingPositionQuery.data.ayahNumber),
-                      },
-                    }
-                  : '/reader'
-              }
+            <ContinueReadingCard
+              position={lastReadingPositionQuery.data ?? null}
+              surahNameByNumber={surahNames}
+              loading={lastReadingPositionQuery.isPending}
             />
+            <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
             <DailyReadingPlan
               plan={dailyPlanQuery.data ?? null}
               surahNameByNumber={surahNames}
@@ -252,7 +258,7 @@ export default function HomeScreen() {
         }
         keyboardShouldPersistTaps="handled"
         removeClippedSubviews={false}
-        initialNumToRender={10}
+        initialNumToRender={12}
         windowSize={5}
       />
       {search.trim().length > 0 && searchAnchor && (
@@ -277,26 +283,102 @@ export default function HomeScreen() {
   );
 }
 
+/**
+ * The page wallpaper: soft emerald and gold blooms under a fine grain layer, so
+ * the glass panels above have real textured colour to sit on.
+ */
+function AmbientBackdrop() {
+  const isDark = useIsDarkTheme();
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <SoftGlow
+        rgb="14,122,87"
+        size={340}
+        alpha={isDark ? 0.05 : 0.035}
+        style={styles.glowTop}
+      />
+      <SoftGlow
+        rgb="201,151,60"
+        size={280}
+        alpha={isDark ? 0.04 : 0.045}
+        style={styles.glowBottom}
+      />
+      <Image
+        source={GRAIN_SOURCE}
+        resizeMode="repeat"
+        style={[StyleSheet.absoluteFill, { opacity: isDark ? 0.5 : 0.42 }]}
+      />
+    </View>
+  );
+}
+
+/** Concentric low-alpha circles read as a single soft radial bloom. */
+function SoftGlow({
+  rgb,
+  size,
+  alpha,
+  style,
+}: {
+  rgb: string;
+  size: number;
+  alpha: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const rings = [0.34, 0.5, 0.68, 0.84, 1];
+  return (
+    <View pointerEvents="none" style={style}>
+      {rings.map((ring) => {
+        const diameter = size * ring;
+        return (
+          <View
+            key={ring}
+            style={{
+              position: 'absolute',
+              left: -diameter / 2,
+              top: -diameter / 2,
+              width: diameter,
+              height: diameter,
+              borderRadius: diameter / 2,
+              backgroundColor: `rgba(${rgb},${alpha})`,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  glowTop: {
+    position: 'absolute',
+    top: -60,
+    right: -80,
+  },
+  glowBottom: {
+    position: 'absolute',
+    bottom: 40,
+    left: -70,
+  },
   listContent: {
-    paddingHorizontal: Spacing.two,
+    paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.six,
   },
+  surahEntry: {
+    width: '100%',
+  },
   headerContent: {
-    gap: Spacing.four,
+    gap: Spacing.three,
     marginBottom: Spacing.two,
     zIndex: 1000,
     elevation: 1000,
   },
   sectionHeader: {
-    paddingHorizontal: Spacing.four,
     gap: Spacing.three,
-  },
-  surahEntry: {
-    width: '100%',
+    marginTop: Spacing.one,
   },
   sectionTitleRow: {
     flexDirection: 'row-reverse',
@@ -323,7 +405,6 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.label,
   },
   notice: {
-    marginHorizontal: Spacing.four,
     padding: Spacing.four,
     borderWidth: 1,
     borderRadius: Radius.lg,

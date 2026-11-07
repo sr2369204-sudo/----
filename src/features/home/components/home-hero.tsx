@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Link } from 'expo-router';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useCallback, useRef } from 'react';
@@ -16,7 +17,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import type { SearchAnchor } from '@/features/home/components/home-search-results';
-import { useTheme } from '@/hooks/use-theme';
+
+const GRAIN_SOURCE = require('../../../../assets/images/glass-grain.png');
+const HERO_IMAGE = require('../../../../assets/images/quran-hero.png');
+
+/** Visual height of the hero band, on top of which the status-bar inset is added. */
+const HERO_HEIGHT = 210;
+
+/** Light foreground colours that sit on the dark glass search bar. */
+const SEARCH_TEXT_COLOR = '#FFF9EA';
+const SEARCH_PLACEHOLDER_COLOR = 'rgba(239,248,243,0.55)';
+const SEARCH_ICON_COLOR = '#E8C77F';
 
 type HomeHeroProps = {
   searchValue: string;
@@ -24,12 +35,16 @@ type HomeHeroProps = {
   onSearchAnchorChange: (anchor: SearchAnchor) => void;
 };
 
+/**
+ * The home header: the Qur'an hero photograph in a rounded, gold-rimmed frame
+ * with a grain layer, carrying the greeting, settings entry and the app-wide
+ * search on a frosted glass bar.
+ */
 export function HomeHero({
   searchValue,
   onSearchChange,
   onSearchAnchorChange,
 }: HomeHeroProps) {
-  const colors = useTheme();
   const insets = useSafeAreaInsets();
   const searchContainerRef = useRef<ViewInstance>(null);
   const measureSearchAnchor = useCallback(() => {
@@ -42,21 +57,26 @@ export function HomeHero({
   }, [measureSearchAnchor]);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.background}>
-        <Image
-          source={require('../../../../assets/images/quran-hero.png')}
-          style={styles.backgroundImage}
-          contentFit="cover"
-          transition={1000}
+    <View style={[styles.shell, { height: HERO_HEIGHT + insets.top }]}>
+      <View style={styles.frame}>
+        <Image source={HERO_IMAGE} style={StyleSheet.absoluteFill} contentFit="cover" transition={600} />
+        <LinearGradient
+          colors={['rgba(4,26,20,0.12)', 'rgba(4,26,20,0.74)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
         />
-        <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
-        <View pointerEvents="none" style={styles.backgroundTint} />
+        <Image
+          source={GRAIN_SOURCE}
+          resizeMode="repeat"
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.grain]}
+        />
       </View>
 
-      <View style={[styles.content, { paddingTop: insets.top + Spacing.two }]}>
+      <View style={[styles.content, { paddingTop: insets.top + Spacing.three }]}>
         <Animated.View entering={FadeInDown.duration(560).delay(100)} style={styles.topRow}>
-          <View style={styles.welcomeGroup}>
+          <View style={styles.identity}>
             <View style={styles.brandMark}>
               <Image
                 source={require('../../../../assets/images/icon.png')}
@@ -66,8 +86,8 @@ export function HomeHero({
               />
             </View>
             <View style={styles.brandCopy}>
-              <Text style={styles.welcomeTitle}>مصحف</Text>
-              <Text style={styles.welcomeSubtitle}>اقرأ القرآن وتصفّح سوره</Text>
+              <Text style={styles.title}>مصحف</Text>
+              <Text style={styles.subtitle}>اقرأ القرآن وتدبّر آياته</Text>
             </View>
           </View>
 
@@ -75,35 +95,30 @@ export function HomeHero({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الإعدادات"
-              style={styles.settingsButton}>
-              <Ionicons name="settings-outline" size={24} color="#FFF" />
+              style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}>
+              <Ionicons name="settings-outline" size={22} color="#FFF" />
             </Pressable>
           </Link>
         </Animated.View>
 
-        <Animated.View entering={FadeInUp.duration(520).delay(220)} style={styles.searchEntry}>
+        <Animated.View entering={FadeInUp.duration(520).delay(200)} style={styles.searchEntry}>
           <View
             ref={searchContainerRef}
             onLayout={handleSearchLayout}
-            style={[
-              styles.searchContainer,
-              {
-                backgroundColor: colors.surface,
-                borderColor: `${colors.accent}88`,
-              },
-            ]}>
-            <Ionicons name="search" size={20} color={colors.accent} style={styles.searchIcon} />
+            collapsable={false}
+            style={styles.searchBar}>
+            <Ionicons name="search" size={19} color={SEARCH_ICON_COLOR} style={styles.searchIcon} />
             <TextInput
               accessibilityLabel="ابحث باسم السورة أو آية أو كلمة من القرآن"
-              placeholder="ابحث باسم السورة أو آية أو كلمة من القرآن..."
-              placeholderTextColor={colors.textSecondary}
+              placeholder="ابحث باسم السورة أو آية أو كلمة..."
+              placeholderTextColor={SEARCH_PLACEHOLDER_COLOR}
               value={searchValue}
               onChangeText={(value) => {
                 onSearchChange(value);
                 measureSearchAnchor();
               }}
               onFocus={measureSearchAnchor}
-              style={[styles.searchInput, { color: colors.text }]}
+              style={[styles.searchInput, { color: SEARCH_TEXT_COLOR }]}
               textAlign="right"
               returnKeyType="search"
             />
@@ -115,100 +130,102 @@ export function HomeHero({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    height: 236,
-    width: '100%',
-    overflow: 'visible',
+  shell: {
+    marginHorizontal: -Spacing.three,
     zIndex: 1000,
     elevation: 1000,
   },
-  background: {
+  frame: {
     ...StyleSheet.absoluteFill,
+    borderBottomLeftRadius: Radius.xl,
+    borderBottomRightRadius: Radius.xl,
     overflow: 'hidden',
-    borderRadius: Radius.xl,
     borderWidth: 1,
     borderColor: 'rgba(216,181,109,0.5)',
   },
-  backgroundImage: {
-    ...StyleSheet.absoluteFill,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFill,
-  },
-  backgroundTint: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(7,62,47,0.16)',
+  grain: {
+    opacity: 0.22,
   },
   content: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.five,
     justifyContent: 'space-between',
-    paddingBottom: Spacing.three,
     zIndex: 1,
   },
   topRow: {
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  welcomeGroup: {
+  identity: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.two,
+    flexShrink: 1,
   },
   brandMark: {
-    width: 46,
-    height: 46,
+    width: 48,
+    height: 48,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
     borderColor: 'rgba(227,183,94,0.5)',
   },
   brandMarkImage: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 12,
-    overflow: 'hidden',
   },
   brandCopy: {
-    gap: 3,
+    flexShrink: 1,
+    gap: 2,
   },
-  welcomeTitle: {
+  title: {
     fontSize: TypeScale.hero + 2,
     fontWeight: '900',
     color: '#FFF',
     textAlign: 'right',
+    letterSpacing: 0.2,
   },
-  welcomeSubtitle: {
-    fontSize: TypeScale.body,
-    color: 'rgba(255,255,255,0.8)',
+  subtitle: {
+    fontSize: TypeScale.caption,
+    color: 'rgba(255,255,255,0.82)',
     textAlign: 'right',
-  },
-  searchEntry: {
-    width: '100%',
   },
   settingsButton: {
     width: 44,
     height: 44,
     borderRadius: Radius.pill,
     backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  searchContainer: {
-    height: 50,
+  pressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.96 }],
+  },
+  searchEntry: {
+    width: '100%',
+  },
+  searchBar: {
+    height: 48,
     borderRadius: Radius.md,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     paddingHorizontal: Spacing.three,
+    backgroundColor: '#0B382D',
     borderWidth: 1,
+    borderColor: 'rgba(216,181,109,0.35)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 6,
   },
   searchIcon: {
     marginLeft: Spacing.two,

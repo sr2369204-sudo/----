@@ -3,150 +3,136 @@ import { Link, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
+import { toArabicNumbers } from '@/features/home/utils/format';
 import { useTheme } from '@/hooks/use-theme';
 
 type ActionItem = {
   id: string;
   label: string;
-  sublabel?: string;
+  sublabel: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   href: Href;
 };
 
-export function HomeActionsGrid({
-  savedWordsCount,
-  continueHref = '/reader',
-}: {
-  savedWordsCount?: number;
-  continueHref?: Href;
-}) {
+/**
+ * A single row of quick destinations. Reading itself lives in the hero card
+ * above, so these stay as compact, always-visible shortcuts.
+ */
+export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number }) {
   const colors = useTheme();
 
-  const ACTIONS: ActionItem[] = [
+  const actions: ActionItem[] = [
     {
       id: 'saved',
-      label: 'الكلمات المحفوظة',
-      sublabel: savedWordsCount !== undefined ? `${savedWordsCount} كلمة` : '...',
+      label: 'المحفوظات',
+      sublabel: savedWordsCount !== undefined ? `${toArabicNumbers(savedWordsCount)} كلمة` : 'كلماتك',
       icon: 'bookmark',
       color: colors.accent,
       href: '/saved-words',
     },
     {
-      id: 'continue',
-      label: 'متابعة القراءة',
-      sublabel: 'من حيث توقفت',
-      icon: 'book',
-      color: colors.primary,
-      href: continueHref,
-    },
-    {
-      id: 'offline',
-      label: 'المحتوى المحلي',
-      sublabel: 'بدون إنترنت',
-      icon: 'cloud-download',
-      color: '#5E72E4',
-      href: '/settings',
-    },
-    {
       id: 'bookmarks',
-      label: 'الإشارات المرجعية',
-      sublabel: 'الآيات التي حفظتها',
+      label: 'الإشارات',
+      sublabel: 'الآيات',
       icon: 'bookmarks',
       color: '#C07A44',
       href: '/bookmarks',
     },
     {
       id: 'tajweed',
-      label: 'موسوعة التجويد',
-      sublabel: 'أبواب وأحكام التجويد',
+      label: 'التجويد',
+      sublabel: 'أحكام',
       icon: 'library',
       color: colors.primary,
       href: '/tajweed',
     },
+    {
+      id: 'library',
+      label: 'المكتبة',
+      sublabel: 'السور',
+      icon: 'grid',
+      color: '#5E72E4',
+      href: '/library',
+    },
   ];
 
   return (
-    <Animated.View
-      entering={FadeInDown.duration(560).delay(120)}
-      style={[styles.card, { backgroundColor: colors.surface }]}>
-      <View style={styles.grid}>
-        {ACTIONS.map((action) => (
-          <Link key={action.id} href={action.href} asChild>
+    <View style={styles.row}>
+      {actions.map((action, index) => (
+        <Animated.View
+          key={action.id}
+          entering={FadeInDown.duration(480).delay(180 + index * 50)}
+          style={styles.cell}>
+          <Link href={action.href} asChild>
             <Pressable
-              style={StyleSheet.flatten([
-                styles.item,
-                { backgroundColor: colors.background, borderColor: colors.border },
-              ])}>
-              <View style={[styles.iconContainer, { backgroundColor: `${action.color}15` }]}>
-                <Ionicons name={action.icon} size={24} color={action.color} />
-              </View>
-              <View style={styles.textContainer}>
+              accessibilityRole="button"
+              accessibilityLabel={action.label}
+              style={({ pressed }) => [styles.press, pressed && styles.pressed]}>
+              <GlassSurface radius={Radius.lg} contentStyle={styles.tile} style={styles.surface}>
+                <View
+                  style={[
+                    styles.iconBadge,
+                    { backgroundColor: `${action.color}1F`, borderColor: `${action.color}3D` },
+                  ]}>
+                  <Ionicons name={action.icon} size={19} color={action.color} />
+                </View>
                 <Text numberOfLines={1} style={[styles.label, { color: colors.text }]}>
                   {action.label}
                 </Text>
-                {action.sublabel && (
-                  <Text numberOfLines={1} style={[styles.sublabel, { color: colors.textSecondary }]}>
-                    {action.sublabel}
-                  </Text>
-                )}
-              </View>
+                <Text numberOfLines={1} style={[styles.sublabel, { color: colors.textSecondary }]}>
+                  {action.sublabel}
+                </Text>
+              </GlassSurface>
             </Pressable>
           </Link>
-        ))}
-      </View>
-    </Animated.View>
+        </Animated.View>
+      ))}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginHorizontal: Spacing.four,
-    marginTop: -Spacing.three,
-    borderRadius: Radius.xl,
-    padding: Spacing.two,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  grid: {
+  row: {
     flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: Spacing.two,
-  },
-  item: {
-    width: '48%',
-    height: 66,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.two,
+    alignItems: 'stretch',
     gap: Spacing.two,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.md,
   },
-  textContainer: {
+  cell: {
     flex: 1,
-    alignItems: 'flex-end',
   },
-  iconContainer: {
-    width: 38,
-    height: 38,
+  press: {
+    width: '100%',
+  },
+  surface: {},
+  tile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.one,
+  },
+  iconBadge: {
+    width: 40,
+    height: 40,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
   },
   label: {
     fontSize: TypeScale.micro,
     fontWeight: '800',
-    textAlign: 'right',
+    textAlign: 'center',
   },
   sublabel: {
     fontSize: TypeScale.micro - 1,
-    textAlign: 'right',
+    textAlign: 'center',
+  },
+  pressed: {
+    transform: [{ scale: 0.95 }],
+    opacity: 0.9,
   },
 });
