@@ -8,11 +8,9 @@ import {
   StyleSheet,
   Text,
   View,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 
 import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
@@ -42,6 +40,7 @@ import {
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types';
 import { useIsDarkTheme, useTheme } from '@/hooks/use-theme';
+import { useAmbientLoop } from '@/hooks/use-ambient-loop';
 
 const GRAIN_SOURCE = require('../../assets/images/glass-grain.png');
 
@@ -216,23 +215,21 @@ export default function HomeScreen() {
               onChangeTarget={(target) => void updateDailyTarget(target)}
             />
 
-            <Animated.View
-              entering={FadeInDown.duration(520).delay(220)}
-              style={styles.sectionHeader}>
+            <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>سور القرآن</Text>
-                <View style={[styles.dot, { backgroundColor: colors.accent }]} />
+                <PulsingDot color={colors.accent} />
               </View>
               <SurahFilters value={revelationFilter} onChange={setRevelationFilter} />
-            </Animated.View>
+            </View>
 
             {surahDirectory.isPending && (
-              <Animated.View entering={FadeIn.duration(400).delay(360)} style={styles.statusRow}>
+              <View style={styles.statusRow}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[styles.statusText, { color: colors.textSecondary }]}>
                   جارٍ تحميل السور…
                 </Text>
-              </Animated.View>
+              </View>
             )}
 
             {surahDirectory.error && (
@@ -289,21 +286,35 @@ export default function HomeScreen() {
  */
 function AmbientBackdrop() {
   const isDark = useIsDarkTheme();
+  const drift = useAmbientLoop(17_000);
+  const breathe = useAmbientLoop(7_000, 600);
+
+  // The two blooms wander and swell very slowly so the page never looks flat.
+  const topStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: interpolate(drift.value, [0, 1], [-16, 20]) },
+      { translateY: interpolate(drift.value, [0, 1], [-12, 16]) },
+      { scale: interpolate(breathe.value, [0, 1], [0.93, 1.09]) },
+    ],
+    opacity: interpolate(breathe.value, [0, 1], [0.72, 1]),
+  }));
+  const bottomStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: interpolate(drift.value, [0, 1], [18, -14]) },
+      { translateY: interpolate(drift.value, [0, 1], [14, -12]) },
+      { scale: interpolate(breathe.value, [0, 1], [1.07, 0.94]) },
+    ],
+    opacity: interpolate(breathe.value, [0, 1], [1, 0.7]),
+  }));
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <SoftGlow
-        rgb="14,122,87"
-        size={340}
-        alpha={isDark ? 0.05 : 0.035}
-        style={styles.glowTop}
-      />
-      <SoftGlow
-        rgb="201,151,60"
-        size={280}
-        alpha={isDark ? 0.04 : 0.045}
-        style={styles.glowBottom}
-      />
+      <Animated.View style={[styles.glowTop, topStyle]}>
+        <SoftGlow rgb="14,122,87" size={340} alpha={isDark ? 0.05 : 0.035} />
+      </Animated.View>
+      <Animated.View style={[styles.glowBottom, bottomStyle]}>
+        <SoftGlow rgb="201,151,60" size={280} alpha={isDark ? 0.04 : 0.045} />
+      </Animated.View>
       <Image
         source={GRAIN_SOURCE}
         resizeMode="repeat"
@@ -313,21 +324,35 @@ function AmbientBackdrop() {
   );
 }
 
+/** A quietly pulsing accent dot that keeps the section header alive. */
+function PulsingDot({ color }: { color: string }) {
+  const pulse = useAmbientLoop(2_200);
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pulse.value, [0, 1], [0.5, 0]),
+    transform: [{ scale: interpolate(pulse.value, [0, 1], [0.7, 2.4]) }],
+  }));
+
+  return (
+    <View style={styles.dotWrap}>
+      <Animated.View style={[styles.dotHalo, { backgroundColor: color }, haloStyle]} />
+      <View style={[styles.dot, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
 /** Concentric low-alpha circles read as a single soft radial bloom. */
 function SoftGlow({
   rgb,
   size,
   alpha,
-  style,
 }: {
   rgb: string;
   size: number;
   alpha: number;
-  style?: StyleProp<ViewStyle>;
 }) {
   const rings = [0.34, 0.5, 0.68, 0.84, 1];
   return (
-    <View pointerEvents="none" style={style}>
+    <View pointerEvents="none">
       {rings.map((ring) => {
         const diameter = size * ring;
         return (
@@ -388,6 +413,18 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: TypeScale.title,
     fontWeight: '900',
+  },
+  dotWrap: {
+    width: 6,
+    height: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dotHalo: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   dot: {
     width: 6,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated as RNAnimated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
@@ -31,7 +31,7 @@ export function DailyReadingPlan({
   onChangeTarget,
 }: DailyReadingPlanProps) {
   const colors = useTheme();
-  const [ambientPulse] = useState(() => new Animated.Value(0));
+  const [ambientPulse] = useState(() => new RNAnimated.Value(0));
   const targetAyahs = plan?.targetAyahs ?? DEFAULT_DAILY_AYAH_TARGET;
   const completedAyahs = plan?.completedAyahs.length ?? 0;
   const progress = targetAyahs > 0 ? Math.min(1, completedAyahs / targetAyahs) : 0;
@@ -42,15 +42,15 @@ export function DailyReadingPlan({
   }).filter((reference): reference is string => reference !== null);
 
   useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(ambientPulse, {
+    const pulse = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(ambientPulse, {
           toValue: 1,
           duration: 2200,
           isInteraction: false,
           useNativeDriver: true,
         }),
-        Animated.timing(ambientPulse, {
+        RNAnimated.timing(ambientPulse, {
           toValue: 0,
           duration: 2200,
           isInteraction: false,
@@ -63,128 +63,130 @@ export function DailyReadingPlan({
   }, [ambientPulse]);
 
   return (
-    <GlassSurface
-      accessibilityLabel="خطة القراءة اليومية"
-      variant="emerald"
-      radius={Radius.xl}
-      contentStyle={styles.body}>
-      <View pointerEvents="none" style={styles.cardGlow} />
-      <View pointerEvents="none" style={styles.cornerOrnament} />
-      <View style={[styles.topAccent, { backgroundColor: colors.accent }]} />
+    <>
+      <GlassSurface
+        accessibilityLabel="خطة القراءة اليومية"
+        variant="emerald"
+        radius={Radius.xl}
+        contentStyle={styles.body}>
+        <View pointerEvents="none" style={styles.cardGlow} />
+        <View pointerEvents="none" style={styles.cornerOrnament} />
+        <View style={[styles.topAccent, { backgroundColor: colors.accent }]} />
 
-      <View style={styles.heading}>
-        <View style={styles.iconWrap}>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.iconPulse,
-              {
-                opacity: ambientPulse.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.2, 0.58],
-                }),
-                transform: [{
-                  scale: ambientPulse.interpolate({
+        <View style={styles.heading}>
+          <View style={styles.iconWrap}>
+            <RNAnimated.View
+              pointerEvents="none"
+              style={[
+                styles.iconPulse,
+                {
+                  opacity: ambientPulse.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0.88, 1.28],
+                    outputRange: [0.2, 0.58],
                   }),
-                }],
-              },
-            ]}
-          />
-          <View style={styles.icon}>
-            <Ionicons name="book-outline" size={21} color={colors.accent} />
-          </View>
-        </View>
-        <View style={styles.headingCopy}>
-          <View style={styles.titleLine}>
-            <Text style={styles.title}>وردك اليومي</Text>
-            <View style={styles.todayBadge}>
-              <Text style={styles.todayBadgeText}>اليوم</Text>
+                  transform: [{
+                    scale: ambientPulse.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.88, 1.28],
+                    }),
+                  }],
+                },
+              ]}
+            />
+            <View style={styles.icon}>
+              <Ionicons name="book-outline" size={21} color={colors.accent} />
             </View>
           </View>
-          <Text style={styles.subtitle}>
-            {loading ? 'جارٍ تحميل التقدم…' : 'خطوة هادئة نحو وردك'}
-          </Text>
+          <View style={styles.headingCopy}>
+            <View style={styles.titleLine}>
+              <Text style={styles.title}>وردك اليومي</Text>
+              <View style={styles.todayBadge}>
+                <Text style={styles.todayBadgeText}>اليوم</Text>
+              </View>
+            </View>
+            <Text style={styles.subtitle}>
+              {loading ? 'جارٍ تحميل التقدم…' : 'خطوة هادئة نحو وردك'}
+            </Text>
+          </View>
+          <View style={styles.goalControls}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="تقليل هدف الآيات اليومية"
+              disabled={updating || targetAyahs <= DAILY_AYAH_TARGET_STEP}
+              onPress={() => onChangeTarget(Math.max(DAILY_AYAH_TARGET_STEP, targetAyahs - DAILY_AYAH_TARGET_STEP))}
+              style={({ pressed }) => [
+                styles.goalButton,
+                (pressed || updating) && styles.dimmed,
+              ]}>
+              <Ionicons name="remove" size={16} color={colors.accent} />
+            </Pressable>
+            <Text accessibilityLabel={`الهدف ${toArabicNumbers(targetAyahs)} آية`} style={styles.goal}>
+              {toArabicNumbers(targetAyahs)}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="زيادة هدف الآيات اليومية"
+              disabled={updating || targetAyahs >= MAX_DAILY_AYAH_TARGET}
+              onPress={() => onChangeTarget(Math.min(MAX_DAILY_AYAH_TARGET, targetAyahs + DAILY_AYAH_TARGET_STEP))}
+              style={({ pressed }) => [
+                styles.goalButton,
+                (pressed || updating) && styles.dimmed,
+              ]}>
+              <Ionicons name="add" size={16} color={colors.accent} />
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.goalControls}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تقليل هدف الآيات اليومية"
-            disabled={updating || targetAyahs <= DAILY_AYAH_TARGET_STEP}
-            onPress={() => onChangeTarget(Math.max(DAILY_AYAH_TARGET_STEP, targetAyahs - DAILY_AYAH_TARGET_STEP))}
-            style={({ pressed }) => [
-              styles.goalButton,
-              (pressed || updating) && styles.dimmed,
-            ]}>
-            <Ionicons name="remove" size={16} color={colors.accent} />
-          </Pressable>
-          <Text accessibilityLabel={`الهدف ${toArabicNumbers(targetAyahs)} آية`} style={styles.goal}>
-            {toArabicNumbers(targetAyahs)}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="زيادة هدف الآيات اليومية"
-            disabled={updating || targetAyahs >= MAX_DAILY_AYAH_TARGET}
-            onPress={() => onChangeTarget(Math.min(MAX_DAILY_AYAH_TARGET, targetAyahs + DAILY_AYAH_TARGET_STEP))}
-            style={({ pressed }) => [
-              styles.goalButton,
-              (pressed || updating) && styles.dimmed,
-            ]}>
-            <Ionicons name="add" size={16} color={colors.accent} />
-          </Pressable>
-        </View>
-      </View>
 
-      <View style={styles.progressHeading}>
-        <Text style={styles.progressLabel}>إنجاز اليوم</Text>
-        <Text
-          accessibilityRole="text"
-          style={styles.progressValue}>
-          {toArabicNumbers(completedAyahs)}
-          <Text style={styles.progressTarget}> / {toArabicNumbers(targetAyahs)} آية</Text>
-        </Text>
-      </View>
-      <View
-        accessibilityRole="progressbar"
-        accessibilityValue={{ min: 0, max: targetAyahs, now: Math.min(completedAyahs, targetAyahs) }}
-        accessibilityLabel="تقدم خطة القراءة اليومية"
-        style={styles.progressTrack}>
+        <View style={styles.progressHeading}>
+          <Text style={styles.progressLabel}>إنجاز اليوم</Text>
+          <Text
+            accessibilityRole="text"
+            style={styles.progressValue}>
+            {toArabicNumbers(completedAyahs)}
+            <Text style={styles.progressTarget}> / {toArabicNumbers(targetAyahs)} آية</Text>
+          </Text>
+        </View>
         <View
-          style={[
-            styles.progressFill,
-            { width: `${progress * 100}%` },
-          ]}
-        />
-      </View>
-
-      {error ? (
-        <Text accessibilityRole="alert" style={[styles.error, { color: '#FFD4CB' }]}>
-          {error}
-        </Text>
-      ) : (
-        <View style={styles.footer}>
-          <Ionicons
-            name={progress >= 1 ? 'sparkles-outline' : 'finger-print-outline'}
-            size={14}
-            color={colors.accent}
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 0, max: targetAyahs, now: Math.min(completedAyahs, targetAyahs) }}
+          accessibilityLabel="تقدم خطة القراءة اليومية"
+          style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${progress * 100}%` },
+            ]}
           />
-          <Text style={styles.footnote}>
-            {progress >= 1
-              ? 'ما شاء الله، أتممت وردك اليوم'
-              : 'بعد القراءة، حدّد الآية واضغط «تمت القراءة»'}
-          </Text>
         </View>
-      )}
-      {!error && recentReferences.length > 0 && (
-        <View style={styles.referencesRow}>
-          <Text style={styles.referencesLabel}>آيات أتممتها</Text>
-          <Text style={styles.references} numberOfLines={1}>
-            {recentReferences.join('، ')}
+
+        {error ? (
+          <Text accessibilityRole="alert" style={[styles.error, { color: '#FFD4CB' }]}>
+            {error}
           </Text>
-        </View>
-      )}
-    </GlassSurface>
+        ) : (
+          <View style={styles.footer}>
+            <Ionicons
+              name={progress >= 1 ? 'sparkles-outline' : 'finger-print-outline'}
+              size={14}
+              color={colors.accent}
+            />
+            <Text style={styles.footnote}>
+              {progress >= 1
+                ? 'ما شاء الله، أتممت وردك اليوم'
+                : 'بعد القراءة، حدّد الآية واضغط «تمت القراءة»'}
+            </Text>
+          </View>
+        )}
+        {!error && recentReferences.length > 0 && (
+          <View style={styles.referencesRow}>
+            <Text style={styles.referencesLabel}>آيات أتممتها</Text>
+            <Text style={styles.references} numberOfLines={1}>
+              {recentReferences.join('، ')}
+            </Text>
+          </View>
+        )}
+      </GlassSurface>
+    </>
   );
 }
 

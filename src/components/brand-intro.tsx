@@ -1,6 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { createContext, useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
@@ -10,18 +19,35 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSpring,
   withTiming,
+  type AnimatedStyle,
 } from 'react-native-reanimated';
+
+import { LinearGradient } from '@/components/ui/optional-native-views';
+import { Radius } from '@/constants/theme';
 
 export const IntroAnimationContext = createContext(false);
 
-const INTRO_DURATION_MS = 2_500;
-const FADE_DURATION_MS = 420;
-const PROGRESS_WIDTH = 132;
+const INTRO_DURATION_MS = 2_700;
+const FADE_DURATION_MS = 480;
+const REVEAL_DURATION_MS = 1_100;
+const PROGRESS_WIDTH = 156;
 const GOLD = '#E5B85F';
-const CREAM = '#FFF4DC';
-const SILHOUETTE = '#073747';
+const GOLD_SOFT = '#F3D28C';
+const CREAM = '#FFF6E2';
 
+const GRAIN_SOURCE = require('../../assets/images/glass-grain.png');
+
+/** Angles for the ring of small gold beads around the medallion rim. */
+const BEAD_ANGLES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+
+/**
+ * The launch stage. Its centrepiece is a hand-built medallion: a beaded gold
+ * rim around concentric rings and a small emerald core holding an open-book
+ * glyph. A gold arc counter-rotates around it against a breathing halo; the
+ * inner rings and glyph settle into place with a light spring on load.
+ */
 export function BrandIntro({
   onReady,
   onFinished,
@@ -34,11 +60,16 @@ export function BrandIntro({
   const [exiting, setExiting] = useState(false);
   const [visible, setVisible] = useState(true);
   const didReportReady = useRef(false);
+
   const reveal = useSharedValue(0);
+  const assemble = useSharedValue(0);
   const fadeOut = useSharedValue(1);
   const progress = useSharedValue(0);
-  const ring = useSharedValue(0);
-  const markSize = Math.min(width * 0.34, 148);
+  const spin = useSharedValue(0);
+  const breathe = useSharedValue(0);
+
+  const seal = Math.min(width * 0.5, 208);
+  const glowSize = Math.min(width * 1.3, height * 0.72);
 
   const handleLayout = useCallback(() => {
     if (didReportReady.current) {
@@ -50,8 +81,15 @@ export function BrandIntro({
 
   useEffect(() => {
     reveal.value = withTiming(1, {
-      duration: 1_000,
-      easing: Easing.out(Easing.cubic),
+      duration: REVEAL_DURATION_MS,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      reduceMotion: ReduceMotion.System,
+    });
+    // A soft spring lets the seal settle into place with a light overshoot.
+    assemble.value = withSpring(1, {
+      damping: 13,
+      stiffness: 110,
+      mass: 0.9,
       reduceMotion: ReduceMotion.System,
     });
     progress.value = withTiming(1, {
@@ -59,25 +97,36 @@ export function BrandIntro({
       easing: Easing.linear,
       reduceMotion: ReduceMotion.System,
     });
-    // A slow, endless turn keeps the emblem alive without pulling attention.
-    ring.value = withRepeat(
+    spin.value = withRepeat(
       withTiming(1, {
-        duration: 9_000,
+        duration: 18_000,
         easing: Easing.linear,
         reduceMotion: ReduceMotion.System,
       }),
       -1,
       false,
     );
+    // The halo breathes so the gold light never feels static.
+    breathe.value = withRepeat(
+      withTiming(1, {
+        duration: 2_800,
+        easing: Easing.inOut(Easing.quad),
+        reduceMotion: ReduceMotion.System,
+      }),
+      -1,
+      true,
+    );
 
     const introTimer = setTimeout(() => setExiting(true), INTRO_DURATION_MS);
     return () => {
       clearTimeout(introTimer);
       cancelAnimation(reveal);
+      cancelAnimation(assemble);
       cancelAnimation(progress);
-      cancelAnimation(ring);
+      cancelAnimation(spin);
+      cancelAnimation(breathe);
     };
-  }, [progress, reveal, ring]);
+  }, [assemble, breathe, progress, reveal, spin]);
 
   useEffect(() => {
     if (!exiting) {
@@ -102,22 +151,41 @@ export function BrandIntro({
   const overlayStyle = useAnimatedStyle(() => ({
     opacity: fadeOut.value,
   }));
-  const markStyle = useAnimatedStyle(() => ({
-    opacity: reveal.value,
+  const emblemStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0, 0.5], [0, 1], 'clamp'),
     transform: [
-      { scale: interpolate(reveal.value, [0, 1], [0.82, 1]) },
-      { translateY: interpolate(reveal.value, [0, 1], [16, 0]) },
+      { translateY: interpolate(assemble.value, [0, 1], [34, 0]) },
+      { scale: interpolate(assemble.value, [0, 1], [0.7, 1]) },
     ],
   }));
+  const innerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0, 0.6], [0, 1], 'clamp'),
+    transform: [
+      { rotate: `${interpolate(assemble.value, [0, 1], [100, 0])}deg` },
+      { scale: interpolate(assemble.value, [0, 1], [0.5, 1]) },
+    ],
+  }));
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(breathe.value, [0, 1], [0.26, 0.48]) *
+      interpolate(reveal.value, [0, 1], [0, 1], 'clamp'),
+    transform: [{ scale: interpolate(breathe.value, [0, 1], [0.95, 1.05]) }],
+  }));
+  const ringForwardStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spin.value * 360}deg` }],
+  }));
+  const ringBackwardStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${-spin.value * 360 - 40}deg` }],
+  }));
   const titleStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(reveal.value, [0.25, 1], [0, 1], 'clamp'),
-    transform: [{ translateY: interpolate(reveal.value, [0, 1], [12, 0]) }],
+    opacity: interpolate(reveal.value, [0.32, 1], [0, 1], 'clamp'),
+    transform: [{ translateY: interpolate(assemble.value, [0, 1], [22, 0]) }],
+  }));
+  const footerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0.5, 1], [0, 1], 'clamp'),
+    transform: [{ translateY: interpolate(assemble.value, [0, 1], [16, 0]) }],
   }));
   const progressStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [0, PROGRESS_WIDTH]),
-  }));
-  const ringStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${ring.value * 360}deg` }],
   }));
 
   if (!visible) {
@@ -130,79 +198,118 @@ export function BrandIntro({
       accessibilityLabel="شاشة بدء المصحف الشريف"
       onLayout={handleLayout}
       style={[styles.container, overlayStyle]}>
-      <View pointerEvents="none" style={styles.background}>
-        <View style={[styles.topGlow, { width: width * 1.28, height: width * 1.28 }]} />
-        <View style={[styles.topArc, { width: width * 1.38, height: width * 1.28 }]} />
-        <View style={[styles.sideGlow, { width: width * 0.8, height: width * 0.8 }]} />
-        <View style={styles.bottomWaveBack} />
-        <View style={styles.bottomWaveFront} />
-        <MosqueSkyline width={width} height={height} />
+      <LinearGradient
+        colors={['#032019', '#0B3B2C', '#04180F']}
+        start={{ x: 0.2, y: 0 }}
+        end={{ x: 0.8, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View pointerEvents="none" style={styles.backdrop}>
+        <View style={[styles.emeraldBloom, { width: width * 1.1, height: width * 1.1 }]} />
+        <View style={[styles.goldBloom, { width: width * 0.95, height: width * 0.95 }]} />
+        <CornerFlourish style={styles.cornerTopRight} />
+        <CornerFlourish style={styles.cornerBottomLeft} />
+        <Image
+          source={GRAIN_SOURCE}
+          resizeMode="repeat"
+          style={[StyleSheet.absoluteFill, styles.grain]}
+        />
       </View>
 
-      <Animated.View
-        style={[
-          styles.emblem,
-          {
-            width: markSize,
-            height: markSize * 1.08,
-            top: height * 0.19,
-          },
-          markStyle,
-        ]}>
-        <View
-          pointerEvents="none"
-          style={[
-            styles.emblemGlow,
-            {
-              width: markSize * 1.62,
-              height: markSize * 1.62,
-              borderRadius: markSize,
-              top: -markSize * 0.27,
-              left: -markSize * 0.31,
-            },
-          ]}
-        />
+      <View style={[styles.stage, { paddingTop: insets.top }]}>
         <Animated.View
-          pointerEvents="none"
           style={[
-            styles.emblemRing,
-            {
-              width: markSize * 1.26,
-              height: markSize * 1.26,
-              borderRadius: markSize,
-              top: -markSize * 0.09,
-              left: -markSize * 0.13,
-            },
-            ringStyle,
-          ]}
-        />
-        <View style={[styles.arch, { borderTopLeftRadius: markSize, borderTopRightRadius: markSize }]} />
-        <View style={[styles.innerArch, { borderTopLeftRadius: markSize, borderTopRightRadius: markSize }]} />
-        <View style={styles.crescent}>
-          <View style={styles.crescentCutout} />
-        </View>
-        <Ionicons
-          name="book-outline"
-          size={markSize * 0.58}
-          color={CREAM}
-          style={styles.emblemBook}
-        />
-      </Animated.View>
+            styles.emblemWrap,
+            { width: seal, height: seal, marginBottom: seal * 0.4 },
+            emblemStyle,
+          ]}>
+          <SoftGlow
+            rgb="229,184,95"
+            size={glowSize}
+            style={[styles.haloCenter, { width: glowSize, height: glowSize }, haloStyle]}
+          />
+          <Animated.View
+            style={[
+              styles.ring,
+              {
+                width: seal * 1.38,
+                height: seal * 1.38,
+                borderRadius: seal * 0.69,
+              },
+              ringForwardStyle,
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.ring,
+              styles.ringOuter,
+              {
+                width: seal * 1.18,
+                height: seal * 1.18,
+                borderRadius: seal * 0.59,
+              },
+              ringBackwardStyle,
+            ]}
+          />
 
-      <Animated.View style={[styles.titleBlock, { top: height * 0.455 }, titleStyle]}>
-        <Text style={[styles.title, { fontSize: width < 370 ? 29 : 34 }]}>المصحف الشريف</Text>
-        <View style={styles.titleDivider}>
-          <View style={styles.dividerLine} />
-          <View style={styles.dividerDiamond} />
-          <View style={styles.dividerLine} />
-        </View>
-      </Animated.View>
+          <View style={[styles.seal, { width: seal, height: seal, borderRadius: seal / 2 }]}>
+            {BEAD_ANGLES.map((angle) => {
+              const radians = (angle * Math.PI) / 180;
+              const radius = seal * 0.43;
+              const bead = seal * 0.042;
+              return (
+                <View
+                  key={angle}
+                  style={[
+                    styles.bead,
+                    {
+                      width: bead,
+                      height: bead,
+                      borderRadius: bead / 2,
+                      left: seal / 2 + radius * Math.cos(radians) - bead / 2,
+                      top: seal / 2 + radius * Math.sin(radians) - bead / 2,
+                    },
+                  ]}
+                />
+              );
+            })}
+            <Animated.View style={[styles.innerGroup, innerStyle]}>
+              <View
+                style={[
+                  styles.innerRing,
+                  { width: seal * 0.72, height: seal * 0.72, borderRadius: seal * 0.36 },
+                ]}>
+                <View
+                  style={[
+                    styles.core,
+                    { width: seal * 0.42, height: seal * 0.42, borderRadius: seal * 0.21 },
+                  ]}>
+                  <Ionicons name="book" size={seal * 0.2} color={CREAM} />
+                </View>
+              </View>
+            </Animated.View>
+          </View>
+        </Animated.View>
 
-      <Animated.View style={[styles.loadingBlock, { top: height * 0.625 }, titleStyle]}>
-        <Text style={styles.loadingText}>رفيقك في رحاب القرآن</Text>
+        <Animated.View style={[styles.titleBlock, titleStyle]}>
+          <Text style={[styles.title, { fontSize: width < 370 ? 30 : 35 }]}>
+            المصحف الشريف
+          </Text>
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <View style={styles.dividerDiamond} />
+            <View style={styles.dividerLine} />
+          </View>
+          <Text style={styles.tagline}>رفيقك في رحاب القرآن</Text>
+        </Animated.View>
+      </View>
+
+      <Animated.View style={[styles.footer, { paddingBottom: insets.bottom + 52 }, footerStyle]}>
         <View style={styles.progressTrack}>
           <Animated.View style={[styles.progressFill, progressStyle]} />
         </View>
+        <Text style={styles.loadingText}>جارٍ التحضير…</Text>
       </Animated.View>
 
       <Pressable
@@ -210,49 +317,56 @@ export function BrandIntro({
         accessibilityLabel="تخطي المقدمة"
         onPress={() => setExiting(true)}
         style={[styles.skipButton, { top: insets.top + 10 }]}>
+        <Ionicons name="play-skip-forward" size={13} color="rgba(255,246,226,0.86)" />
         <Text style={styles.skipText}>تخطي</Text>
       </Pressable>
     </Animated.View>
   );
 }
 
-function MosqueSkyline({ width, height }: { width: number; height: number }) {
+/** Concentric low-alpha circles read as a single soft radial bloom. */
+function SoftGlow({
+  rgb,
+  size,
+  style,
+}: {
+  rgb: string;
+  size: number;
+  style?: StyleProp<AnimatedStyle<ViewStyle>>;
+}) {
+  const rings = [0.34, 0.5, 0.68, 0.84, 1];
   return (
-    <View pointerEvents="none" style={[styles.skyline, { height: height * 0.235 }]}>
-      <View style={styles.skyGlow} />
-      <Minaret left="8%" height={height * 0.15} />
-      <Minaret left="47%" height={height * 0.19} />
-      <Minaret left="82%" height={height * 0.23} />
-      <Dome left="15%" width={width * 0.16} />
-      <Dome left="27%" width={width * 0.13} />
-      <Dome left="39%" width={width * 0.18} />
-      <Dome left="50%" width={width * 0.31} />
-      <Dome left="73%" width={width * 0.15} />
-      <Dome left="87%" width={width * 0.18} />
-      <View style={styles.skylineBase} />
-    </View>
+    <Animated.View pointerEvents="none" style={style}>
+      {rings.map((ring) => {
+        const diameter = size * ring;
+        return (
+          <View
+            key={ring}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              marginLeft: -diameter / 2,
+              marginTop: -diameter / 2,
+              width: diameter,
+              height: diameter,
+              borderRadius: diameter / 2,
+              backgroundColor: `rgba(${rgb},0.06)`,
+            }}
+          />
+        );
+      })}
+    </Animated.View>
   );
 }
 
-function Dome({ left, width }: { left: string; width: number }) {
+/** A hairline gold bracket that frames a corner of the stage. */
+function CornerFlourish({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
-    <View style={[styles.domeGroup, { left, width, height: width * 0.82 }]}>
-      <View style={[styles.domeRoof, { borderTopLeftRadius: width, borderTopRightRadius: width }]} />
-      <View style={styles.domeBase} />
-      <View style={styles.domeFinial} />
-    </View>
-  );
-}
-
-function Minaret({ left, height }: { left: string; height: number }) {
-  return (
-    <View style={[styles.minaret, { left, height }]}>
-      <View style={styles.minaretNeedle} />
-      <View style={styles.minaretCap} />
-      <View style={styles.minaretUpper} />
-      <View style={styles.minaretBalcony} />
-      <View style={styles.minaretShaft} />
-      <View style={styles.minaretBase} />
+    <View pointerEvents="none" style={[styles.flourish, style]}>
+      <View style={styles.flourishH} />
+      <View style={styles.flourishV} />
+      <View style={styles.flourishNode} />
     </View>
   );
 }
@@ -263,131 +377,143 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     overflow: 'hidden',
-    backgroundColor: '#012234',
+    backgroundColor: '#032019',
   },
-  background: {
+  backdrop: {
     ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
-  topGlow: {
+  emeraldBloom: {
     position: 'absolute',
-    top: '-42%',
-    right: '-45%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,116,132,0.2)',
-  },
-  topArc: {
-    position: 'absolute',
-    top: '-43%',
-    right: '-62%',
-    borderWidth: 1,
-    borderColor: 'transparent',
-    borderTopColor: 'rgba(238,193,111,0.85)',
-    borderRadius: 999,
-    transform: [{ rotate: '29deg' }],
-  },
-  sideGlow: {
-    position: 'absolute',
-    left: '-55%',
-    bottom: '21%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,105,121,0.12)',
-  },
-  bottomWaveBack: {
-    position: 'absolute',
+    top: '-52%',
     left: '-38%',
-    bottom: '4%',
-    width: '155%',
-    height: '22%',
     borderRadius: 999,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(235,185,92,0.65)',
-    backgroundColor: 'rgba(7,55,71,0.54)',
-    transform: [{ rotate: '-9deg' }],
+    backgroundColor: 'rgba(20,110,84,0.22)',
   },
-  bottomWaveFront: {
+  goldBloom: {
     position: 'absolute',
-    left: '-24%',
-    bottom: '-8%',
-    width: '150%',
-    height: '20%',
+    bottom: '-46%',
+    right: '-34%',
     borderRadius: 999,
-    backgroundColor: '#062B3A',
-    transform: [{ rotate: '4deg' }],
+    backgroundColor: 'rgba(201,151,60,0.09)',
   },
-  emblem: {
+  grain: {
+    opacity: 0.16,
+  },
+  flourish: {
     position: 'absolute',
-    alignSelf: 'center',
-    alignItems: 'center',
+    width: 74,
+    height: 74,
   },
-  arch: {
+  cornerTopRight: {
+    top: 70,
+    right: 24,
+    transform: [{ scaleX: -1 }],
+  },
+  cornerBottomLeft: {
+    bottom: 96,
+    left: 24,
+    transform: [{ rotate: '180deg' }],
+  },
+  flourishH: {
     position: 'absolute',
     top: 0,
-    width: '72%',
-    height: '73%',
-    borderWidth: 4,
-    borderBottomWidth: 0,
-    borderColor: GOLD,
+    left: 0,
+    width: '100%',
+    height: 1,
+    backgroundColor: 'rgba(229,184,95,0.4)',
   },
-  innerArch: {
+  flourishV: {
     position: 'absolute',
-    top: '15%',
-    width: '58%',
-    height: '61%',
-    borderWidth: 1.5,
-    borderBottomWidth: 0,
-    borderColor: 'rgba(255,221,157,0.72)',
+    top: 0,
+    left: 0,
+    width: 1,
+    height: '100%',
+    backgroundColor: 'rgba(229,184,95,0.4)',
   },
-  crescent: {
+  flourishNode: {
     position: 'absolute',
-    top: '19%',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    top: -3,
+    left: -3,
+    width: 7,
+    height: 7,
+    borderRadius: 2,
     backgroundColor: GOLD,
   },
-  crescentCutout: {
-    position: 'absolute',
-    top: -4,
-    right: -7,
-    width: 29,
-    height: 29,
-    borderRadius: 15,
-    backgroundColor: '#012234',
+  stage: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emblemGlow: {
-    position: 'absolute',
-    backgroundColor: 'rgba(229,184,95,0.07)',
+  emblemWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emblemRing: {
+  haloCenter: {
+    position: 'absolute',
+  },
+  ring: {
     position: 'absolute',
     borderWidth: 1,
     borderColor: 'transparent',
-    borderTopColor: 'rgba(229,184,95,0.55)',
-    borderRightColor: 'rgba(229,184,95,0.3)',
+    borderTopColor: 'rgba(229,184,95,0.85)',
+    borderRightColor: 'rgba(229,184,95,0.22)',
   },
-  emblemBook: {
+  ringOuter: {
+    borderTopColor: 'rgba(243,210,140,0.32)',
+    borderLeftColor: 'rgba(243,210,140,0.72)',
+  },
+  seal: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(229,184,95,0.4)',
+    shadowColor: GOLD,
+    shadowOpacity: 0.35,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  bead: {
     position: 'absolute',
-    bottom: -3,
-    alignSelf: 'center',
+    backgroundColor: 'rgba(229,184,95,0.9)',
+  },
+  innerGroup: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  innerRing: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(229,184,95,0.45)',
+  },
+  core: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(5,38,29,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(229,184,95,0.55)',
   },
   titleBlock: {
-    position: 'absolute',
-    width: '100%',
     alignItems: 'center',
-    gap: 20,
+    paddingHorizontal: 32,
+    gap: 16,
   },
   title: {
     color: CREAM,
     fontWeight: '900',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
     textAlign: 'center',
-    textShadowColor: 'rgba(229,184,95,0.35)',
-    textShadowRadius: 18,
+    textShadowColor: 'rgba(229,184,95,0.45)',
+    textShadowRadius: 20,
     textShadowOffset: { width: 0, height: 0 },
   },
-  titleDivider: {
-    width: '62%',
+  divider: {
+    width: '58%',
+    maxWidth: 240,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -396,167 +522,68 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(229,184,95,0.82)',
+    backgroundColor: 'rgba(229,184,95,0.7)',
   },
   dividerDiamond: {
-    width: 11,
-    height: 11,
+    width: 9,
+    height: 9,
     backgroundColor: GOLD,
     transform: [{ rotate: '45deg' }],
   },
-  loadingBlock: {
+  tagline: {
+    color: 'rgba(255,246,226,0.74)',
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  footer: {
     position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
-    alignSelf: 'center',
     gap: 14,
   },
   progressTrack: {
     width: PROGRESS_WIDTH,
-    height: 3,
+    height: 4,
     overflow: 'hidden',
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,244,220,0.16)',
-  },
-  loadingText: {
-    color: 'rgba(255,244,220,0.8)',
-    fontSize: 14,
-    fontWeight: '500',
-    letterSpacing: 0.2,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,246,226,0.14)',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 2,
-    backgroundColor: GOLD,
+    borderRadius: Radius.pill,
+    backgroundColor: GOLD_SOFT,
     shadowColor: GOLD,
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
+    shadowOpacity: 0.95,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
     elevation: 4,
   },
-  skyline: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  skyGlow: {
-    position: 'absolute',
-    left: '12%',
-    right: '12%',
-    bottom: 0,
-    height: '45%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(209,157,70,0.12)',
-  },
-  skylineBase: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '10%',
-    backgroundColor: '#062B3A',
-  },
-  domeGroup: {
-    position: 'absolute',
-    bottom: '7%',
-  },
-  domeRoof: {
-    position: 'absolute',
-    bottom: '25%',
-    width: '100%',
-    height: '75%',
-    backgroundColor: SILHOUETTE,
-  },
-  domeBase: {
-    position: 'absolute',
-    bottom: 0,
-    width: '100%',
-    height: '43%',
-    backgroundColor: SILHOUETTE,
-  },
-  domeFinial: {
-    position: 'absolute',
-    top: -5,
-    alignSelf: 'center',
-    width: 3,
-    height: 9,
-    borderRadius: 2,
-    backgroundColor: SILHOUETTE,
-  },
-  minaret: {
-    position: 'absolute',
-    bottom: '7%',
-    width: 32,
-  },
-  minaretNeedle: {
-    position: 'absolute',
-    top: 0,
-    alignSelf: 'center',
-    width: 2,
-    height: '13%',
-    backgroundColor: SILHOUETTE,
-  },
-  minaretCap: {
-    position: 'absolute',
-    top: '8%',
-    alignSelf: 'center',
-    width: 15,
-    height: 18,
-    borderTopLeftRadius: 9,
-    borderTopRightRadius: 9,
-    backgroundColor: SILHOUETTE,
-  },
-  minaretUpper: {
-    position: 'absolute',
-    top: '19%',
-    alignSelf: 'center',
-    width: 8,
-    height: '36%',
-    backgroundColor: SILHOUETTE,
-  },
-  minaretBalcony: {
-    position: 'absolute',
-    top: '51%',
-    alignSelf: 'center',
-    width: 29,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: SILHOUETTE,
-  },
-  minaretShaft: {
-    position: 'absolute',
-    top: '55%',
-    alignSelf: 'center',
-    width: 11,
-    height: '36%',
-    backgroundColor: SILHOUETTE,
-  },
-  minaretBase: {
-    position: 'absolute',
-    bottom: 0,
-    alignSelf: 'center',
-    width: 24,
-    height: 7,
-    borderTopLeftRadius: 6,
-    borderTopRightRadius: 6,
-    backgroundColor: SILHOUETTE,
+  loadingText: {
+    color: 'rgba(255,246,226,0.72)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   skipButton: {
     position: 'absolute',
     left: 20,
-    minWidth: 60,
-    minHeight: 38,
-    paddingHorizontal: 16,
-    borderRadius: 19,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    minHeight: 38,
+    paddingHorizontal: 15,
+    borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(255,244,220,0.28)',
-    backgroundColor: 'rgba(255,244,220,0.08)',
+    borderColor: 'rgba(229,184,95,0.3)',
+    backgroundColor: 'rgba(255,246,226,0.08)',
     zIndex: 2,
   },
   skipText: {
-    color: 'rgba(255,244,220,0.88)',
+    color: 'rgba(255,246,226,0.9)',
     fontSize: 13,
     fontWeight: '700',
   },

@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
@@ -26,70 +25,68 @@ export function ContinueReadingCard({
   const hasPosition = Boolean(position && surahName);
 
   return (
-    <Animated.View entering={FadeInDown.duration(560).delay(120)}>
-      <Link
-        href={
-          position
-            ? {
-                pathname: '/reader',
-                params: {
-                  surahNumber: String(position.surahNumber),
-                  ayahNumber: String(position.ayahNumber),
-                },
-              }
-            : '/reader'
+    <Link
+      href={
+        position
+          ? {
+              pathname: '/reader',
+              params: {
+                surahNumber: String(position.surahNumber),
+                ayahNumber: String(position.ayahNumber),
+              },
+            }
+          : '/reader'
+      }
+      asChild>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          hasPosition && position && surahName
+            ? `متابعة القراءة من سورة ${surahName} الآية ${toArabicNumbers(position.ayahNumber)}`
+            : 'ابدأ القراءة من سورة الفاتحة'
         }
-        asChild>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            hasPosition && position && surahName
-              ? `متابعة القراءة من سورة ${surahName} الآية ${toArabicNumbers(position.ayahNumber)}`
-              : 'ابدأ القراءة من سورة الفاتحة'
-          }
-          style={({ pressed }) => pressed && styles.pressed}>
-          <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.content}>
-            <View pointerEvents="none" style={styles.ornament} />
-            <View pointerEvents="none" style={styles.glow} />
+        style={({ pressed }) => pressed && styles.pressed}>
+        <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.content}>
+          <View pointerEvents="none" style={styles.ornament} />
+          <View pointerEvents="none" style={styles.glow} />
 
-            <View style={styles.row}>
-              <View style={styles.iconWrap}>
-                <Ionicons
-                  name={hasPosition ? 'book' : 'book-outline'}
-                  size={24}
-                  color="#F3D28C"
-                />
-              </View>
-
-              <View style={styles.copy}>
-                <Text style={styles.eyebrow}>
-                  {hasPosition ? 'متابعة القراءة' : 'ابدأ رحلتك'}
-                </Text>
-                <Text style={styles.title} numberOfLines={1}>
-                  {loading
-                    ? 'جارٍ التحقق…'
-                    : hasPosition && position && surahName
-                      ? `سورة ${surahName}`
-                      : 'سورة الفاتحة'}
-                </Text>
-                <Text style={styles.subtitle} numberOfLines={1}>
-                  {loading
-                    ? 'نستعيد موضعك الأخير'
-                    : hasPosition && position
-                      ? `الآية ${toArabicNumbers(position.ayahNumber)} · من حيث توقفت`
-                      : 'ابدأ قراءتك الأولى اليوم'}
-                </Text>
-              </View>
-
-              <View style={styles.cta}>
-                <Ionicons name={hasPosition ? 'play' : 'arrow-back'} size={16} color="#0B382D" />
-                <Text style={styles.ctaText}>{hasPosition ? 'متابعة' : 'ابدأ'}</Text>
-              </View>
+          <View style={styles.row}>
+            <View style={styles.iconWrap}>
+              <Ionicons
+                name={hasPosition ? 'book' : 'book-outline'}
+                size={24}
+                color="#F3D28C"
+              />
             </View>
-          </GlassSurface>
-        </Pressable>
-      </Link>
-    </Animated.View>
+
+            <View style={styles.copy}>
+              <Text style={styles.eyebrow}>
+                {hasPosition ? 'متابعة القراءة' : 'ابدأ رحلتك'}
+              </Text>
+              <Text style={styles.title} numberOfLines={1}>
+                {loading
+                  ? 'جارٍ التحقق…'
+                  : hasPosition && position && surahName
+                    ? `سورة ${surahName}`
+                    : 'سورة الفاتحة'}
+              </Text>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {loading
+                  ? 'نستعيد موضعك الأخير'
+                  : hasPosition && position
+                    ? `الآية ${toArabicNumbers(position.ayahNumber)} · من حيث توقفت`
+                    : 'ابدأ قراءتك الأولى اليوم'}
+              </Text>
+            </View>
+
+            <View style={styles.cta}>
+              <Ionicons name={hasPosition ? 'play' : 'arrow-back'} size={16} color="#0B382D" />
+              <Text style={styles.ctaText}>{hasPosition ? 'متابعة' : 'ابدأ'}</Text>
+            </View>
+          </View>
+        </GlassSurface>
+      </Pressable>
+    </Link>
   );
 }
 

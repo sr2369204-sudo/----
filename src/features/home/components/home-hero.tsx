@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Link } from 'expo-router';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { useCallback, useRef } from 'react';
 import {
   Pressable,
@@ -9,12 +9,15 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type LayoutChangeEvent,
   type ViewInstance,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LinearGradient } from '@/components/ui/optional-native-views';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
+import { useAmbientLoop } from '@/hooks/use-ambient-loop';
 import type { SearchAnchor } from '@/features/home/components/home-search-results';
 
 const GRAIN_SOURCE = require('../../../../assets/images/glass-grain.png');
@@ -45,7 +48,30 @@ export function HomeHero({
   onSearchAnchorChange,
 }: HomeHeroProps) {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const searchContainerRef = useRef<ViewInstance>(null);
+  // A very slow drift keeps the photograph alive without ever stealing focus
+  // from the search bar that sits on top of it.
+  const drift = useAmbientLoop(22_000);
+  // A light band passes across the photograph every few seconds.
+  const sheen = useAmbientLoop(7_000, 1_400, false);
+
+  const imageStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: interpolate(drift.value, [0, 1], [1.06, 1.16]) },
+      { translateX: interpolate(drift.value, [0, 1], [-8, 8]) },
+      { translateY: interpolate(drift.value, [0, 1], [5, -5]) },
+    ],
+  }));
+
+  const sheenStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: interpolate(sheen.value, [0, 1], [-160, screenWidth + 160]) },
+      { rotate: '14deg' },
+    ],
+    opacity: interpolate(sheen.value, [0, 0.08, 0.62, 0.78], [0, 1, 1, 0], 'clamp'),
+  }));
+
   const measureSearchAnchor = useCallback(() => {
     searchContainerRef.current?.measureInWindow((x, y, width, height) => {
       onSearchAnchorChange({ x, y, width, height });
@@ -58,7 +84,9 @@ export function HomeHero({
   return (
     <View style={[styles.shell, { height: HERO_HEIGHT + insets.top }]}>
       <View style={styles.frame}>
-        <Image source={HERO_IMAGE} style={StyleSheet.absoluteFill} contentFit="cover" transition={600} />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, imageStyle]}>
+          <Image source={HERO_IMAGE} style={StyleSheet.absoluteFill} contentFit="cover" transition={600} />
+        </Animated.View>
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.imageScrim]} />
         <Image
           source={GRAIN_SOURCE}
@@ -66,10 +94,22 @@ export function HomeHero({
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, styles.grain]}
         />
+        <Animated.View pointerEvents="none" style={[styles.sheen, sheenStyle]}>
+          <LinearGradient
+            colors={[
+              'rgba(255,255,255,0)',
+              'rgba(255,255,255,0.26)',
+              'rgba(255,255,255,0)',
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
       </View>
 
       <View style={[styles.content, { paddingTop: insets.top + Spacing.three }]}>
-        <Animated.View entering={FadeInDown.duration(560).delay(100)} style={styles.topRow}>
+        <View style={styles.topRow}>
           <View style={styles.identity}>
             <View style={styles.brandMark}>
               <Image
@@ -93,9 +133,9 @@ export function HomeHero({
               <Ionicons name="settings-outline" size={22} color="#FFF" />
             </Pressable>
           </Link>
-        </Animated.View>
+        </View>
 
-        <Animated.View entering={FadeInUp.duration(520).delay(200)} style={styles.searchEntry}>
+        <View style={styles.searchEntry}>
           <View
             ref={searchContainerRef}
             onLayout={handleSearchLayout}
@@ -117,7 +157,7 @@ export function HomeHero({
               returnKeyType="search"
             />
           </View>
-        </Animated.View>
+        </View>
       </View>
     </View>
   );
@@ -142,6 +182,13 @@ const styles = StyleSheet.create({
   },
   grain: {
     opacity: 0.22,
+  },
+  sheen: {
+    position: 'absolute',
+    top: -60,
+    bottom: -60,
+    left: 0,
+    width: 90,
   },
   content: {
     flex: 1,

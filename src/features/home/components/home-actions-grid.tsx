@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
@@ -61,11 +60,8 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
 
   return (
     <View style={styles.row}>
-      {actions.map((action, index) => (
-        <Animated.View
-          key={action.id}
-          entering={FadeInDown.duration(480).delay(180 + index * 50)}
-          style={styles.cell}>
+      {actions.map((action) => (
+        <View key={action.id} style={styles.cell}>
           <Link href={action.href} asChild>
             <Pressable
               accessibilityRole="button"
@@ -88,7 +84,7 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
               </GlassSurface>
             </Pressable>
           </Link>
-        </Animated.View>
+        </View>
       ))}
     </View>
   );
