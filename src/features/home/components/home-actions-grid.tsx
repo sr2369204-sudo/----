@@ -54,7 +54,7 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
       label: 'المكتبة',
       sublabel: 'السور',
       icon: 'grid',
-      color: '#5E72E4',
+      color: '#9A762F',
       href: '/library',
     },
   ];

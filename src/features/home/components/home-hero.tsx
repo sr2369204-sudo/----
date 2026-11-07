@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { LinearGradient } from '@/components/ui/optional-native-views';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import type { SearchAnchor } from '@/features/home/components/home-search-results';
 
@@ -60,12 +59,7 @@ export function HomeHero({
     <View style={[styles.shell, { height: HERO_HEIGHT + insets.top }]}>
       <View style={styles.frame}>
         <Image source={HERO_IMAGE} style={StyleSheet.absoluteFill} contentFit="cover" transition={600} />
-        <LinearGradient
-          colors={['rgba(4,26,20,0.12)', 'rgba(4,26,20,0.74)']}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.imageScrim]} />
         <Image
           source={GRAIN_SOURCE}
           resizeMode="repeat"
@@ -142,6 +136,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(216,181,109,0.5)',
+  },
+  imageScrim: {
+    backgroundColor: 'rgba(4,26,20,0.34)',
   },
   grain: {
     opacity: 0.22,
