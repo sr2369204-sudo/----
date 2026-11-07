@@ -9,13 +9,11 @@ import {
   Text,
   TextInput,
   View,
-  useWindowDimensions,
   type LayoutChangeEvent,
   type ViewInstance,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { LinearGradient } from '@/components/ui/optional-native-views';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { useAmbientLoop } from '@/hooks/use-ambient-loop';
 import type { SearchAnchor } from '@/features/home/components/home-search-results';
@@ -48,28 +46,24 @@ export function HomeHero({
   onSearchAnchorChange,
 }: HomeHeroProps) {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
   const searchContainerRef = useRef<ViewInstance>(null);
-  // A very slow drift keeps the photograph alive without ever stealing focus
-  // from the search bar that sits on top of it.
-  const drift = useAmbientLoop(22_000);
-  // A light band passes across the photograph every few seconds.
-  const sheen = useAmbientLoop(7_000, 1_400, false);
+  // A slow drift pans and zooms the photograph without ever stealing focus from
+  // the search bar that sits on top of it.
+  const drift = useAmbientLoop(16_000);
+  // A soft light breathes over the frame, so the photograph reads as lit rather
+  // than merely nudged. It stays in place, so nothing travels as a rectangle.
+  const light = useAmbientLoop(6_200, 800);
 
   const imageStyle = useAnimatedStyle(() => ({
     transform: [
-      { scale: interpolate(drift.value, [0, 1], [1.06, 1.16]) },
-      { translateX: interpolate(drift.value, [0, 1], [-8, 8]) },
-      { translateY: interpolate(drift.value, [0, 1], [5, -5]) },
+      { scale: interpolate(drift.value, [0, 1], [1.06, 1.18]) },
+      { translateX: interpolate(drift.value, [0, 1], [-10, 10]) },
+      { translateY: interpolate(drift.value, [0, 1], [6, -6]) },
     ],
   }));
 
-  const sheenStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: interpolate(sheen.value, [0, 1], [-160, screenWidth + 160]) },
-      { rotate: '14deg' },
-    ],
-    opacity: interpolate(sheen.value, [0, 0.08, 0.62, 0.78], [0, 1, 1, 0], 'clamp'),
+  const lightStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(light.value, [0, 1], [0.04, 0.16]),
   }));
 
   const measureSearchAnchor = useCallback(() => {
@@ -94,18 +88,10 @@ export function HomeHero({
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, styles.grain]}
         />
-        <Animated.View pointerEvents="none" style={[styles.sheen, sheenStyle]}>
-          <LinearGradient
-            colors={[
-              'rgba(255,255,255,0)',
-              'rgba(255,255,255,0.26)',
-              'rgba(255,255,255,0)',
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.lightVeil, lightStyle]}
+        />
       </View>
 
       <View style={[styles.content, { paddingTop: insets.top + Spacing.three }]}>
@@ -183,12 +169,8 @@ const styles = StyleSheet.create({
   grain: {
     opacity: 0.22,
   },
-  sheen: {
-    position: 'absolute',
-    top: -60,
-    bottom: -60,
-    left: 0,
-    width: 90,
+  lightVeil: {
+    backgroundColor: '#FFF6E2',
   },
   content: {
     flex: 1,

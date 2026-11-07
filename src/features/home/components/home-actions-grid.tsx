@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
+import { useAmbientLoop } from '@/hooks/use-ambient-loop';
 import { useTheme } from '@/hooks/use-theme';
 
 type ActionItem = {
@@ -60,32 +62,65 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
 
   return (
     <View style={styles.row}>
-      {actions.map((action) => (
-        <View key={action.id} style={styles.cell}>
-          <Link href={action.href} asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={action.label}
-              style={({ pressed }) => [styles.press, pressed && styles.pressed]}>
-              <GlassSurface radius={Radius.lg} contentStyle={styles.tile} style={styles.surface}>
-                <View
-                  style={[
-                    styles.iconBadge,
-                    { backgroundColor: `${action.color}1F`, borderColor: `${action.color}3D` },
-                  ]}>
-                  <Ionicons name={action.icon} size={19} color={action.color} />
-                </View>
-                <Text numberOfLines={1} style={[styles.label, { color: colors.text }]}>
-                  {action.label}
-                </Text>
-                <Text numberOfLines={1} style={[styles.sublabel, { color: colors.textSecondary }]}>
-                  {action.sublabel}
-                </Text>
-              </GlassSurface>
-            </Pressable>
-          </Link>
-        </View>
+      {actions.map((action, index) => (
+        <ActionTile key={action.id} action={action} index={index} />
       ))}
+    </View>
+  );
+}
+
+/**
+ * One shortcut card. Only the icon is animated: a soft halo breathes out from
+ * behind the glyph while the glyph itself lifts and settles. The card, its text
+ * and its layout stay perfectly still.
+ */
+function ActionTile({ action, index }: { action: ActionItem; index: number }) {
+  const colors = useTheme();
+  const halo = useAmbientLoop(2_900 + index * 240, index * 300);
+  const icon = useAmbientLoop(3_600 + index * 260, index * 240);
+
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(halo.value, [0, 1], [0.34, 0]),
+    transform: [{ scale: interpolate(halo.value, [0, 1], [0.72, 1.65]) }],
+  }));
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: interpolate(icon.value, [0, 1], [1, 1.1]) },
+      { translateY: interpolate(icon.value, [0, 1], [0, -1.5]) },
+    ],
+  }));
+
+  return (
+    <View style={styles.cell}>
+      <Link href={action.href} asChild>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={action.label}
+          style={({ pressed }) => [styles.press, pressed && styles.pressed]}>
+          <GlassSurface radius={Radius.lg} contentStyle={styles.tile}>
+            <View style={styles.iconSlot}>
+              <Animated.View
+                style={[styles.iconHalo, { backgroundColor: action.color }, haloStyle]}
+              />
+              <View
+                style={[
+                  styles.iconBadge,
+                  { backgroundColor: `${action.color}1F`, borderColor: `${action.color}3D` },
+                ]}>
+                <Animated.View style={iconStyle}>
+                  <Ionicons name={action.icon} size={19} color={action.color} />
+                </Animated.View>
+              </View>
+            </View>
+            <Text numberOfLines={1} style={[styles.label, { color: colors.text }]}>
+              {action.label}
+            </Text>
+            <Text numberOfLines={1} style={[styles.sublabel, { color: colors.textSecondary }]}>
+              {action.sublabel}
+            </Text>
+          </GlassSurface>
+        </Pressable>
+      </Link>
     </View>
   );
 }
@@ -102,13 +137,24 @@ const styles = StyleSheet.create({
   press: {
     width: '100%',
   },
-  surface: {},
   tile: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.one,
+  },
+  iconSlot: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconHalo: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
   },
   iconBadge: {
     width: 40,

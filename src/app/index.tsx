@@ -310,10 +310,10 @@ function AmbientBackdrop() {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Animated.View style={[styles.glowTop, topStyle]}>
-        <SoftGlow rgb="14,122,87" size={340} alpha={isDark ? 0.05 : 0.035} />
+        <SoftGlow rgb="14,122,87" size={340} alpha={isDark ? 0.07 : 0.05} />
       </Animated.View>
       <Animated.View style={[styles.glowBottom, bottomStyle]}>
-        <SoftGlow rgb="201,151,60" size={280} alpha={isDark ? 0.04 : 0.045} />
+        <SoftGlow rgb="201,151,60" size={280} alpha={isDark ? 0.06 : 0.06} />
       </Animated.View>
       <Image
         source={GRAIN_SOURCE}
@@ -352,7 +352,7 @@ function SoftGlow({
 }) {
   const rings = [0.34, 0.5, 0.68, 0.84, 1];
   return (
-    <View pointerEvents="none">
+    <View pointerEvents="none" style={{ width: size, height: size }}>
       {rings.map((ring) => {
         const diameter = size * ring;
         return (
@@ -360,8 +360,10 @@ function SoftGlow({
             key={ring}
             style={{
               position: 'absolute',
-              left: -diameter / 2,
-              top: -diameter / 2,
+              left: '50%',
+              top: '50%',
+              marginLeft: -diameter / 2,
+              marginTop: -diameter / 2,
               width: diameter,
               height: diameter,
               borderRadius: diameter / 2,
