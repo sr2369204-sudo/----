@@ -6,6 +6,7 @@ import type { Highlight } from '@/features/annotations/types';
 import type { MushafPage } from '@/features/quran/types';
 import {
   buildHighlightElements,
+  getMushafPageCenteringOffset,
   renderMushafLinesHtml,
   toArabicNumberString,
   type HighlightElementMap,
@@ -407,7 +408,9 @@ function createMushafHtml(
   isDark: boolean,
 ): string {
   const sourceLineCount = Math.max(...page.lines.map((line) => line.lineNumber), 15);
-  const linesHtml = renderMushafLinesHtml(page);
+  const rowOffset =
+    page.pageNumber <= 2 ? getMushafPageCenteringOffset(page, sourceLineCount) : 0;
+  const linesHtml = renderMushafLinesHtml(page, rowOffset);
   const baseFontSize = Math.min(Math.round(fontSize * 1.5), 120);
 
   const surahName = page.surahs && page.surahs.length > 0 ? page.surahs[0].nameArabic : '';

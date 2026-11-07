@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildHighlightElements, renderMushafLinesHtml } from '../src/features/reader/services/mushaf-page-markup.ts';
+import {
+  buildHighlightElements,
+  getMushafPageCenteringOffset,
+  renderMushafLinesHtml,
+} from '../src/features/reader/services/mushaf-page-markup.ts';
 
 /**
  * A page shaped like the real source payload: the API returns one record per
@@ -64,6 +68,21 @@ test('renders exactly one Mushaf row per source line, placed at that line', () =
   );
   // One row per source line: the layout is never split or merged by the renderer.
   assert.equal(rows.length, page.lines.length);
+});
+
+test('centers the first page rows without changing their spacing', () => {
+  const page = buildSyntheticPage();
+  page.lines = page.lines.slice(0, 7);
+  page.ayahs = page.ayahs.slice(0, 7);
+
+  const offset = getMushafPageCenteringOffset(page, SYNTHETIC_LINE_COUNT);
+  const html = renderMushafLinesHtml(page, offset);
+  const rows = [...html.matchAll(/<div class="line" style="grid-row: (\d+);"/g)].map((match) =>
+    Number(match[1]),
+  );
+
+  assert.equal(offset, 4);
+  assert.deepEqual(rows, [5, 6, 7, 8, 9, 10, 11]);
 });
 
 test('keeps the source word order inside every line', () => {
@@ -136,6 +155,18 @@ test('inserts the surah heading and Basmala on the rows the source leaves free',
     ...html.matchAll(/<div class="line" style="grid-row: (\d+);"/g),
   ].map((match) => Number(match[1]));
   assert.deepEqual(lineRows, [3, 4]);
+
+  const offset = getMushafPageCenteringOffset(page, SYNTHETIC_LINE_COUNT);
+  const centeredHtml = renderMushafLinesHtml(page, offset);
+  assert.equal(offset, 5);
+  assert.match(centeredHtml, /<div class="surah-title" style="grid-row: 6;"/);
+  assert.match(centeredHtml, /<div class="opening-basmala" style="grid-row: 7;"/);
+  assert.deepEqual(
+    [...centeredHtml.matchAll(/<div class="line" style="grid-row: (\d+);"/g)].map((match) =>
+      Number(match[1]),
+    ),
+    [8, 9],
+  );
 });
 
 test('keys highlights by the document ids the page actually renders', () => {

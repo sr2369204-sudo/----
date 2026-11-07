@@ -15,8 +15,8 @@ export const READER_TOOLBAR_SHAPE_OPTIONS: { value: ReaderToolbarShape; label: s
   { value: 'slim', label: 'عمودي رفيع' },
 ];
 
-/** Shipped shape of the word/ayah tools: a lengthwise pill, never a circle. */
-export const DEFAULT_READER_TOOLBAR_SHAPE: ReaderToolbarShape = 'slim';
+/** Default to a compact rounded-square shape instead of the vertical pill. */
+export const DEFAULT_READER_TOOLBAR_SHAPE: ReaderToolbarShape = 'rounded';
 
 export function isReaderToolbarShape(value: string): value is ReaderToolbarShape {
   return value === 'round' || value === 'rounded' || value === 'slim';

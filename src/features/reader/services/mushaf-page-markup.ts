@@ -10,7 +10,7 @@ import type { MushafPage } from '../../quran/types';
  * the printed Mushaf assigns to it, in source order, which is what keeps the
  * margins and the per-line width identical to the printed page.
  */
-export function renderMushafLinesHtml(page: MushafPage): string {
+export function renderMushafLinesHtml(page: MushafPage, rowOffset = 0): string {
   const sourceLineNumbers = new Set(page.lines.map((line) => line.lineNumber));
   const surahTitles: Record<number, string> = {};
   const basmalas: Record<number, string> = {};
@@ -36,7 +36,7 @@ export function renderMushafLinesHtml(page: MushafPage): string {
 
     if (titleRow >= 1 && !sourceLineNumbers.has(titleRow)) {
       surahTitles[titleRow] = `
-        <div class="surah-title" style="grid-row: ${titleRow};" aria-label="سورة ${escapeHtml(surahName)}">
+        <div class="surah-title" style="grid-row: ${titleRow + rowOffset};" aria-label="سورة ${escapeHtml(surahName)}">
           <div class="surah-title-container">
             <div class="surah-info-circle start">
               <span class="info-label">آياتها</span>
@@ -68,7 +68,7 @@ export function renderMushafLinesHtml(page: MushafPage): string {
         )
         .join(' ');
       basmalas[basmalaRow] = `
-        <div class="opening-basmala" style="grid-row: ${basmalaRow};">
+        <div class="opening-basmala" style="grid-row: ${basmalaRow + rowOffset};">
           <span class="line-inner">${basmalaWordsHtml}</span>
         </div>`;
     }
@@ -101,11 +101,54 @@ export function renderMushafLinesHtml(page: MushafPage): string {
       .join(' ');
 
     renderedRows.push(
-      `<div class="line" style="grid-row: ${line.lineNumber};" aria-label="السطر ${line.lineNumber}"><span class="line-inner">${wordsHtml}</span></div>`,
+      `<div class="line" style="grid-row: ${line.lineNumber + rowOffset};" aria-label="السطر ${line.lineNumber}"><span class="line-inner">${wordsHtml}</span></div>`,
     );
   }
 
   return renderedRows.join('\n');
+}
+
+/** Centers a short page by shifting its source rows without collapsing the grid. */
+export function getMushafPageCenteringOffset(page: MushafPage, totalRows: number): number {
+  const sourceRows = page.lines.map((line) => line.lineNumber);
+  const occupiedRows = new Set(sourceRows);
+  const sourceLineNumbers = new Set(sourceRows);
+
+  for (const ayah of page.ayahs) {
+    if (ayah.ayahNumber !== 1) continue;
+    const firstWord = page.lines
+      .flatMap((line) => line.words)
+      .find(
+        (word) =>
+          word.surahNumber === ayah.surahNumber &&
+          word.ayahNumber === 1 &&
+          word.charType === 'word',
+      );
+    if (!firstWord) continue;
+
+    const titleRow =
+      firstWord.surahNumber === 1 || firstWord.surahNumber === 9
+        ? firstWord.lineNumber - 1
+        : firstWord.lineNumber - 2;
+    if (titleRow >= 1 && !sourceLineNumbers.has(titleRow)) occupiedRows.add(titleRow);
+
+    const basmalaRow = firstWord.lineNumber - 1;
+    if (
+      firstWord.surahNumber !== 9 &&
+      firstWord.surahNumber !== 1 &&
+      basmalaRow >= 1 &&
+      !sourceLineNumbers.has(basmalaRow) &&
+      page.basmalaWords?.length
+    ) {
+      occupiedRows.add(basmalaRow);
+    }
+  }
+
+  if (occupiedRows.size === 0) return 0;
+  const firstRow = Math.min(...occupiedRows);
+  const lastRow = Math.max(...occupiedRows);
+  const occupiedHeight = lastRow - firstRow + 1;
+  return Math.max(0, Math.floor((totalRows - occupiedHeight) / 2) - (firstRow - 1));
 }
 
 function escapeHtml(text: string): string {
