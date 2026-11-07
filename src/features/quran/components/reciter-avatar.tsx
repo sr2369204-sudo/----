@@ -9,7 +9,10 @@ import {
 
 const portraitImages: Record<ReciterPortraitImageKey, ImageSourcePropType> = {
   'abdul-basit': require('../../../../assets/images/reciters/abdul-basit.jpg'),
+  'bandar-baleela': require('../../../../assets/images/reciters/bandar-baleela.jpg'),
   husary: require('../../../../assets/images/reciters/husary.jpg'),
+  'islam-sobhi': require('../../../../assets/images/reciters/islam-sobhi.jpg'),
+  'maher-muaiqly': require('../../../../assets/images/reciters/maher-muaiqly.png'),
   minshawi: require('../../../../assets/images/reciters/minshawi.jpg'),
   'mishary-rashid': require('../../../../assets/images/reciters/mishary-rashid.jpg'),
   'saud-shuraim': require('../../../../assets/images/reciters/shuraim.png'),

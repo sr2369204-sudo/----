@@ -9,6 +9,7 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -36,6 +37,7 @@ export function BrandIntro({
   const reveal = useSharedValue(0);
   const fadeOut = useSharedValue(1);
   const progress = useSharedValue(0);
+  const ring = useSharedValue(0);
   const markSize = Math.min(width * 0.34, 148);
 
   const handleLayout = useCallback(() => {
@@ -57,14 +59,25 @@ export function BrandIntro({
       easing: Easing.linear,
       reduceMotion: ReduceMotion.System,
     });
+    // A slow, endless turn keeps the emblem alive without pulling attention.
+    ring.value = withRepeat(
+      withTiming(1, {
+        duration: 9_000,
+        easing: Easing.linear,
+        reduceMotion: ReduceMotion.System,
+      }),
+      -1,
+      false,
+    );
 
     const introTimer = setTimeout(() => setExiting(true), INTRO_DURATION_MS);
     return () => {
       clearTimeout(introTimer);
       cancelAnimation(reveal);
       cancelAnimation(progress);
+      cancelAnimation(ring);
     };
-  }, [progress, reveal]);
+  }, [progress, reveal, ring]);
 
   useEffect(() => {
     if (!exiting) {
@@ -103,6 +116,9 @@ export function BrandIntro({
   const progressStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [0, PROGRESS_WIDTH]),
   }));
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${ring.value * 360}deg` }],
+  }));
 
   if (!visible) {
     return null;
@@ -133,6 +149,33 @@ export function BrandIntro({
           },
           markStyle,
         ]}>
+        <View
+          pointerEvents="none"
+          style={[
+            styles.emblemGlow,
+            {
+              width: markSize * 1.62,
+              height: markSize * 1.62,
+              borderRadius: markSize,
+              top: -markSize * 0.27,
+              left: -markSize * 0.31,
+            },
+          ]}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.emblemRing,
+            {
+              width: markSize * 1.26,
+              height: markSize * 1.26,
+              borderRadius: markSize,
+              top: -markSize * 0.09,
+              left: -markSize * 0.13,
+            },
+            ringStyle,
+          ]}
+        />
         <View style={[styles.arch, { borderTopLeftRadius: markSize, borderTopRightRadius: markSize }]} />
         <View style={[styles.innerArch, { borderTopLeftRadius: markSize, borderTopRightRadius: markSize }]} />
         <View style={styles.crescent}>
@@ -312,6 +355,17 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     backgroundColor: '#012234',
   },
+  emblemGlow: {
+    position: 'absolute',
+    backgroundColor: 'rgba(229,184,95,0.07)',
+  },
+  emblemRing: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    borderTopColor: 'rgba(229,184,95,0.55)',
+    borderRightColor: 'rgba(229,184,95,0.3)',
+  },
   emblemBook: {
     position: 'absolute',
     bottom: -3,
@@ -328,6 +382,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.4,
     textAlign: 'center',
+    textShadowColor: 'rgba(229,184,95,0.35)',
+    textShadowRadius: 18,
+    textShadowOffset: { width: 0, height: 0 },
   },
   titleDivider: {
     width: '62%',
@@ -355,10 +412,10 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     width: PROGRESS_WIDTH,
-    height: 2,
+    height: 3,
     overflow: 'hidden',
-    borderRadius: 1,
-    backgroundColor: 'rgba(255,244,220,0.2)',
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,244,220,0.16)',
   },
   loadingText: {
     color: 'rgba(255,244,220,0.8)',
@@ -368,8 +425,13 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    borderRadius: 1,
+    borderRadius: 2,
     backgroundColor: GOLD,
+    shadowColor: GOLD,
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
   },
   skyline: {
     position: 'absolute',
@@ -482,15 +544,20 @@ const styles = StyleSheet.create({
   skipButton: {
     position: 'absolute',
     left: 20,
-    minWidth: 56,
-    minHeight: 44,
+    minWidth: 60,
+    minHeight: 38,
+    paddingHorizontal: 16,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,244,220,0.28)',
+    backgroundColor: 'rgba(255,244,220,0.08)',
     zIndex: 2,
   },
   skipText: {
-    color: 'rgba(255,244,220,0.72)',
+    color: 'rgba(255,244,220,0.88)',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

@@ -269,7 +269,14 @@ function UpdateModal({
       statusBarTranslucent>
       <View style={updateStyles.overlay}>
         <View style={[updateStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[updateStyles.hero, { backgroundColor: colors.backgroundSelected }]}>
+          <View
+            style={[
+              updateStyles.hero,
+              {
+                backgroundColor: colors.backgroundSelected,
+                borderBottomColor: `${colors.accent}33`,
+              },
+            ]}>
             <View style={[updateStyles.closeSlot, { backgroundColor: colors.surface }]}>
               {!downloading && (
                 <Pressable
@@ -281,7 +288,15 @@ function UpdateModal({
                 </Pressable>
               )}
             </View>
-            <View style={[updateStyles.iconBadge, { backgroundColor: colors.primary }]}>
+            <View
+              style={[
+                updateStyles.iconBadge,
+                {
+                  backgroundColor: colors.primary,
+                  borderColor: `${colors.accent}59`,
+                  shadowColor: colors.primary,
+                },
+              ]}>
               <Ionicons name="sparkles" size={28} color={colors.onPrimary} />
             </View>
             <View style={[updateStyles.updateBadge, { backgroundColor: colors.surface }]}>
@@ -306,11 +321,16 @@ function UpdateModal({
             showsVerticalScrollIndicator={false}>
             <Text style={[updateStyles.notesTitle, { color: colors.text }]}>أبرز الإضافات</Text>
             {notes.length > 0 ? notes.map((note, index) => (
-              <View key={`${index}-${note}`} style={updateStyles.noteRow}>
-                <View style={[updateStyles.noteIcon, { backgroundColor: colors.backgroundSelected }]}>
-                  <Ionicons name="checkmark" size={15} color={colors.primary} />
+              <View
+                key={`${index}-${note}`}
+                style={[
+                  updateStyles.noteRow,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                ]}>
+                <View style={[updateStyles.noteIcon, { backgroundColor: `${colors.accent}22` }]}>
+                  <Ionicons name="checkmark" size={14} color={colors.accent} />
                 </View>
-                <Text style={[updateStyles.noteText, { color: colors.textSecondary }]}>{note}</Text>
+                <Text style={[updateStyles.noteText, { color: colors.text }]}>{note}</Text>
               </View>
             )) : (
               <Text style={[updateStyles.noteText, { color: colors.textSecondary }]}>
@@ -325,7 +345,7 @@ function UpdateModal({
                 <Text style={[updateStyles.progressCaption, { color: colors.textSecondary }]}>
                   جارٍ تحميل التحديث
                 </Text>
-                <Text style={[updateStyles.progressPercent, { color: colors.primary }]}>
+                <Text style={[updateStyles.progressPercent, { color: colors.accent }]}>
                   {toArabicDigits(progressPercent)}٪
                 </Text>
               </View>
@@ -336,7 +356,11 @@ function UpdateModal({
                 <View
                   style={[
                     updateStyles.progressFill,
-                    { width: `${progressPercent}%`, backgroundColor: colors.primary },
+                    {
+                      width: `${progressPercent}%`,
+                      backgroundColor: colors.accent,
+                      shadowColor: colors.accent,
+                    },
                   ]}
                 />
               </View>
@@ -370,7 +394,7 @@ function UpdateModal({
               onPress={onUpdate}
               style={({ pressed }) => [
                 updateStyles.updateButton,
-                { backgroundColor: colors.primary },
+                { backgroundColor: colors.primary, shadowColor: colors.primary },
                 pressed && !downloading && updateStyles.pressed,
               ]}>
               <Ionicons
@@ -409,12 +433,18 @@ const updateStyles = StyleSheet.create({
     borderRadius: 28,
     borderWidth: 1,
     paddingBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 24,
   },
   hero: {
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 22,
+    borderBottomWidth: 1,
   },
   closeSlot: {
     width: 34,
@@ -430,8 +460,13 @@ const updateStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 22,
+    borderWidth: 2,
     marginTop: 2,
     marginBottom: 13,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
   updateBadge: {
     flexDirection: 'row-reverse',
@@ -466,7 +501,7 @@ const updateStyles = StyleSheet.create({
     flexShrink: 1,
   },
   notesContent: {
-    gap: 12,
+    gap: 10,
     paddingHorizontal: 22,
     paddingTop: 18,
     paddingBottom: 14,
@@ -481,6 +516,10 @@ const updateStyles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
     gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   noteIcon: {
     width: 23,
@@ -522,6 +561,10 @@ const updateStyles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 99,
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 3,
   },
   progressHint: {
     fontSize: 11,
@@ -569,6 +612,10 @@ const updateStyles = StyleSheet.create({
     gap: 9,
     borderRadius: 15,
     paddingHorizontal: 16,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
   updateButtonText: {
     fontSize: 14,

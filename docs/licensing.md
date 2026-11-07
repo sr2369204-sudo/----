@@ -21,6 +21,9 @@ The picker streams these portraits from Wikimedia Commons and shows a source-and
 | Abdul Basit Abdul Samad | [Abdul Basit 'Abd us-Samad with King Faisal](https://commons.wikimedia.org/wiki/File:Abdul_Basit_%27Abd_us-Samad_with_King_Faisal.jpg) | Unknown author | Public domain |
 | Abdur-Rahman as-Sudais | [Abdul-Rahman Al-Sudais (Cropped, 2011)](https://commons.wikimedia.org/wiki/File:Abdul-Rahman_Al-Sudais_(Cropped,_2011).jpg) | Prime Minister's Office | GODL-India |
 | Mahmoud Khalil Al-Husary | [Hussary](https://commons.wikimedia.org/wiki/File:Hussary.jpg) | Zubairkhan1 | Public domain |
+| Bandar Baleela | [Bandar Baleela](https://commons.wikimedia.org/wiki/File:Bandar_Baleela.jpg) | محبين يحيى الزعبي | CC BY-SA 3.0 |
+| Islam Sobhi | [Islam Sobhi](https://commons.wikimedia.org/wiki/File:Islam_Sobhi.jpg) | Moaz600 | CC BY-SA 4.0 |
+| Maher Al Muaiqly | [Mahir Al-Muaiqly](https://commons.wikimedia.org/wiki/File:Mahir_Al-Muaiqly.png) | Sazwanmisuari | CC0 |
 | Muhammad Siddiq al-Minshawi | [Elminshwey](https://commons.wikimedia.org/wiki/File:Elminshwey.jpg) | Unknown author | Public domain |
 | Saud al-Shuraim | [Saud Shuraim](https://commons.wikimedia.org/wiki/File:Saud_Shuraim.png) | Sazwanmisuari | CC0 |
 | Yasser al-Dosari | [Yasser Al-dosari](https://commons.wikimedia.org/wiki/File:Yasser_Al-dosari.jpg) | Yasser Al-Dosari | CC0 |

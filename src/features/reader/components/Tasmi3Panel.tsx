@@ -151,43 +151,55 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       {expanded && (
         <View style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.header}>
-            <View>
+            <View style={styles.headerText}>
               <Text style={[styles.title, { color: colors.text }]}>التسميع</Text>
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                 {describeScope(scope)}
               </Text>
             </View>
-            <Ionicons name="mic-circle" size={31} color={colors.primary} />
+            <View style={[styles.headerIcon, { backgroundColor: colors.backgroundSelected }]}>
+              <Ionicons name="mic" size={20} color={colors.primary} />
+            </View>
           </View>
 
           <View style={[styles.notice, { backgroundColor: colors.backgroundSelected }]}>
-            <Ionicons name="eye-off-outline" size={22} color={colors.primary} />
+            <Ionicons name="eye-off-outline" size={20} color={colors.primary} />
             <Text style={[styles.noticeText, { color: colors.text }]}>
               الآيات مخفية ببلور. اقرأها من حفظك ثم أوقف التسجيل للمراجعة.
             </Text>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={recorderState.isRecording ? 'إيقاف التسميع' : 'بدء التسميع'}
-            disabled={busy}
-            onPress={() => void (recorderState.isRecording ? stopRecording() : startRecording())}
-            style={({ pressed }) => [
-              styles.recordButton,
-              { backgroundColor: recorderState.isRecording ? '#C62828' : colors.primary },
-              pressed && styles.pressed,
-              busy && styles.disabled,
+          <View
+            style={[
+              styles.recordRing,
+              {
+                borderColor: recorderState.isRecording
+                  ? 'rgba(198,40,40,0.32)'
+                  : 'rgba(201,151,60,0.38)',
+              },
             ]}>
-            {busy ? (
-              <ActivityIndicator color={colors.background} />
-            ) : (
-              <Ionicons
-                name={recorderState.isRecording ? 'stop' : 'mic'}
-                size={32}
-                color={colors.background}
-              />
-            )}
-          </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={recorderState.isRecording ? 'إيقاف التسميع' : 'بدء التسميع'}
+              disabled={busy}
+              onPress={() => void (recorderState.isRecording ? stopRecording() : startRecording())}
+              style={({ pressed }) => [
+                styles.recordButton,
+                { backgroundColor: recorderState.isRecording ? '#C62828' : colors.primary },
+                pressed && styles.pressed,
+                busy && styles.disabled,
+              ]}>
+              {busy ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Ionicons
+                  name={recorderState.isRecording ? 'stop' : 'mic'}
+                  size={30}
+                  color="#FFFFFF"
+                />
+              )}
+            </Pressable>
+          </View>
           <Text style={[styles.timer, { color: recorderState.isRecording ? '#C62828' : colors.textSecondary }]}>
             {recorderState.isRecording
               ? formatDuration(recorderState.durationMillis)
@@ -226,14 +238,18 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
         onPress={toggleTasmi3Button}
         style={({ pressed }) => [
           styles.floatingButton,
-          { backgroundColor: colors.primary, borderColor: colors.surface },
+          expanded && styles.floatingButtonCompact,
+          { backgroundColor: colors.primary, borderColor: colors.accent },
           pressed && styles.pressed,
         ]}>
         <Ionicons
           name={recorderState.isRecording ? 'stop' : expanded ? 'chevron-down' : 'mic'}
-          size={24}
-          color={colors.background}
+          size={22}
+          color={colors.onPrimary}
         />
+        {!expanded && !recorderState.isRecording && (
+          <Text style={[styles.floatingLabel, { color: colors.onPrimary }]}>تسميع</Text>
+        )}
         {recorderState.isRecording && <View style={styles.recordingDot} />}
       </Pressable>
     </Animated.View>
@@ -261,13 +277,16 @@ function formatDuration(durationMs: number): string {
 
 const styles = StyleSheet.create({
   root: { position: 'absolute', right: 18, alignItems: 'flex-end', zIndex: 30, gap: 10 },
-  panel: { width: 290, borderWidth: 1, borderRadius: 22, padding: 18, gap: 14, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 8 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 22, fontWeight: '900', textAlign: 'right' },
+  panel: { width: 300, borderWidth: 1, borderRadius: 22, padding: 18, gap: 14, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  headerText: { flex: 1 },
+  headerIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 20, fontWeight: '900', textAlign: 'right' },
   subtitle: { marginTop: 4, fontSize: 13, textAlign: 'right' },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, padding: 14 },
-  noticeText: { flex: 1, fontSize: 14, lineHeight: 22, textAlign: 'right' },
-  recordButton: { width: 76, height: 76, borderRadius: 38, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, padding: 12 },
+  noticeText: { flex: 1, fontSize: 13, lineHeight: 21, textAlign: 'right' },
+  recordRing: { alignSelf: 'center', width: 96, height: 96, borderRadius: 48, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  recordButton: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center' },
   timer: { fontSize: 16, fontWeight: '800', textAlign: 'center' },
   playButton: { minHeight: 48, borderWidth: 1, borderRadius: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   playLabel: { fontSize: 14, fontWeight: '800' },
@@ -276,6 +295,8 @@ const styles = StyleSheet.create({
   error: { color: '#C62828', fontSize: 13, textAlign: 'center' },
   pressed: { opacity: 0.78 },
   disabled: { opacity: 0.55 },
-  floatingButton: { width: 58, height: 58, borderRadius: 29, borderWidth: 3, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 },
+  floatingButton: { minWidth: 58, height: 58, paddingHorizontal: 20, borderRadius: 29, borderWidth: 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 9 },
+  floatingButtonCompact: { width: 58, paddingHorizontal: 0 },
+  floatingLabel: { fontSize: 15, fontWeight: '800' },
   recordingDot: { position: 'absolute', top: 8, right: 8, width: 9, height: 9, borderRadius: 5, backgroundColor: '#FFCDD2' },
 });

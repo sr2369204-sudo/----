@@ -8,12 +8,20 @@ import { toArabicNumbers } from '@/features/home/utils/format';
 import type { AyahSearchResult } from '@/features/quran/types';
 import { useTheme } from '@/hooks/use-theme';
 
+/** Light-on-dark colours used while the card sits inside the search panel. */
+const DARK_TEXT = '#FFF9EA';
+const DARK_TEXT_MUTED = 'rgba(239,248,243,0.78)';
+const DARK_ACCENT = '#E8C77F';
+
 export const SearchAyahResultItem = memo(function SearchAyahResultItem({
   result,
   surahName,
+  onDark = false,
 }: {
   result: AyahSearchResult;
   surahName: string;
+  /** Renders the card for the dark search panel that hangs under the search bar. */
+  onDark?: boolean;
 }) {
   const colors = useTheme();
 
@@ -31,24 +39,39 @@ export const SearchAyahResultItem = memo(function SearchAyahResultItem({
         accessibilityRole="button"
         style={StyleSheet.flatten([
           styles.card,
-          { backgroundColor: colors.glassSurface },
+          onDark
+            ? styles.cardOnDark
+            : { backgroundColor: colors.glassSurface },
         ])}>
         <View style={styles.header}>
-          <View style={[styles.badge, { backgroundColor: colors.background }]}>
-            <Text style={[styles.badgeText, { color: colors.primary }]}>
+          <View
+            style={[
+              styles.badge,
+              onDark
+                ? styles.badgeOnDark
+                : { backgroundColor: colors.background },
+            ]}>
+            <Text style={[styles.badgeText, { color: onDark ? DARK_ACCENT : colors.primary }]}>
               {toArabicNumbers(result.ayahNumber)}
             </Text>
           </View>
-          <Text style={[styles.surahName, { color: colors.text }]}>سورة {surahName}</Text>
+          <Text style={[styles.surahName, { color: onDark ? DARK_TEXT : colors.text }]}>
+            سورة {surahName}
+          </Text>
         </View>
 
-        <Text numberOfLines={3} style={[styles.text, { color: colors.textSecondary }]}>
+        <Text
+          numberOfLines={3}
+          style={[styles.text, { color: onDark ? DARK_TEXT_MUTED : colors.textSecondary }]}>
           {result.text}
         </Text>
 
         <View style={styles.footer}>
-          <Ionicons name="arrow-back" size={16} color={colors.primary} />
-          <Text style={[styles.footerText, { color: colors.primary }]}>انتقل إلى الآية</Text>
+          <Ionicons name="arrow-back" size={16} color={onDark ? DARK_ACCENT : colors.primary} />
+          <Text
+            style={[styles.footerText, { color: onDark ? DARK_ACCENT : colors.primary }]}>
+            انتقل إلى الآية
+          </Text>
         </View>
       </Pressable>
     </Link>
@@ -64,6 +87,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     gap: Spacing.one,
   },
+  cardOnDark: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
   header: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -75,6 +103,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badgeOnDark: {
+    backgroundColor: 'rgba(216,181,109,0.2)',
   },
   badgeText: {
     fontSize: TypeScale.label,

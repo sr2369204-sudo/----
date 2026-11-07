@@ -16,7 +16,18 @@ import { SearchAyahResultItem } from '@/features/home/components/search-ayah-res
 import { HOME_SEARCH_RESULTS_LIMIT } from '@/features/home/utils/home-search';
 import { toArabicNumbers } from '@/features/home/utils/format';
 import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types';
-import { useTheme } from '@/hooks/use-theme';
+
+/** Gap between the search bar and the results panel that hangs under it. */
+const RESULTS_GAP = 26;
+
+/** The panel reuses the search bar's dark emerald and gold so the two read as one control. */
+const PANEL_BACKGROUND = '#0B382D';
+const PANEL_BORDER = 'rgba(216,181,109,0.38)';
+const PANEL_DIVIDER = 'rgba(216,181,109,0.22)';
+const PANEL_ROW_DIVIDER = 'rgba(255,255,255,0.1)';
+const PANEL_TEXT = '#FFF9EA';
+const PANEL_TEXT_MUTED = 'rgba(239,248,243,0.68)';
+const PANEL_ACCENT = '#E8C77F';
 
 export type SearchAnchor = { x: number; y: number; width: number; height: number };
 
@@ -39,7 +50,6 @@ export function HomeSearchResults({
   searchError,
   onRetrySearch,
 }: HomeSearchResultsProps) {
-  const colors = useTheme();
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const visibleAyahResults = ayahResults.slice(0, HOME_SEARCH_RESULTS_LIMIT);
@@ -48,7 +58,7 @@ export function HomeSearchResults({
     Math.max(0, HOME_SEARCH_RESULTS_LIMIT - visibleAyahResults.length),
   );
   const visibleResultCount = visibleSurahResults.length + visibleAyahResults.length;
-  const panelTop = anchor.y + anchor.height + Spacing.two;
+  const panelTop = anchor.y + anchor.height + RESULTS_GAP;
 
   return (
     <View pointerEvents="box-none" style={styles.layer}>
@@ -61,30 +71,24 @@ export function HomeSearchResults({
             left: Math.max(Spacing.two, anchor.x - Spacing.two),
             right: Math.max(Spacing.two, width - anchor.x - anchor.width - Spacing.two),
             maxHeight: Math.max(160, height - panelTop - insets.bottom - Spacing.two),
-            backgroundColor: colors.surface,
-            borderColor: colors.glassBorder,
           },
         ]}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.text }]}>نتائج البحث</Text>
-          <Text style={[styles.count, { color: colors.textSecondary }]}>
+          <Text style={styles.title}>نتائج البحث</Text>
+          <Text style={styles.count}>
             {searchLoading ? 'جارٍ البحث…' : toArabicNumbers(visibleResultCount)}
           </Text>
         </View>
         {searchLoading ? (
           <View style={styles.message}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[styles.messageText, { color: colors.textSecondary }]}>
-              جارٍ البحث في المصحف…
-            </Text>
+            <ActivityIndicator size="small" color={PANEL_ACCENT} />
+            <Text style={styles.messageText}>جارٍ البحث في المصحف…</Text>
           </View>
         ) : searchError ? (
           <View style={styles.message}>
-            <Text style={[styles.messageText, { color: colors.textSecondary }]}>
-              تعذر البحث في المصحف.
-            </Text>
+            <Text style={styles.messageText}>تعذر البحث في المصحف.</Text>
             <Pressable accessibilityRole="button" onPress={onRetrySearch}>
-              <Text style={[styles.retryText, { color: colors.primary }]}>إعادة المحاولة</Text>
+              <Text style={styles.retryText}>إعادة المحاولة</Text>
             </Pressable>
           </View>
         ) : visibleResultCount > 0 ? (
@@ -93,7 +97,7 @@ export function HomeSearchResults({
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled>
             {visibleAyahResults.length > 0 && (
-              <Text style={[styles.sectionTitle, { color: colors.primary }]}>آيات مطابقة</Text>
+              <Text style={styles.sectionTitle}>آيات مطابقة</Text>
             )}
             {visibleAyahResults.map((result) => (
               <SearchAyahResultItem
@@ -101,10 +105,11 @@ export function HomeSearchResults({
                 result={result}
                 surahName={surahNameByNumber.get(result.surahNumber)
                   ?? `رقم ${toArabicNumbers(result.surahNumber)}`}
+                onDark
               />
             ))}
             {visibleSurahResults.length > 0 && (
-              <Text style={[styles.sectionTitle, { color: colors.primary }]}>السور</Text>
+              <Text style={styles.sectionTitle}>السور</Text>
             )}
             {visibleSurahResults.map((surah) => (
               <Link
@@ -113,28 +118,23 @@ export function HomeSearchResults({
                 asChild>
                 <Pressable
                   accessibilityRole="button"
-                  style={StyleSheet.flatten([
-                    styles.surahResult,
-                    { borderBottomColor: colors.glassBorder },
-                  ])}>
-                  <View style={[styles.surahNumber, { backgroundColor: colors.backgroundSelected }]}>
-                    <Text style={[styles.surahNumberText, { color: colors.primary }]}>
+                  style={styles.surahResult}>
+                  <View style={styles.surahNumber}>
+                    <Text style={styles.surahNumberText}>
                       {toArabicNumbers(surah.surahNumber)}
                     </Text>
                   </View>
-                  <Text style={[styles.surahName, { color: colors.text }]}>
+                  <Text style={styles.surahName}>
                     سورة {surah.nameArabic}
                   </Text>
-                  <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
+                  <Ionicons name="chevron-back" size={18} color={PANEL_TEXT_MUTED} />
                 </Pressable>
               </Link>
             ))}
           </ScrollView>
         ) : (
           <View style={styles.message}>
-            <Text style={[styles.messageText, { color: colors.textSecondary }]}>
-              لا توجد نتائج مطابقة في المصحف.
-            </Text>
+            <Text style={styles.messageText}>لا توجد نتائج مطابقة في المصحف.</Text>
           </View>
         )}
       </View>
@@ -151,31 +151,36 @@ const styles = StyleSheet.create({
   panel: {
     position: 'absolute',
     maxHeight: 340,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.md,
     borderWidth: 1,
+    borderColor: PANEL_BORDER,
+    backgroundColor: PANEL_BACKGROUND,
     overflow: 'hidden',
     zIndex: 2001,
     elevation: 2001,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.26,
+    shadowRadius: 18,
   },
   header: {
-    minHeight: 42,
+    minHeight: 44,
     paddingHorizontal: Spacing.three,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(128,128,128,0.25)',
+    borderBottomColor: PANEL_DIVIDER,
   },
   title: {
     fontSize: TypeScale.label,
     fontWeight: '900',
+    color: PANEL_TEXT,
   },
   count: {
     fontSize: TypeScale.caption,
+    fontWeight: '700',
+    color: PANEL_TEXT_MUTED,
   },
   results: {
     flexGrow: 0,
@@ -187,6 +192,7 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.caption,
     fontWeight: '900',
     textAlign: 'right',
+    color: PANEL_ACCENT,
   },
   message: {
     minHeight: 76,
@@ -198,10 +204,12 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: TypeScale.caption,
     textAlign: 'center',
+    color: PANEL_TEXT_MUTED,
   },
   retryText: {
     fontSize: TypeScale.caption,
     fontWeight: '800',
+    color: PANEL_ACCENT,
   },
   surahResult: {
     minHeight: 52,
@@ -210,6 +218,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: PANEL_ROW_DIVIDER,
   },
   surahNumber: {
     width: 30,
@@ -217,15 +226,20 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: PANEL_DIVIDER,
   },
   surahNumberText: {
     fontSize: TypeScale.caption,
     fontWeight: '900',
+    color: PANEL_ACCENT,
   },
   surahName: {
     flex: 1,
     fontSize: TypeScale.body,
     fontWeight: '800',
     textAlign: 'right',
+    color: PANEL_TEXT,
   },
 });

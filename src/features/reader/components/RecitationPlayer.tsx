@@ -55,6 +55,8 @@ type PlayerProps = {
 };
 
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
+/** Gold wash behind the memorisation action, matching the theme accent. */
+const TASMI3_TINT = 'rgba(201,151,60,0.16)';
 
 /** Floating recitation controller pinned to the bottom of the screen. */
 export function RecitationPlayer({
@@ -507,9 +509,15 @@ export function RecitationScopeDialog({
           <View style={styles.dialogHeader}>
             <View style={styles.sheetHandle} />
             <View style={styles.headerRow}>
-              <Text style={[styles.dialogTitle, { color: colors.text }]}>إعدادات التلاوة</Text>
+              <View style={styles.titleGroup}>
+                <View style={[styles.titleIcon, { backgroundColor: colors.backgroundSelected }]}>
+                  <Ionicons name="headset" size={17} color={colors.primary} />
+                </View>
+                <Text style={[styles.dialogTitle, { color: colors.text }]}>إعدادات التلاوة</Text>
+              </View>
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="بدء التسميع"
                 disabled={busy}
                 onPress={() => {
                   setLocalError(null);
@@ -525,12 +533,12 @@ export function RecitationScopeDialog({
                 }}
                 style={({ pressed }) => [
                   styles.secondaryConfirmButton,
-                  { borderColor: colors.primary },
+                  { backgroundColor: TASMI3_TINT, borderColor: colors.accent },
                   busy && styles.disabled,
                   pressed && styles.pressed,
                 ]}>
-                <Ionicons name="mic-outline" size={17} color={colors.primary} />
-                <Text style={[styles.secondaryConfirmLabel, { color: colors.primary }]}>تسميع</Text>
+                <Ionicons name="mic" size={16} color={colors.accent} />
+                <Text style={[styles.secondaryConfirmLabel, { color: colors.accent }]}>تسميع</Text>
               </Pressable>
             </View>
           </View>
@@ -730,11 +738,12 @@ export function RecitationScopeDialog({
               pressed && styles.pressed,
             ]}>
             {busy ? (
-              <ActivityIndicator size="small" color={colors.background} />
+              <ActivityIndicator size="small" color={colors.onPrimary} />
             ) : (
-              <Text style={[styles.confirmLabel, { color: colors.background }]}>
-                <Ionicons name="play" size={15} color={colors.background} /> تشغيل
-              </Text>
+              <View style={styles.confirmContent}>
+                <Ionicons name="play" size={16} color={colors.onPrimary} />
+                <Text style={[styles.confirmLabel, { color: colors.onPrimary }]}>تشغيل</Text>
+              </View>
             )}
           </Pressable>
         </View>
@@ -1101,6 +1110,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  titleGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  titleIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   dialogTitle: {
     fontSize: 19,
     fontWeight: '900',
@@ -1335,22 +1356,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  confirmContent: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
   confirmLabel: {
     fontSize: 15,
     fontWeight: '800',
   },
   secondaryConfirmButton: {
-    marginTop: Spacing.one,
-    minHeight: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 8,
+    minHeight: 40,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    flexDirection: 'row-reverse',
+    gap: 7,
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondaryConfirmLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
   },
 });

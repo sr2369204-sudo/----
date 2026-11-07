@@ -119,10 +119,7 @@ export default function ReaderScreen() {
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [recitationBusy, setRecitationBusy] = useState(false);
   const [recitationError, setRecitationError] = useState<string | null>(null);
-  const [tasmi3Session, setTasmi3Session] = useState<{
-    scope: RecitationScope;
-    tracks: RecitationTrack[];
-  } | null>(null);
+  const [tasmi3Session, setTasmi3Session] = useState<RecitationScope | null>(null);
   const [tasmi3Revealed, setTasmi3Revealed] = useState(false);
   const [selectionAnchor, setSelectionAnchor] = useState<ElementRect | null>(null);
   const [highlightRevision, setHighlightRevision] = useState(0);
@@ -840,43 +837,36 @@ export default function ReaderScreen() {
     loadRecitationQueue(queue, null);
   }, [loadRecitationQueue, player, reciterId]);
 
-  const startTasmi3 = useCallback(async (requestedScope: RecitationScope) => {
-    setRecitationBusy(true);
-    setRecitationError(null);
-    try {
-      const selectedScope =
-        requestedScope.type === 'pageRange' &&
-        requestedScope.fromPage === requestedScope.toPage &&
-        selection?.type === 'ayah'
+  const startTasmi3 = useCallback((requestedScope: RecitationScope) => {
+    const selectedScope =
+      requestedScope.type === 'pageRange' &&
+      requestedScope.fromPage === requestedScope.toPage &&
+      selection?.type === 'ayah'
+        ? {
+            type: 'ayah',
+            surahNumber: selection.surahNumber,
+            ayahNumber: selection.ayah.ayahNumber,
+          } as RecitationScope
+        : requestedScope.type === 'pageRange' &&
+            requestedScope.fromPage === requestedScope.toPage &&
+            selection?.type === 'range'
           ? {
-              type: 'ayah',
+              type: 'ayahRange',
               surahNumber: selection.surahNumber,
-              ayahNumber: selection.ayah.ayahNumber,
+              fromAyah: selection.startAyah,
+              toAyah: selection.endAyah,
             } as RecitationScope
-          : requestedScope.type === 'pageRange' &&
-              requestedScope.fromPage === requestedScope.toPage &&
-              selection?.type === 'range'
-            ? {
-                type: 'ayahRange',
-                surahNumber: selection.surahNumber,
-                fromAyah: selection.startAyah,
-                toAyah: selection.endAyah,
-              } as RecitationScope
-            : requestedScope;
-      audioRequest.current += 1;
-      player.pause();
-      recitationPlaylist.pause();
-      const queue = await buildRecitationQueue(reciterId, selectedScope);
-      setTasmi3Session({ scope: selectedScope, tracks: queue.tracks });
-      setTasmi3Revealed(false);
-      setScopeDialogOpen(false);
-      useReaderSelectionStore.getState().clearSelection();
-    } catch (error) {
-      setRecitationError(error instanceof Error ? error.message : 'تعذر تجهيز التسميع.');
-    } finally {
-      setRecitationBusy(false);
-    }
-  }, [player, recitationPlaylist, reciterId, selection]);
+          : requestedScope;
+    // Memorisation mode reads the page already on screen, so it never fetches
+    // audio and therefore works with no connection.
+    audioRequest.current += 1;
+    player.pause();
+    recitationPlaylist.pause();
+    setTasmi3Session(selectedScope);
+    setTasmi3Revealed(false);
+    setScopeDialogOpen(false);
+    useReaderSelectionStore.getState().clearSelection();
+  }, [player, recitationPlaylist, selection]);
 
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
     if (currentSelection.type === 'range') {
@@ -1317,13 +1307,13 @@ export default function ReaderScreen() {
             style={({ pressed }) =>
               StyleSheet.flatten([
                 styles.navActionBtn,
-                { backgroundColor: colors.surface, borderColor: colors.border },
+                { backgroundColor: colors.backgroundSelected, borderColor: colors.border },
                 pressed && { opacity: 0.75 },
               ])
             }
           >
-            <Ionicons name="chevron-forward" size={16} color={colors.text} />
-            <Text style={[styles.navActionText, { color: colors.text }]}>السور</Text>
+            <Ionicons name="chevron-forward" size={15} color={colors.primary} />
+            <Text style={[styles.navActionText, { color: colors.primary }]}>السور</Text>
           </Pressable>
         </Link>
 
@@ -1331,15 +1321,20 @@ export default function ReaderScreen() {
           accessibilityRole="button"
           accessibilityLabel="الانتقال إلى موضع آخر"
           onPress={() => setNavigationOpen(true)}
-          style={({ pressed }) => [styles.navCenterInfo, pressed && { opacity: 0.75 }]}
+          style={({ pressed }) => [
+            styles.navCenterInfo,
+            { backgroundColor: colors.backgroundSelected, borderColor: colors.border },
+            pressed && { opacity: 0.75 },
+          ]}
         >
           <View style={styles.navTitleRow}>
-            <Ionicons name="navigate-outline" size={16} color={colors.primary} />
-            <Text style={[styles.navSurahTitle, { color: colors.text }]}>
+            <Ionicons name="navigate-outline" size={14} color={colors.primary} />
+            <Text style={[styles.navSurahTitle, { color: colors.text }]} numberOfLines={1}>
               سورة {currentSurahName}
             </Text>
+            <Ionicons name="chevron-down" size={13} color={colors.textSecondary} />
           </View>
-          <Text style={[styles.navPageSubtitle, { color: colors.textSecondary }]}>
+          <Text style={[styles.navPageSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
             صفحة {toArabicDigits(activePageNumber ?? 1)} · الجزء {toArabicDigits(page?.juzNumber ?? 1)}
           </Text>
         </Pressable>
@@ -1354,7 +1349,7 @@ export default function ReaderScreen() {
             }}
             style={({ pressed }) => [
               styles.navIconBtn,
-              { backgroundColor: colors.surface, borderColor: colors.border },
+              { backgroundColor: colors.backgroundSelected, borderColor: colors.border },
               pressed && { opacity: 0.75 },
             ]}
           >
@@ -1368,7 +1363,7 @@ export default function ReaderScreen() {
               style={({ pressed }) =>
                 StyleSheet.flatten([
                   styles.navIconBtn,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  { backgroundColor: colors.backgroundSelected, borderColor: colors.border },
                   pressed && { opacity: 0.75 },
                 ])
               }
@@ -1579,7 +1574,7 @@ export default function ReaderScreen() {
           error={recitationError}
           onSelectReciter={selectReciter}
           onConfirm={(scope) => void startRecitation(scope)}
-          onTasmi3={(scope) => void startTasmi3(scope)}
+          onTasmi3={startTasmi3}
           chapterOnly={isFullSurahReciter(reciterId)}
           onClose={() => {
             setScopeDialogOpen(false);
@@ -1617,7 +1612,7 @@ export default function ReaderScreen() {
       {tasmi3Session && (
         <Tasmi3Panel
           visible
-          scope={tasmi3Session.scope}
+          scope={tasmi3Session}
           onHide={() => setTasmi3Revealed(false)}
           onReveal={() => setTasmi3Revealed(true)}
           onExit={() => {
@@ -1869,23 +1864,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   navCenterInfo: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    marginHorizontal: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
   },
   navTitleRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 5,
+    maxWidth: '100%',
   },
   navSurahTitle: {
     fontSize: 15,
     fontWeight: 'bold',
     textAlign: 'center',
+    flexShrink: 1,
   },
   navPageSubtitle: {
     fontSize: 11,
-    marginTop: 2,
+    marginTop: 1,
     textAlign: 'center',
   },
   navLeftActions: {

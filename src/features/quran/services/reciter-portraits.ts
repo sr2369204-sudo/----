@@ -1,6 +1,9 @@
 export type ReciterPortraitImageKey =
   | 'abdul-basit'
+  | 'bandar-baleela'
   | 'husary'
+  | 'islam-sobhi'
+  | 'maher-muaiqly'
   | 'minshawi'
   | 'mishary-rashid'
   | 'saud-shuraim'
@@ -74,6 +77,24 @@ const portraits: Record<number, ReciterPortrait> = {
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Elminshwey.jpg',
     credit: 'Unknown author',
     license: 'Public domain',
+  },
+  102: {
+    imageKey: 'maher-muaiqly',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Mahir_Al-Muaiqly.png',
+    credit: 'Sazwanmisuari',
+    license: 'CC0',
+  },
+  217: {
+    imageKey: 'bandar-baleela',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Bandar_Baleela.jpg',
+    credit: 'محبين يحيى الزعبي',
+    license: 'CC BY-SA 3.0',
+  },
+  253: {
+    imageKey: 'islam-sobhi',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Islam_Sobhi.jpg',
+    credit: 'Moaz600',
+    license: 'CC BY-SA 4.0',
   },
 };
 
