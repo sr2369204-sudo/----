@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import {
   Modal,
   Platform,
@@ -20,6 +21,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/theme';
 import { BrandIntro, IntroAnimationContext } from '@/components/brand-intro';
+import { LinearGradient } from '@/components/ui/optional-native-views';
 import { initializeDatabase } from '@/core/database/migrations';
 import { OfflineLibrary } from '@/features/reader/services/offline-library';
 import { useOfflineDownloadStore } from '@/features/reader/state/offline-download-store';
@@ -41,6 +43,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/** Backdrop of the update card's header, so the top of the box is never bare. */
+const UPDATE_HERO_SOURCE = require('../../assets/images/quran-hero.png');
 
 function AppLayout() {
   const database = useSQLiteContext();
@@ -269,22 +274,36 @@ function UpdateModal({
       statusBarTranslucent>
       <View style={updateStyles.overlay}>
         <View style={[updateStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View
-            style={[
-              updateStyles.hero,
-              {
-                backgroundColor: colors.backgroundSelected,
-                borderBottomColor: `${colors.accent}33`,
-              },
-            ]}>
-            <View style={[updateStyles.closeSlot, { backgroundColor: colors.surface }]}>
+          <View style={[updateStyles.hero, { borderBottomColor: `${colors.accent}33` }]}>
+            <Image
+              source={UPDATE_HERO_SOURCE}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={280}
+              pointerEvents="none"
+            />
+            {/*
+              Two scrims, and deliberately not one: the flat wash guarantees the
+              white heading stays readable even where the gradient degrades to a
+              single tint on builds whose native gradient view is missing, which
+              is exactly the state this card is shown in.
+            */}
+            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <View style={[StyleSheet.absoluteFill, updateStyles.heroWash]} />
+              <LinearGradient
+                colors={['rgba(4,26,20,0.02)', 'rgba(4,26,20,0.38)', 'rgba(4,26,20,0.78)']}
+                locations={[0, 0.45, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+            </View>
+            <View style={updateStyles.closeSlot}>
               {!downloading && (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="لاحقاً"
                   onPress={onDismiss}
                   hitSlop={10}>
-                  <Ionicons name="close" size={20} color={colors.textSecondary} />
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
                 </Pressable>
               )}
             </View>
@@ -293,22 +312,21 @@ function UpdateModal({
                 updateStyles.iconBadge,
                 {
                   backgroundColor: colors.primary,
-                  borderColor: `${colors.accent}59`,
                   shadowColor: colors.primary,
                 },
               ]}>
               <Ionicons name="sparkles" size={28} color={colors.onPrimary} />
             </View>
-            <View style={[updateStyles.updateBadge, { backgroundColor: colors.surface }]}>
+            <View style={updateStyles.updateBadge}>
               <View style={[updateStyles.badgeDot, { backgroundColor: colors.accent }]} />
-              <Text style={[updateStyles.badgeText, { color: colors.primary }]}>
+              <Text style={updateStyles.badgeText}>
                 {downloading ? 'تحديث قيد التحميل' : 'تحديث جديد'}
               </Text>
             </View>
-            <Text style={[updateStyles.title, { color: colors.text }]}>
+            <Text style={updateStyles.title}>
               {downloading ? 'نجهّز لك نسخة أجمل' : 'تجربة جديدة للمصحف'}
             </Text>
-            <Text style={[updateStyles.subtitle, { color: colors.textSecondary }]}>
+            <Text style={updateStyles.subtitle}>
               {downloading
                 ? 'يتم تنزيل التحسينات بأمان، وسيُعاد تشغيل التطبيق بعد اكتمالها.'
                 : 'وصلت إضافات وتحسينات جديدة لتجعل قراءتك أيسر.'}
@@ -443,8 +461,15 @@ const updateStyles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 22,
+    paddingBottom: 24,
     borderBottomWidth: 1,
+    overflow: 'hidden',
+    /** Stands in for the photograph until it has decoded. */
+    backgroundColor: '#04241A',
+  },
+  /** Flat wash under the gradient, so the heading reads on any photograph. */
+  heroWash: {
+    backgroundColor: 'rgba(4,26,20,0.34)',
   },
   closeSlot: {
     width: 34,
@@ -453,6 +478,9 @@ const updateStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
+    backgroundColor: 'rgba(3,20,15,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.26)',
   },
   iconBadge: {
     width: 62,
@@ -461,6 +489,7 @@ const updateStyles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 22,
     borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.42)',
     marginTop: 2,
     marginBottom: 13,
     shadowOpacity: 0.4,
@@ -475,6 +504,9 @@ const updateStyles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   badgeDot: {
     width: 7,
@@ -484,18 +516,21 @@ const updateStyles = StyleSheet.create({
   badgeText: {
     fontSize: 12,
     fontWeight: '800',
+    color: '#FFFFFF',
   },
   title: {
     marginTop: 12,
     fontSize: 21,
     fontWeight: '900',
     textAlign: 'center',
+    color: '#FFFFFF',
   },
   subtitle: {
     marginTop: 7,
     fontSize: 13,
     lineHeight: 21,
     textAlign: 'center',
+    color: 'rgba(255,255,255,0.86)',
   },
   notesScroll: {
     flexShrink: 1,

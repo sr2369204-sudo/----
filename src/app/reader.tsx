@@ -1119,6 +1119,25 @@ export default function ReaderScreen() {
     setRecitationError(null);
   }, [recitationPlaylist]);
 
+  // The floating player belongs to a recitation that is actually running, so it
+  // leaves the page on its own once the last selected ayah has been read
+  // instead of staying docked with nothing to play. `didJustFinish` is the
+  // player's end-of-queue signal and only ever fires with no loop set, so it is
+  // watched as an edge: reading it as a steady flag would tear down a freshly
+  // loaded queue while the previous flag was still set.
+  const recitationEndedRef = useRef(false);
+  useEffect(() => {
+    if (!recitationStatus.didJustFinish) {
+      recitationEndedRef.current = false;
+      return;
+    }
+    if (recitationEndedRef.current) {
+      return;
+    }
+    recitationEndedRef.current = true;
+    closeRecitation();
+  }, [closeRecitation, recitationStatus.didJustFinish]);
+
   // Reported by the page itself when a tap misses every word and ayah. With a
   // recitation queue loaded the tap tucks the floating player away — or brings
   // it back — so the verse underneath can be read while the reciter goes on.

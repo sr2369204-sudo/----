@@ -808,8 +808,8 @@ body.tasmi3-hidden-page .surah-title-text {
   /* A soft capsule with no outline: the mark reads as light falling on the
      word rather than a rectangle drawn around it. */
   border-radius: 999px;
-  background: ${isDark ? 'rgba(122, 180, 235, 0.34)' : 'rgba(41, 98, 158, 0.16)'};
-  box-shadow: 0 2px 12px ${isDark ? 'rgba(122, 180, 235, 0.28)' : 'rgba(41, 98, 158, 0.22)'};
+  background: ${isDark ? 'rgba(122, 180, 235, 0.5)' : 'rgba(41, 98, 158, 0.32)'};
+  box-shadow: 0 2px 12px ${isDark ? 'rgba(122, 180, 235, 0.36)' : 'rgba(41, 98, 158, 0.3)'};
   opacity: 0;
   transition:
     left 130ms ease,
