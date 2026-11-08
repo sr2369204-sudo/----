@@ -737,39 +737,6 @@ export default function ReaderScreen() {
     playbackRef.current.hasPlaylist = recitationQueue !== null;
   }, [recitationQueue]);
 
-  const onWordPress = useCallback((
-    surahNumber: number,
-    ayahNumber: number,
-    wordId: string,
-    rect: ElementRect,
-    gesture: 'tap' | 'longPress',
-  ) => {
-    if (recitationQueue) {
-      setPlayerHidden((hidden) => !hidden);
-      return;
-    }
-    if (gesture !== 'longPress') {
-      return;
-    }
-    const ayah = page?.ayahs.find(
-      (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
-    );
-    const word = ayah?.words.find((item) => item.id === wordId);
-    if (!ayah || !word) {
-      setInteractionError('تعذر مطابقة الكلمة مع بيانات صفحة المصحف.');
-      return;
-    }
-    if (page) {
-      rememberReadingPosition(surahNumber, ayahNumber, page.pageNumber);
-    }
-    audioRequest.current += 1;
-    player.pause();
-    setInteractionError(null);
-    setSelectionAnchor(rect);
-    selectWord(surahNumber, ayah, word, 'compact');
-    showNavbar();
-  }, [page, player, recitationQueue, rememberReadingPosition, selectWord, showNavbar]);
-
   const onAyahPress = useCallback((
     surahNumber: number,
     ayahNumber: number,
@@ -837,6 +804,61 @@ export default function ReaderScreen() {
     selectAyah(surahNumber, ayah, 'compact');
     showNavbar();
   }, [page, player, recitationQueue, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar]);
+
+  const onWordPress = useCallback((
+    surahNumber: number,
+    ayahNumber: number,
+    wordId: string,
+    rect: ElementRect,
+    gesture: 'tap' | 'longPress',
+  ) => {
+    if (recitationQueue) {
+      setPlayerHidden((hidden) => !hidden);
+      return;
+    }
+    // While an ayah or a run of ayahs is already selected, a press on a word
+    // means the ayah that word sits in rather than the word itself: the reader
+    // is pointing at a verse, not at one of its words. Handing it to the ayah
+    // handler lets the press close the run, exactly as tapping any other ayah
+    // would, so a word never needs the reader to aim at the ayah head instead.
+    const current = useReaderSelectionStore.getState().selection;
+    if (
+      current &&
+      current.surahNumber === surahNumber &&
+      (current.type === 'ayah' || current.type === 'range')
+    ) {
+      onAyahPress(surahNumber, ayahNumber, rect, 'tap');
+      return;
+    }
+    if (gesture !== 'longPress') {
+      return;
+    }
+    const ayah = page?.ayahs.find(
+      (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
+    );
+    const word = ayah?.words.find((item) => item.id === wordId);
+    if (!ayah || !word) {
+      setInteractionError('تعذر مطابقة الكلمة مع بيانات صفحة المصحف.');
+      return;
+    }
+    if (page) {
+      rememberReadingPosition(surahNumber, ayahNumber, page.pageNumber);
+    }
+    audioRequest.current += 1;
+    player.pause();
+    setInteractionError(null);
+    setSelectionAnchor(rect);
+    selectWord(surahNumber, ayah, word, 'compact');
+    showNavbar();
+  }, [
+    onAyahPress,
+    page,
+    player,
+    recitationQueue,
+    rememberReadingPosition,
+    selectWord,
+    showNavbar,
+  ]);
 
   /**
    * Swaps the playlist contents for a freshly built queue and starts it. When
