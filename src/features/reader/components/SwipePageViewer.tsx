@@ -36,6 +36,8 @@ export type SwipePageViewerProps = {
   hiddenAyahIds?: string[];
   /** Document id of the ayah being recited right now, if any. */
   activeAyahId: string | null;
+  /** Document id of the word being recited right now, if any. */
+  activeWordId: string | null;
   /** True while a recitation is running: only its frame is drawn. */
   recitationFocus: boolean;
   onWordPress: (
@@ -86,6 +88,7 @@ export function SwipePageViewer({
   selectedElementIds,
   hiddenAyahIds = [],
   activeAyahId,
+  activeWordId,
   recitationFocus,
   onWordPress,
   onAyahPress,
@@ -350,6 +353,7 @@ export function SwipePageViewer({
                     // so a page is blurred before it becomes visible after a swipe.
                     hiddenAyahIds={hiddenAyahIds}
                     activeAyahId={isCurrent ? activeAyahId : null}
+                    activeWordId={isCurrent ? activeWordId : null}
                     recitationFocus={isCurrent ? recitationFocus : false}
                     isInteractive={isCurrent}
                     onWordPress={onWordPress}
@@ -394,6 +398,8 @@ type PageSlotProps = {
   hiddenAyahIds: string[];
   /** Document id of the ayah being recited right now, if any. */
   activeAyahId: string | null;
+  /** Document id of the word being recited right now, if any. */
+  activeWordId: string | null;
   /** True while a recitation is running: only its frame is drawn. */
   recitationFocus: boolean;
   isInteractive: boolean;
@@ -436,6 +442,7 @@ const PageSlot = memo(function PageSlot({
   selectedElementIds,
   hiddenAyahIds,
   activeAyahId,
+  activeWordId,
   recitationFocus,
   isInteractive,
   onWordPress,
@@ -472,6 +479,7 @@ const PageSlot = memo(function PageSlot({
         selectedElementIds={selectedElementIds}
         hiddenAyahIds={hiddenAyahIds}
         activeAyahId={activeAyahId}
+        activeWordId={activeWordId}
         recitationFocus={recitationFocus}
         onWordPress={onWordPress}
         onAyahPress={onAyahPress}

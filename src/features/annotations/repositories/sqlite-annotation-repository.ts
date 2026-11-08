@@ -71,6 +71,12 @@ type AyahVoiceNoteRow = {
   created_at: string;
 };
 
+/** Minimal ayah locator shared by the batched page queries below. */
+type AyahReference = {
+  surahNumber: number;
+  ayahNumber: number;
+};
+
 export class SqliteAnnotationRepository {
   constructor(private readonly database: SQLiteDatabase) {}
 
@@ -83,6 +89,23 @@ export class SqliteAnnotationRepository {
       ayahNumber,
     );
     return rows.map(toHighlight);
+  }
+
+  /**
+   * Highlights for every reference in one round trip. The reader resolves a
+   * whole page at a time, so querying each ayah separately turned a single page
+   * turn into dozens of statements; this collapses them into one per surah the
+   * page touches.
+   */
+  async listHighlightsForAyahs(references: readonly AyahReference[]): Promise<Highlight[]> {
+    const { sql, parameters, wanted } = ayahRangeQuery('highlights', references);
+    if (sql === '') {
+      return [];
+    }
+    const rows = await this.database.getAllAsync<HighlightRow>(sql, ...parameters);
+    return rows
+      .filter((row) => wanted.has(`${row.surah_number}:${row.ayah_number}`))
+      .map(toHighlight);
   }
 
   async listHighlightsForTarget(target: AnnotationTarget): Promise<Highlight[]> {
@@ -188,6 +211,18 @@ export class SqliteAnnotationRepository {
     return rows.map(toBookmark);
   }
 
+  /** Bookmarks for every reference in one round trip (see `listHighlightsForAyahs`). */
+  async listBookmarksForAyahs(references: readonly AyahReference[]): Promise<Bookmark[]> {
+    const { sql, parameters, wanted } = ayahRangeQuery('bookmarks', references);
+    if (sql === '') {
+      return [];
+    }
+    const rows = await this.database.getAllAsync<BookmarkRow>(sql, ...parameters);
+    return rows
+      .filter((row) => wanted.has(`${row.surah_number}:${row.ayah_number}`))
+      .map(toBookmark);
+  }
+
   async createBookmark(surahNumber: number, ayahNumber: number): Promise<Bookmark> {
     if (
       !Number.isInteger(surahNumber) ||
@@ -246,6 +281,18 @@ export class SqliteAnnotationRepository {
       ayahNumber,
     );
     return rows.map(toSavedWord);
+  }
+
+  /** Saved words for every reference in one round trip (see `listHighlightsForAyahs`). */
+  async listSavedWordsForAyahs(references: readonly AyahReference[]): Promise<SavedWord[]> {
+    const { sql, parameters, wanted } = ayahRangeQuery('saved_words', references);
+    if (sql === '') {
+      return [];
+    }
+    const rows = await this.database.getAllAsync<SavedWordRow>(sql, ...parameters);
+    return rows
+      .filter((row) => wanted.has(`${row.surah_number}:${row.ayah_number}`))
+      .map(toSavedWord);
   }
 
   async createSavedWord(input: CreateSavedWordInput): Promise<SavedWord> {
@@ -516,6 +563,53 @@ function exactTargetQuery(table: 'highlights' | 'notes', target: AnnotationTarge
       flat.startWordId,
       flat.endWordId,
     ],
+  };
+}
+
+/**
+ * Collapses a page's ayah references into one contiguous range per surah. A
+ * page turn used to issue one statement per ayah; this keeps it to a single
+ * statement per surah the page touches. `wanted` lets the caller discard the
+ * rows a range over-selects when the page skips ayahs inside that surah.
+ */
+function ayahRangeQuery(
+  table: 'highlights' | 'bookmarks' | 'saved_words',
+  references: readonly AyahReference[],
+): { sql: string; parameters: (string | number)[]; wanted: Set<string> } {
+  const wanted = new Set<string>();
+  const ranges = new Map<number, { from: number; to: number }>();
+  for (const reference of references) {
+    const key = `${reference.surahNumber}:${reference.ayahNumber}`;
+    if (wanted.has(key)) {
+      continue;
+    }
+    wanted.add(key);
+    const range = ranges.get(reference.surahNumber);
+    if (range === undefined) {
+      ranges.set(reference.surahNumber, { from: reference.ayahNumber, to: reference.ayahNumber });
+      continue;
+    }
+    range.from = Math.min(range.from, reference.ayahNumber);
+    range.to = Math.max(range.to, reference.ayahNumber);
+  }
+
+  if (ranges.size === 0) {
+    return { sql: '', parameters: [], wanted };
+  }
+
+  const clauses: string[] = [];
+  const parameters: (string | number)[] = [];
+  for (const [surahNumber, range] of ranges) {
+    clauses.push('(surah_number = ? AND ayah_number BETWEEN ? AND ?)');
+    parameters.push(surahNumber, range.from, range.to);
+  }
+
+  return {
+    sql: `SELECT * FROM ${table}
+          WHERE ${clauses.join(' OR ')}
+          ORDER BY created_at ASC, id ASC`,
+    parameters,
+    wanted,
   };
 }
 

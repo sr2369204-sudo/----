@@ -47,6 +47,8 @@ export function HomeHero({
 }: HomeHeroProps) {
   const insets = useSafeAreaInsets();
   const searchContainerRef = useRef<ViewInstance>(null);
+  /** Last anchor reported upward, so unchanged measurements are dropped. */
+  const anchorRef = useRef<SearchAnchor | null>(null);
   // A slow drift pans and zooms the photograph without ever stealing focus from
   // the search bar that sits on top of it.
   const drift = useAmbientLoop(16_000);
@@ -68,7 +70,22 @@ export function HomeHero({
 
   const measureSearchAnchor = useCallback(() => {
     searchContainerRef.current?.measureInWindow((x, y, width, height) => {
-      onSearchAnchorChange({ x, y, width, height });
+      // Typing re-measures the bar, but its window position only changes when
+      // the layout does; reporting an unchanged anchor re-rendered the whole
+      // screen on every keystroke for nothing.
+      const previous = anchorRef.current;
+      if (
+        previous !== null &&
+        previous.x === x &&
+        previous.y === y &&
+        previous.width === width &&
+        previous.height === height
+      ) {
+        return;
+      }
+      const anchor = { x, y, width, height };
+      anchorRef.current = anchor;
+      onSearchAnchorChange(anchor);
     });
   }, [onSearchAnchorChange]);
   const handleSearchLayout = useCallback((_event: LayoutChangeEvent) => {

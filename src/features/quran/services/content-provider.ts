@@ -43,6 +43,10 @@ export interface QuranContentProvider {
   getAyahAudioUrl(reciterId: number, surahNumber: number, ayahNumber: number): Promise<string>;
   getReciters(): Promise<QuranReciter[]>;
   getChapterRecitation(reciterId: number, surahNumber: number): Promise<RecitationTrack[]>;
+  getChapterWordTimings(
+    reciterId: number,
+    surahNumber: number,
+  ): Promise<Map<string, AyahWordTiming[]>>;
   getVerseKeysForPage(pageNumber: number): Promise<string[]>;
   getVerseKeysForJuz(juzNumber: number): Promise<string[]>;
   getAyahTafsir(surahNumber: number, ayahNumber: number): Promise<string>;
@@ -89,6 +93,21 @@ export type RecitationTrack = {
   surahNumber: number;
   ayahNumber: number;
   url: string;
+};
+
+/**
+ * One word of an ayah and the span it occupies inside that ayah's own
+ * recording.
+ *
+ * The source measures its word timings on the continuous surah file, so every
+ * span is rebased onto the start of its own ayah here: the reader plays one
+ * file per ayah, and these offsets are then read from that file's first sample.
+ */
+export type AyahWordTiming = {
+  /** 1-based position of the word inside its ayah, matching the printed page. */
+  position: number;
+  startMs: number;
+  endMs: number;
 };
 
 type Mp3QuranRecitation = {
@@ -582,6 +601,89 @@ export class QuranComContentProvider implements QuranContentProvider {
       throw new ContentUnavailableError('invalid-data', 'Chapter recitation is empty.');
     }
     return tracks.sort((left, right) => left.ayahNumber - right.ayahNumber);
+  }
+
+  /**
+   * Word spans for every ayah of one surah, keyed by `surah:ayah`.
+   *
+   * The source only publishes word timings alongside the continuous surah
+   * recording, and it measures them from that file's first sample, so each span
+   * is rebased onto the start of its own ayah. Some ayahs mix complete
+   * `[position, start, end]` spans with bare `[position]` placeholders that
+   * carry no timing; only the complete spans are kept, so an ayah whose words
+   * are all placeholders simply has no entry and falls back to nothing.
+   */
+  async getChapterWordTimings(
+    reciterId: number,
+    surahNumber: number,
+  ): Promise<Map<string, AyahWordTiming[]>> {
+    if (!Number.isInteger(reciterId) || reciterId < 1) {
+      throw new RangeError('Reciter id must be a positive integer.');
+    }
+    if (!Number.isInteger(surahNumber) || surahNumber < 1 || surahNumber > 114) {
+      throw new RangeError('Surah number must be between 1 and 114.');
+    }
+
+    const payload = await this.requestJson(
+      `/audio/reciters/${reciterId}/audio_files?chapter=${surahNumber}&segments=true`,
+      QDC_API_BASE_URL,
+    );
+    if (!isRecord(payload) || !Array.isArray(payload.audio_files)) {
+      throw new ContentUnavailableError('invalid-data', 'Word timing response is invalid.');
+    }
+
+    const timings = new Map<string, AyahWordTiming[]>();
+    for (const file of payload.audio_files) {
+      if (!isRecord(file) || !Array.isArray(file.verse_timings)) {
+        continue;
+      }
+      for (const verse of file.verse_timings) {
+        if (
+          !isRecord(verse) ||
+          typeof verse.verse_key !== 'string' ||
+          typeof verse.timestamp_from !== 'number' ||
+          !Number.isFinite(verse.timestamp_from) ||
+          typeof verse.timestamp_to !== 'number' ||
+          !Number.isFinite(verse.timestamp_to) ||
+          verse.timestamp_to <= verse.timestamp_from ||
+          !Array.isArray(verse.segments)
+        ) {
+          continue;
+        }
+        const match = /^(\d{1,3}):(\d{1,3})$/.exec(verse.verse_key);
+        if (!match || Number(match[1]) !== surahNumber) {
+          continue;
+        }
+
+        const origin = verse.timestamp_from;
+        const ayahDuration = verse.timestamp_to - origin;
+        const words: AyahWordTiming[] = [];
+        for (const segment of verse.segments) {
+          if (
+            !Array.isArray(segment) ||
+            segment.length !== 3 ||
+            typeof segment[0] !== 'number' ||
+            !Number.isInteger(segment[0]) ||
+            segment[0] < 1 ||
+            typeof segment[1] !== 'number' ||
+            !Number.isFinite(segment[1]) ||
+            typeof segment[2] !== 'number' ||
+            !Number.isFinite(segment[2])
+          ) {
+            continue;
+          }
+          const startMs = Math.max(0, Math.round(segment[1] - origin));
+          const endMs = Math.min(ayahDuration, Math.round(segment[2] - origin));
+          if (endMs > startMs) {
+            words.push({ position: segment[0], startMs, endMs });
+          }
+        }
+        if (words.length > 0) {
+          timings.set(verse.verse_key, words);
+        }
+      }
+    }
+    return timings;
   }
 
   private getMaherAyahAudioUrl(surahNumber: number, ayahNumber: number): string {

@@ -602,6 +602,76 @@ test('rejects a chapter recitation that references a different verse', async (t)
   });
 });
 
+test('rebases surah word timings onto each ayah and drops placeholders', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify({
+      audio_files: [
+        {
+          verse_timings: [
+            {
+              verse_key: '1:1',
+              timestamp_from: 1000,
+              timestamp_to: 3000,
+              // The source reports a negative duration for some reciters; the
+              // bounds are what matter and must be used instead.
+              duration: -2000,
+              segments: [[1, 1000, 1500], [2, 1500, 2900]],
+            },
+            {
+              verse_key: '1:2',
+              timestamp_from: 3000,
+              timestamp_to: 5000,
+              duration: 2000,
+              // A bare `[position]` placeholder carries no timing and must be
+              // skipped, while the complete spans around it are kept.
+              segments: [[1, 3000, 3500], [1], [2, 3500, 4900], [2]],
+            },
+            {
+              verse_key: '2:1',
+              timestamp_from: 5000,
+              timestamp_to: 6000,
+              duration: 1000,
+              segments: [[1, 5000, 5900]],
+            },
+          ],
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const timings = await new QuranComContentProvider().getChapterWordTimings(7, 1);
+
+  assert.deepEqual([...timings.keys()], ['1:1', '1:2']);
+  assert.deepEqual(timings.get('1:1'), [
+    { position: 1, startMs: 0, endMs: 500 },
+    { position: 2, startMs: 500, endMs: 1900 },
+  ]);
+  assert.deepEqual(timings.get('1:2'), [
+    { position: 1, startMs: 0, endMs: 500 },
+    { position: 2, startMs: 500, endMs: 1900 },
+  ]);
+  assert.ok(
+    requestedUrls.some((url) => url.endsWith('/audio/reciters/7/audio_files?chapter=1&segments=true')),
+  );
+  await assert.rejects(new QuranComContentProvider().getChapterWordTimings(7, 115), RangeError);
+});
+
+test('returns no word timings when the source serves none', async (t) => {
+  mockFetch(t, async () => new Response(JSON.stringify({ audio_files: [] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  }));
+
+  const timings = await new QuranComContentProvider().getChapterWordTimings(7, 1);
+
+  assert.equal(timings.size, 0);
+});
+
 test('collects ordered verse keys for a page and a juz across pagination', async (t) => {
   const requestedUrls = [];
   mockFetch(t, async (url) => {

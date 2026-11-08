@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -31,17 +31,31 @@ export default function QuranLibraryScreen() {
     queryFn: () => quranCache.loadSurahDirectory(),
   });
 
+  // See the home screen: normalising all 114 names per keystroke costs typing
+  // responsiveness, so they are normalised once when the directory arrives.
+  const normalizedSurahNames = useMemo(
+    () => new Map((surahDirectory.data?.surahs ?? []).map((surah) => [
+      surah.surahNumber,
+      normalizeSurahSearch(surah.nameArabic),
+    ])),
+    [surahDirectory.data],
+  );
+
   const visibleSurahs = useMemo(() => {
     const query = normalizeSurahSearch(search);
-    return (surahDirectory.data?.surahs ?? []).filter((surah) =>
-      query.length === 0 ||
-      normalizeSurahSearch(surah.nameArabic).includes(query) ||
+    const surahs = surahDirectory.data?.surahs ?? [];
+    if (query.length === 0) {
+      return surahs;
+    }
+    return surahs.filter((surah) =>
+      (normalizedSurahNames.get(surah.surahNumber) ?? '').includes(query) ||
       String(surah.surahNumber).includes(query),
     );
-  }, [search, surahDirectory.data]);
+  }, [search, surahDirectory.data, normalizedSurahNames]);
 
-  const renderSurah = ({ item }: { item: QuranSurahSummary }) => (
-    <SurahGridItemModern surah={item} />
+  const renderSurah = useCallback(
+    ({ item }: { item: QuranSurahSummary }) => <SurahGridItemModern surah={item} />,
+    [],
   );
 
   return (

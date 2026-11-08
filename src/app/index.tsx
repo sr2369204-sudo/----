@@ -140,16 +140,30 @@ export default function HomeScreen() {
     }
   }, [database, queryClient]);
 
+  // Normalising all 114 names on every keystroke showed up as typing latency,
+  // so the directory's names are normalised once when they arrive instead.
+  const normalizedSurahNames = useMemo(
+    () => new Map((surahDirectory.data?.surahs ?? []).map((surah) => [
+      surah.surahNumber,
+      normalizeSurahSearch(surah.nameArabic),
+    ])),
+    [surahDirectory.data],
+  );
+
   const searchMatchedSurahs = useMemo(() => {
     const query = normalizeSurahSearch(search);
-    return (surahDirectory.data?.surahs ?? []).filter((surah) =>
-      query.length === 0 ||
-      normalizeSurahSearch(surah.nameArabic).includes(query) ||
-      (/^\d+$/.test(query)
+    const surahs = surahDirectory.data?.surahs ?? [];
+    if (query.length === 0) {
+      return surahs;
+    }
+    const isNumericQuery = /^\d+$/.test(query);
+    return surahs.filter((surah) =>
+      (normalizedSurahNames.get(surah.surahNumber) ?? '').includes(query) ||
+      (isNumericQuery
         ? String(surah.surahNumber) === query
-        : normalizeSurahSearch(String(surah.surahNumber)).includes(query)),
+        : String(surah.surahNumber).includes(query)),
     );
-  }, [search, surahDirectory.data]);
+  }, [search, surahDirectory.data, normalizedSurahNames]);
 
   const visibleSurahs = useMemo(
     () => searchMatchedSurahs.filter((surah) =>

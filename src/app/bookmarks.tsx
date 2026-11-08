@@ -82,6 +82,40 @@ export default function BookmarksScreen() {
 
   const bookmarks = bookmarksQuery.data ?? [];
 
+  const renderBookmark = useCallback(
+    ({ item }: { item: Bookmark }) => {
+      const surahName = surahNames.get(item.surahNumber);
+      const label = `سورة ${surahName ?? toArabicNumbers(item.surahNumber)}، الآية ${toArabicNumbers(item.ayahNumber)}`;
+      return (
+        <View style={[styles.bookmarkCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`فتح ${label}`}
+            disabled={busyId !== null}
+            onPress={() => void openBookmark(item)}
+            style={({ pressed }) => [styles.bookmarkPressable, pressed && { opacity: 0.72 }]}>
+            <Ionicons name="bookmark" size={20} color={colors.primary} />
+            <Text style={[styles.reference, { color: colors.text }]}>{label}</Text>
+            <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`حذف ${label} من الإشارات المرجعية`}
+            disabled={busyId !== null}
+            onPress={() => void removeBookmark(item)}
+            style={[styles.deleteButton, { backgroundColor: colors.backgroundSelected }]}>
+            {busyId === item.id ? (
+              <ActivityIndicator size="small" color={colors.text} />
+            ) : (
+              <Ionicons name="trash-outline" size={18} color="#B24C4C" />
+            )}
+          </Pressable>
+        </View>
+      );
+    },
+    [busyId, colors, openBookmark, removeBookmark, surahNames],
+  );
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <FlatList
@@ -135,37 +169,8 @@ export default function BookmarksScreen() {
             {error && <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>}
           </View>
         }
-        renderItem={({ item }) => {
-          const surahName = surahNames.get(item.surahNumber);
-          const label = `سورة ${surahName ?? toArabicNumbers(item.surahNumber)}، الآية ${toArabicNumbers(item.ayahNumber)}`;
-          return (
-            <View style={[styles.bookmarkCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`فتح ${label}`}
-                disabled={busyId !== null}
-                onPress={() => void openBookmark(item)}
-                style={({ pressed }) => [styles.bookmarkPressable, pressed && { opacity: 0.72 }]}>
-                <Ionicons name="bookmark" size={20} color={colors.primary} />
-                <Text style={[styles.reference, { color: colors.text }]}>{label}</Text>
-                <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`حذف ${label} من الإشارات المرجعية`}
-                disabled={busyId !== null}
-                onPress={() => void removeBookmark(item)}
-                style={[styles.deleteButton, { backgroundColor: colors.backgroundSelected }]}>
-                {busyId === item.id ? (
-                  <ActivityIndicator size="small" color={colors.text} />
-                ) : (
-                  <Ionicons name="trash-outline" size={18} color="#B24C4C" />
-                )}
-              </Pressable>
-            </View>
-          );
-        }}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        renderItem={renderBookmark}
+        ItemSeparatorComponent={BookmarkSeparator}
         ListEmptyComponent={
           !bookmarksQuery.isPending && !bookmarksQuery.error ? (
             <View style={[styles.emptyState, { borderColor: colors.border }]}>
@@ -184,6 +189,11 @@ export default function BookmarksScreen() {
 
 function toArabicNumbers(value: number): string {
   return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
+}
+
+/** Stable component identity so the separator rows are not remounted per render. */
+function BookmarkSeparator() {
+  return <View style={styles.separator} />;
 }
 
 const styles = StyleSheet.create({

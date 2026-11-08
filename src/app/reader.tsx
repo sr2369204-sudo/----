@@ -34,6 +34,7 @@ import {
   ContentUnavailableError,
   isFullSurahReciter,
   quranContentProvider,
+  type AyahWordTiming,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
 import { resolveOfflineTracks } from '@/features/reader/services/recitation-offline';
@@ -102,7 +103,9 @@ export default function ReaderScreen() {
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
   const player = useAudioPlayer(null);
   const playerStatus = useAudioPlayerStatus(player);
-  const recitationPlaylist = useAudioPlaylist({ loop: 'none' });
+  // A tighter interval than the 500ms default: the word being recited has to be
+  // followed word by word, and a word only lasts a few hundred milliseconds.
+  const recitationPlaylist = useAudioPlaylist({ loop: 'none', updateInterval: 150 });
   const recitationStatus = useAudioPlaylistStatus(recitationPlaylist);
   const reciterId = useReaderPreferencesStore((state) => state.reciterId);
   const selection = useReaderSelectionStore((state) => state.selection);
@@ -445,6 +448,61 @@ export default function ReaderScreen() {
   // chrome out of the way and follows the reciting ayah alone.
   const isReciting = recitationStatus.playing;
 
+  // Word spans of the reciting surah, used to mark the word being read. They
+  // are asked for as soon as a queue is loaded, so the spans are already there
+  // by the time the first word sounds, and only the verse-by-verse reciters
+  // carry them: a whole-surah reciter streams one file with no per-word timings
+  // at all.
+  const wordTimingsQuery = useQuery({
+    queryKey: ['quran', 'word-timings', reciterId, activeTrack?.surahNumber ?? 0],
+    enabled:
+      recitationQueue !== null &&
+      activeTrack !== null &&
+      reciterId > 0 &&
+      !isFullSurahReciter(reciterId),
+    staleTime: Infinity,
+    queryFn: () => {
+      if (!activeTrack) {
+        throw new Error('لا توجد سورة جارية.');
+      }
+      return quranContentProvider.getChapterWordTimings(reciterId, activeTrack.surahNumber);
+    },
+  });
+
+  // The single word being recited right now, resolved from the player position
+  // against the spans of the current ayah, then matched to the word on the page.
+  const activeWordId = useMemo(() => {
+    if (!isReciting || !activeTrack || !page) {
+      return null;
+    }
+    const timings = wordTimingsQuery.data?.get(
+      `${activeTrack.surahNumber}:${activeTrack.ayahNumber}`,
+    );
+    if (!timings || timings.length === 0) {
+      return null;
+    }
+    const positionMs = recitationStatus.currentTime * 1000;
+    // The source leaves a few words without a span of their own, so the reader
+    // holds the last word that has actually started rather than dropping the
+    // mark for a moment and blinking back on at the word after the gap.
+    let timing: AyahWordTiming | null = null;
+    for (const candidate of timings) {
+      if (candidate.startMs <= positionMs && (timing === null || candidate.startMs >= timing.startMs)) {
+        timing = candidate;
+      }
+    }
+    if (!timing) {
+      return null;
+    }
+    const ayah = page.ayahs.find(
+      (item) =>
+        item.surahNumber === activeTrack.surahNumber &&
+        item.ayahNumber === activeTrack.ayahNumber,
+    );
+    const word = ayah?.words.find((candidate) => candidate.position === timing.position);
+    return word ? `word-${word.id}` : null;
+  }, [activeTrack, isReciting, page, recitationStatus.currentTime, wordTimingsQuery.data]);
+
   // True whenever any audio is running — a single word/ayah file or a full
   // recitation queue. Both take the word tools and the navbar off screen so the
   // page stays clear while the reader listens.
@@ -572,14 +630,11 @@ export default function ReaderScreen() {
     }
     let active = true;
     const repository = new SqliteAnnotationRepository(database);
-    Promise.all(
-      page.ayahs.map((ayah) =>
-        repository.listHighlightsForAyah(ayah.surahNumber, ayah.ayahNumber),
-      ),
-    )
+    repository
+      .listHighlightsForAyahs(page.ayahs)
       .then((items) => {
         if (active) {
-          setHighlights(items.flat());
+          setHighlights(items);
           setHighlightError(null);
         }
       })
@@ -604,15 +659,12 @@ export default function ReaderScreen() {
     }
     let active = true;
     const repository = new SqliteAnnotationRepository(database);
-    Promise.all(
-      page.ayahs.map((ayah) =>
-        repository.listBookmarksForAyah(ayah.surahNumber, ayah.ayahNumber),
-      ),
-    )
+    repository
+      .listBookmarksForAyahs(page.ayahs)
       .then((items) => {
         if (active) {
           setBookmarks(
-            items.flat().map((bookmark) => ({
+            items.map((bookmark) => ({
               surahNumber: bookmark.surahNumber,
               ayahNumber: bookmark.ayahNumber,
             })),
@@ -634,14 +686,11 @@ export default function ReaderScreen() {
     }
     let active = true;
     const repository = new SqliteAnnotationRepository(database);
-    Promise.all(
-      page.ayahs.map((ayah) =>
-        repository.listSavedWordsForAyah(ayah.surahNumber, ayah.ayahNumber),
-      ),
-    )
+    repository
+      .listSavedWordsForAyahs(page.ayahs)
       .then((items) => {
         if (active) {
-          setSavedWords(items.flat());
+          setSavedWords(items);
         }
       })
       .catch(() => {
@@ -1413,6 +1462,7 @@ export default function ReaderScreen() {
           hiddenAyahIds={tasmi3HiddenAyahIds}
           selectedElementIds={selectedElementIds}
           activeAyahId={activeAyahId}
+          activeWordId={activeWordId}
           recitationFocus={isReciting}
           onWordPress={onWordPress}
           onAyahPress={onAyahPress}

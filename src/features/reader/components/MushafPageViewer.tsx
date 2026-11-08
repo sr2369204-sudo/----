@@ -45,6 +45,12 @@ type Props = {
    */
   activeAyahId?: string | null;
   /**
+   * Document id of the single word being recited right now (`word-<id>`). It is
+   * painted as a filled box that glides from word to word inside the reciting
+   * ayah's frame, so the reader can follow the recitation word by word.
+   */
+  activeWordId?: string | null;
+  /**
    * True while a recitation is running. The page then draws only the frame that
    * travels with the reciting ayah: the reader's own selection is kept but left
    * unpainted, and taps no longer open the word/ayah tools.
@@ -116,6 +122,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   selectedElementIds,
   hiddenAyahIds = [],
   activeAyahId,
+  activeWordId = null,
   recitationFocus = false,
   onWordPress,
   onAyahPress,
@@ -253,6 +260,19 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     }
   }, [activeAyahId]);
 
+  const syncRecitationWord = useCallback(() => {
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(
+        { source: 'mushaf-page-parent', activeWordId },
+        '*',
+      );
+    } else {
+      webViewRef.current?.injectJavaScript(
+        `window.selectRecitationWord?.(${JSON.stringify(activeWordId)}); true;`,
+      );
+    }
+  }, [activeWordId]);
+
   const syncRecitationFocus = useCallback(() => {
     if (Platform.OS === 'web') {
       iframeRef.current?.contentWindow?.postMessage(
@@ -295,6 +315,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   const syncOverlays = useCallback(() => {
     syncSelectedElement();
     syncRecitationAyah();
+    syncRecitationWord();
     syncRecitationFocus();
     syncHiddenAyahs();
     syncHighlights(highlightEntries);
@@ -303,6 +324,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     syncHighlights,
     syncRecitationAyah,
     syncRecitationFocus,
+    syncRecitationWord,
     syncHiddenAyahs,
     syncSelectedElement,
   ]);
@@ -338,6 +360,8 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   useEffect(syncSelectedElement, [syncSelectedElement]);
 
   useEffect(syncRecitationAyah, [syncRecitationAyah]);
+
+  useEffect(syncRecitationWord, [syncRecitationWord]);
 
   useEffect(syncRecitationFocus, [syncRecitationFocus]);
 
@@ -748,6 +772,7 @@ body.tasmi3-hidden-page .surah-title-text {
    whole ayah (or a run of ayahs) instead of a per-word highlight. */
 #selection-layer,
 #recitation-layer,
+#recitation-word-layer,
 #highlight-layer {
   position: absolute;
   inset: 0;
@@ -767,9 +792,31 @@ body.tasmi3-hidden-page .surah-title-text {
   border-radius: 3px;
   background: var(--ayah-highlight-color);
 }
+/* The reciting ayah is only tinted, never framed: a second outline around it
+   competed with the box travelling over the word, so the reader now just sees
+   which ayah is sounding through a very light wash behind its words. */
 .recitation-box {
-  border-color: ${isDark ? 'rgba(122, 180, 235, 0.95)' : 'rgba(41, 98, 158, 0.85)'};
-  background: ${isDark ? 'rgba(122, 180, 235, 0.16)' : 'rgba(41, 98, 158, 0.12)'};
+  border: 0;
+  border-radius: 10px;
+  background: ${isDark ? 'rgba(122, 180, 235, 0.10)' : 'rgba(41, 98, 158, 0.06)'};
+}
+/* The word being recited. It is one persistent box whose geometry is updated
+   in place, so the browser can ease it from word to word instead of showing a
+   box that blinks on and off at each new word. */
+.recitation-word-box {
+  position: absolute;
+  /* A soft capsule with no outline: the mark reads as light falling on the
+     word rather than a rectangle drawn around it. */
+  border-radius: 999px;
+  background: ${isDark ? 'rgba(122, 180, 235, 0.34)' : 'rgba(41, 98, 158, 0.16)'};
+  box-shadow: 0 2px 12px ${isDark ? 'rgba(122, 180, 235, 0.28)' : 'rgba(41, 98, 158, 0.22)'};
+  opacity: 0;
+  transition:
+    left 130ms ease,
+    top 130ms ease,
+    width 130ms ease,
+    height 130ms ease,
+    opacity 170ms ease;
 }
 .hl-bg {
   border-radius: 4px;
@@ -824,7 +871,7 @@ body.tasmi3-hidden-page .surah-title-text {
     <span class="header-ornament">۞</span>
     <span class="header-label" id="header-juz-label">${juzHeaderLabel}</span>
   </header>
-  <section class="lines" id="mushaf-lines">${linesHtml}<div id="highlight-layer"></div><div id="selection-layer"></div><div id="recitation-layer"></div></section>
+  <section class="lines" id="mushaf-lines">${linesHtml}<div id="highlight-layer"></div><div id="selection-layer"></div><div id="recitation-layer"></div><div id="recitation-word-layer"></div></section>
   <footer class="page-footer">
     <div class="page-number-ornament">
       <span class="page-num-bracket">۞</span>
@@ -996,6 +1043,40 @@ function selectRecitationAyah(id) {
   );
 }
 window.selectRecitationAyah = selectRecitationAyah;
+
+/**
+ * Word being recited right now, painted as one persistent box.
+ *
+ * The box is created once and then moved by updating its geometry, so its CSS
+ * transition can carry it from one word to the next instead of drawing a fresh
+ * element that would appear already in place.
+ */
+let recitationWordId = null;
+
+function selectRecitationWord(id) {
+  recitationWordId = typeof id === "string" ? id : null;
+  const layer = document.getElementById("recitation-word-layer");
+  if (!layer) return;
+  let box = layer.firstElementChild;
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "recitation-word-box";
+    layer.appendChild(box);
+  }
+  const element = recitationWordId ? document.getElementById(recitationWordId) : null;
+  if (!element) {
+    box.style.opacity = "0";
+    return;
+  }
+  const rect = element.getBoundingClientRect();
+  const layerRect = layer.getBoundingClientRect();
+  box.style.left = rect.left - layerRect.left - SELECTION_BOX_PADDING + "px";
+  box.style.top = rect.top - layerRect.top - SELECTION_BOX_PADDING + "px";
+  box.style.width = rect.width + SELECTION_BOX_PADDING * 2 + "px";
+  box.style.height = rect.height + SELECTION_BOX_PADDING * 2 + "px";
+  box.style.opacity = "1";
+}
+window.selectRecitationWord = selectRecitationWord;
 
 function setTasmi3Hidden(ids) {
   const hidden = new Set(Array.isArray(ids) ? ids : []);
@@ -1180,6 +1261,7 @@ function preparePage() {
   // redrawn once the fit has settled instead of tracking the intermediate ones.
   selectMushafElements(selectedIds);
   selectRecitationAyah(recitationAyahId);
+  selectRecitationWord(recitationWordId);
   signalPageReady();
 }
 
@@ -1205,6 +1287,7 @@ window.addEventListener("resize", () => {
     fitMushafText();
     selectMushafElements(selectedIds);
     selectRecitationAyah(recitationAyahId);
+    selectRecitationWord(recitationWordId);
     if (pageElement) pageElement.classList.add("is-ready");
   });
 });
@@ -1349,6 +1432,9 @@ window.addEventListener("message", (event) => {
     }
     if (event.data.activeAyahId !== undefined) {
       selectRecitationAyah(event.data.activeAyahId);
+    }
+    if (event.data.activeWordId !== undefined) {
+      selectRecitationWord(event.data.activeWordId);
     }
     if (event.data.recitationFocus !== undefined) {
       setRecitationFocus(event.data.recitationFocus);
