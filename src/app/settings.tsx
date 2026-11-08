@@ -49,8 +49,8 @@ const themeOptions: { value: ThemePreference; label: string }[] = [
 ];
 
 /** Shipped defaults for the reader tools and verse marks. */
-const DISPLAY_DEFAULT_TOOLBAR_SIZE = 40;
-const DISPLAY_DEFAULT_MARKER_SCALE = 1;
+const DISPLAY_DEFAULT_TOOLBAR_SIZE = 44;
+const DISPLAY_DEFAULT_MARKER_SCALE = 1.1;
 
 const ArabicReciterNames: Record<number, string> = {
   1: 'عبد الباسط عبد الصمد — مجوّد',

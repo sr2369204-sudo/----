@@ -267,9 +267,9 @@ export default function ReaderScreen() {
       );
       const preferences = new Map(rows.map((row) => [row.key, row.value]));
       const savedTajweed = preferences.get('reader.showTajweed');
-      const savedToolbarSize = Number(preferences.get('reader.toolbarSize') ?? 40);
+      const savedToolbarSize = Number(preferences.get('reader.toolbarSize') ?? 44);
       const savedToolbarShape = preferences.get('reader.toolbarShape') ?? DEFAULT_READER_TOOLBAR_SHAPE;
-      const savedMarkerScale = Number(preferences.get('reader.markerScale') ?? 1);
+      const savedMarkerScale = Number(preferences.get('reader.markerScale') ?? 1.1);
       if (savedTajweed !== undefined && savedTajweed !== 'true' && savedTajweed !== 'false') {
         throw new Error('إعداد ألوان التجويد المحفوظ غير صالح.');
       }
@@ -1406,7 +1406,7 @@ export default function ReaderScreen() {
           prevPage={prevPageQuery.data ?? null}
           nextPage={nextPageQuery.data ?? null}
           fontSize={MUSHAF_FONT_SIZE}
-          markerScale={displayPreferencesQuery.data?.markerScale ?? 1}
+          markerScale={displayPreferencesQuery.data?.markerScale ?? 1.1}
           showTajweed={showTajweed}
           isDark={false}
           highlights={highlights}

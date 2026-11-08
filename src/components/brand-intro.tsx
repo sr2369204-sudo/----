@@ -199,7 +199,7 @@ export function BrandIntro({
       onLayout={handleLayout}
       style={[styles.container, overlayStyle]}>
       <LinearGradient
-        colors={['#032019', '#0B3B2C', '#04180F']}
+        colors={['#05251A', '#0E5A3E', '#072418']}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.8, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     overflow: 'hidden',
-    backgroundColor: '#032019',
+    backgroundColor: '#05251A',
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
     top: '-52%',
     left: '-38%',
     borderRadius: 999,
-    backgroundColor: 'rgba(20,110,84,0.22)',
+    backgroundColor: 'rgba(14,122,87,0.28)',
   },
   goldBloom: {
     position: 'absolute',
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
   core: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(5,38,29,0.9)',
+    backgroundColor: 'rgba(8,52,36,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(229,184,95,0.55)',
   },

@@ -37,14 +37,14 @@ const PALETTES: Record<'light' | 'dark', Record<GlassVariant, GlassPalette>> = {
   },
   dark: {
     ivory: {
-      background: '#17251F',
-      border: '#2A3B33',
+      background: '#0E2D20',
+      border: '#1E3D2E',
       highlight: '#806B3C',
       shadowColor: '#000000',
       shadowOpacity: 0.35,
     },
     emerald: {
-      background: '#0A4938',
+      background: '#0B4030',
       border: '#23634D',
       highlight: '#806B3C',
       shadowColor: '#000000',
