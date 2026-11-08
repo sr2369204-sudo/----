@@ -50,6 +50,12 @@ const FOOT_RADIUS = 12;
 /** How far the light band overhangs the region that clips it. */
 const SWEEP_BLEED = 24;
 const SWEEP_WIDTH = 90;
+/**
+ * The light band is a row of plain strips rather than a gradient drawable: each
+ * number is one step of the falloff, bright in the middle and gone at the rims,
+ * which reads as a soft gleam without depending on a native gradient view.
+ */
+const GLEAM_STOPS = [0, 0.02, 0.05, 0.1, 0.15, 0.2, 0.15, 0.1, 0.05, 0.02, 0];
 /** Where the gold dots sit on the arch, measured from the apex. */
 const DOT_ANGLE = 0.66;
 const DOT_SIZE = 5;
@@ -588,15 +594,25 @@ function SweepBand({ sweep, travel }: { sweep: SharedValue<number>; travel: numb
       { rotate: '14deg' },
     ],
   }));
+  const stripWidth = SWEEP_WIDTH / GLEAM_STOPS.length;
 
   return (
     <Animated.View pointerEvents="none" style={[styles.sweep, style]}>
-      <LinearGradient
-        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.16)', 'rgba(255,255,255,0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={StyleSheet.absoluteFill}
-      />
+      {GLEAM_STOPS.map((opacity, index) => (
+        <View
+          key={index}
+          style={[
+            styles.gleamStrip,
+            {
+              // Each strip overlaps its neighbour by a pixel, so rounding the
+              // fractional width can never leave a seam between them.
+              left: index * stripWidth,
+              width: stripWidth + 1,
+              backgroundColor: `rgba(255,255,255,${opacity})`,
+            },
+          ]}
+        />
+      ))}
     </Animated.View>
   );
 }
@@ -694,6 +710,11 @@ const styles = StyleSheet.create({
     top: -SWEEP_BLEED,
     bottom: -SWEEP_BLEED,
     width: SWEEP_WIDTH,
+  },
+  gleamStrip: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
   },
   mote: {
     position: 'absolute',
