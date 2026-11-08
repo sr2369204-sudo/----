@@ -7,8 +7,6 @@ import {
   Text,
   View,
   useWindowDimensions,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -19,9 +17,10 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withSpring,
   withTiming,
-  type AnimatedStyle,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import { LinearGradient } from '@/components/ui/optional-native-views';
@@ -29,24 +28,78 @@ import { Radius } from '@/constants/theme';
 
 export const IntroAnimationContext = createContext(false);
 
-const INTRO_DURATION_MS = 2_700;
+const INTRO_DURATION_MS = 2_600;
 const FADE_DURATION_MS = 480;
-const REVEAL_DURATION_MS = 1_100;
+const REVEAL_DURATION_MS = 1_200;
 const PROGRESS_WIDTH = 156;
+/**
+ * The niche is a mihrab, and a mihrab is tall and slim rather than a card: the
+ * width is a share of the screen with a ceiling, and the height is a multiple of
+ * that width with a ceiling of its own so it always clears the footer.
+ */
+const PANEL_WIDTH_RATIO = 0.56;
+const PANEL_WIDTH_MAX = 232;
+const NICHE_ASPECT = 2.15;
+const NICHE_HEIGHT_RATIO = 0.66;
+/** How far the orbit ring clears the mark on every side. */
+const RING_GAP = 30;
+/** How far the dim pane behind the niche reaches past it. */
+const GHOST_INSET = 16;
+/** Corner rounding along the foot of the niche. */
+const FOOT_RADIUS = 12;
+/** How far the light band overhangs the region that clips it. */
+const SWEEP_BLEED = 24;
+const SWEEP_WIDTH = 90;
+/** Where the gold dots sit on the arch, measured from the apex. */
+const DOT_ANGLE = 0.66;
+const DOT_SIZE = 5;
+/** Radii the frame is stroked at, negative being outside the glass. */
+const RECESS_INSET = -2;
+const FRAME_INSET = 1;
+const HAIRLINE_INSET = 9;
+
 const GOLD = '#E5B85F';
-const GOLD_SOFT = '#F3D28C';
 const CREAM = '#FFF6E2';
+const RECESS = 'rgba(3,20,14,0.55)';
+const FRAME = 'rgba(229,184,95,0.75)';
+const HAIRLINE = 'rgba(255,255,255,0.14)';
+/** The arched head is lit more than the shaft, which is what gives it depth. */
+const HEAD_GLASS = 'rgba(255,255,255,0.13)';
+const SHAFT_GLASS = 'rgba(255,255,255,0.07)';
+const GHOST_GLASS = 'rgba(255,255,255,0.045)';
 
 const GRAIN_SOURCE = require('../../assets/images/glass-grain.png');
-
-/** Angles for the ring of small gold beads around the medallion rim. */
-const BEAD_ANGLES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+const MARK_SOURCE = require('../../assets/images/icon.png');
 
 /**
- * The launch stage. Its centrepiece is a hand-built medallion: a beaded gold
- * rim around concentric rings and a small emerald core holding an open-book
- * glyph. A gold arc counter-rotates around it against a breathing halo; the
- * inner rings and glyph settle into place with a light spring on load.
+ * Dust suspended inside the niche. Each mote rises and fades through its own
+ * window of one shared loop, so they never travel in step.
+ */
+const MOTES = [
+  { key: 'a', left: '17%', top: '18%', size: 3, start: 0.02, travel: 18, peak: 0.5 },
+  { key: 'b', left: '78%', top: '26%', size: 2, start: 0.22, travel: 26, peak: 0.42 },
+  { key: 'c', left: '26%', top: '62%', size: 2, start: 0.42, travel: 22, peak: 0.4 },
+  { key: 'd', left: '72%', top: '70%', size: 3, start: 0.62, travel: 16, peak: 0.46 },
+] as const;
+
+const MOTE_WINDOW = 0.35;
+
+/**
+ * The launch stage: a mihrab — the arched niche of a mosque — carved out of the
+ * emerald backdrop, holding the app mark, the name and the tagline. It is kept
+ * tall and slim, the way a niche in a wall actually is, instead of a card.
+ *
+ * The niche is built from plain views. A half-round arch is exactly the upper
+ * half of a circle, so the cap is a clipped disc and the arch is stroked by a
+ * circle that only paints its top and left quarters, turned a quarter turn so
+ * that arc lands on top. The shaft below is a plain rectangle carrying the same
+ * strokes on its sides. Layer on layer — a dim wider arch floating behind, a
+ * dark rim, the glass, the gold, a hairline, a finial at the apex — and it reads
+ * as a niche set into the wall rather than a box resting on it.
+ *
+ * It is alive too: the pane settles in on a spring and drifts while the pane
+ * behind it drifts the other way, a band of light sweeps the niche, an arc
+ * orbits the mark, the diamond turns, and dust climbs through the glass.
  */
 export function BrandIntro({
   onReady,
@@ -61,15 +114,39 @@ export function BrandIntro({
   const [visible, setVisible] = useState(true);
   const didReportReady = useRef(false);
 
+  /** Drives every fade, on its own staggered range per element. */
   const reveal = useSharedValue(0);
-  const assemble = useSharedValue(0);
-  const fadeOut = useSharedValue(1);
-  const progress = useSharedValue(0);
+  /** Drives every slide and scale, so the whole stage shares one spring. */
+  const enter = useSharedValue(0);
+  /** Slow drift that keeps the pane from ever looking parked. */
+  const float = useSharedValue(0);
+  /** Progress of the band of light crossing the niche. */
+  const sweep = useSharedValue(0);
+  /** Turn of the arc orbiting the mark. */
   const spin = useSharedValue(0);
-  const breathe = useSharedValue(0);
+  /** Breathe of the gold ornaments. */
+  const gem = useSharedValue(0);
+  /** One loop shared by every mote of dust. */
+  const drift = useSharedValue(0);
+  const progress = useSharedValue(0);
+  const fadeOut = useSharedValue(1);
 
-  const seal = Math.min(width * 0.5, 208);
-  const glowSize = Math.min(width * 1.3, height * 0.72);
+  const panelWidth = Math.min(width * PANEL_WIDTH_RATIO, PANEL_WIDTH_MAX);
+  const nicheHeight = Math.min(
+    Math.round(panelWidth * NICHE_ASPECT),
+    Math.round(height * NICHE_HEIGHT_RATIO),
+  );
+  const markSize = Math.min(panelWidth * 0.4, 96);
+  const ringSize = markSize + RING_GAP;
+  const titleSize = Math.max(19, Math.round(panelWidth * 0.11));
+  // Half-round arch: the head is a semicircle whose centre is the spring line,
+  // so its span is the pane's full width and its height is half of it.
+  const archRadius = panelWidth / 2;
+  const springY = archRadius;
+  const ghostRadius = archRadius + GHOST_INSET;
+  const dotRadius = archRadius - 14;
+  const dotLeft = panelWidth / 2 - dotRadius * Math.sin(DOT_ANGLE) - DOT_SIZE / 2;
+  const dotTop = springY - dotRadius * Math.cos(DOT_ANGLE) - DOT_SIZE / 2;
 
   const handleLayout = useCallback(() => {
     if (didReportReady.current) {
@@ -80,53 +157,89 @@ export function BrandIntro({
   }, [onReady]);
 
   useEffect(() => {
+    // Linear, so the per-element ranges below read as real delays instead of
+    // collapsing into one fade once the easing curve has already run ahead.
     reveal.value = withTiming(1, {
       duration: REVEAL_DURATION_MS,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      easing: Easing.linear,
       reduceMotion: ReduceMotion.System,
     });
-    // A soft spring lets the seal settle into place with a light overshoot.
-    assemble.value = withSpring(1, {
-      damping: 13,
+    enter.value = withSpring(1, {
+      damping: 14,
       stiffness: 110,
       mass: 0.9,
       reduceMotion: ReduceMotion.System,
     });
-    progress.value = withTiming(1, {
-      duration: INTRO_DURATION_MS + FADE_DURATION_MS,
-      easing: Easing.linear,
-      reduceMotion: ReduceMotion.System,
-    });
+    float.value = withRepeat(
+      withTiming(1, {
+        duration: 3_600,
+        easing: Easing.inOut(Easing.sin),
+        reduceMotion: ReduceMotion.System,
+      }),
+      -1,
+      true,
+    );
+    // One crossing during the intro: the band leaves on the far side, waits out
+    // of sight, then resets instantly so the next pass starts from the edge.
+    sweep.value = withRepeat(
+      withSequence(
+        withTiming(1, {
+          duration: 1_700,
+          easing: Easing.inOut(Easing.quad),
+          reduceMotion: ReduceMotion.System,
+        }),
+        withTiming(1, { duration: 2_100, reduceMotion: ReduceMotion.System }),
+        withTiming(0, { duration: 0, reduceMotion: ReduceMotion.System }),
+      ),
+      -1,
+      false,
+    );
     spin.value = withRepeat(
       withTiming(1, {
-        duration: 18_000,
+        duration: 11_000,
         easing: Easing.linear,
         reduceMotion: ReduceMotion.System,
       }),
       -1,
       false,
     );
-    // The halo breathes so the gold light never feels static.
-    breathe.value = withRepeat(
+    gem.value = withRepeat(
       withTiming(1, {
-        duration: 2_800,
-        easing: Easing.inOut(Easing.quad),
+        duration: 1_900,
+        easing: Easing.inOut(Easing.sin),
         reduceMotion: ReduceMotion.System,
       }),
       -1,
       true,
     );
+    drift.value = withRepeat(
+      withTiming(1, {
+        duration: 5_200,
+        easing: Easing.linear,
+        reduceMotion: ReduceMotion.System,
+      }),
+      -1,
+      false,
+    );
+    progress.value = withTiming(1, {
+      duration: INTRO_DURATION_MS + FADE_DURATION_MS,
+      easing: Easing.linear,
+      reduceMotion: ReduceMotion.System,
+    });
 
     const introTimer = setTimeout(() => setExiting(true), INTRO_DURATION_MS);
     return () => {
       clearTimeout(introTimer);
       cancelAnimation(reveal);
-      cancelAnimation(assemble);
-      cancelAnimation(progress);
+      cancelAnimation(enter);
+      cancelAnimation(float);
+      cancelAnimation(sweep);
       cancelAnimation(spin);
-      cancelAnimation(breathe);
+      cancelAnimation(gem);
+      cancelAnimation(drift);
+      cancelAnimation(progress);
     };
-  }, [assemble, breathe, progress, reveal, spin]);
+  }, [drift, enter, float, gem, progress, reveal, spin, sweep]);
 
   useEffect(() => {
     if (!exiting) {
@@ -151,38 +264,65 @@ export function BrandIntro({
   const overlayStyle = useAnimatedStyle(() => ({
     opacity: fadeOut.value,
   }));
-  const emblemStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(reveal.value, [0, 0.5], [0, 1], 'clamp'),
+  const panelStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0, 0.3], [0, 1], 'clamp'),
     transform: [
-      { translateY: interpolate(assemble.value, [0, 1], [34, 0]) },
-      { scale: interpolate(assemble.value, [0, 1], [0.7, 1]) },
+      {
+        translateY:
+          interpolate(enter.value, [0, 1], [26, 0]) +
+          interpolate(float.value, [0, 1], [0, -6]),
+      },
+      { scale: interpolate(enter.value, [0, 1], [0.94, 1]) },
     ],
   }));
-  const innerStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(reveal.value, [0, 0.6], [0, 1], 'clamp'),
+  // Drifts the opposite way to the niche, so the two layers read as depth.
+  const ghostStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0, 0.42], [0, 0.85], 'clamp'),
     transform: [
-      { rotate: `${interpolate(assemble.value, [0, 1], [100, 0])}deg` },
-      { scale: interpolate(assemble.value, [0, 1], [0.5, 1]) },
+      { translateY: interpolate(float.value, [0, 1], [0, 7]) },
+      { scale: interpolate(enter.value, [0, 1], [0.92, 1]) },
     ],
   }));
-  const haloStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(breathe.value, [0, 1], [0.26, 0.48]) *
-      interpolate(reveal.value, [0, 1], [0, 1], 'clamp'),
-    transform: [{ scale: interpolate(breathe.value, [0, 1], [0.95, 1.05]) }],
+  const markStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0.16, 0.5], [0, 1], 'clamp'),
+    transform: [{ scale: interpolate(enter.value, [0, 1], [0.86, 1]) }],
   }));
-  const ringForwardStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${spin.value * 360}deg` }],
-  }));
-  const ringBackwardStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${-spin.value * 360 - 40}deg` }],
+  const spinStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${interpolate(spin.value, [0, 1], [0, 360])}deg` }],
   }));
   const titleStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(reveal.value, [0.32, 1], [0, 1], 'clamp'),
-    transform: [{ translateY: interpolate(assemble.value, [0, 1], [22, 0]) }],
+    opacity: interpolate(reveal.value, [0.34, 0.68], [0, 1], 'clamp'),
+    transform: [{ translateY: interpolate(enter.value, [0, 1], [16, 0]) }],
+  }));
+  const dividerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0.5, 0.8], [0, 1], 'clamp'),
+    // The row grows out of its own centre, which is where the diamond sits.
+    transform: [{ scaleX: interpolate(enter.value, [0, 1], [0, 1]) }],
+  }));
+  const gemStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(gem.value, [0, 1], [0.82, 1]),
+    transform: [
+      { rotate: `${interpolate(gem.value, [0, 1], [45, 63])}deg` },
+      { scale: interpolate(gem.value, [0, 1], [1, 1.16]) },
+    ],
+  }));
+  const finialStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(gem.value, [0, 1], [0.7, 1]),
+    transform: [{ rotate: '45deg' }, { scale: interpolate(gem.value, [0, 1], [0.9, 1.1]) }],
+  }));
+  const taglineStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0.6, 0.92], [0, 1], 'clamp'),
+    transform: [{ translateY: interpolate(enter.value, [0, 1], [12, 0]) }],
+  }));
+  const motesStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0.24, 0.72], [0, 1], 'clamp'),
+  }));
+  const frameStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0, 0.45], [0, 1], 'clamp'),
   }));
   const footerStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(reveal.value, [0.5, 1], [0, 1], 'clamp'),
-    transform: [{ translateY: interpolate(assemble.value, [0, 1], [16, 0]) }],
+    opacity: interpolate(reveal.value, [0.55, 1], [0, 1], 'clamp'),
+    transform: [{ translateY: interpolate(enter.value, [0, 1], [16, 0]) }],
   }));
   const progressStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [0, PROGRESS_WIDTH]),
@@ -199,109 +339,162 @@ export function BrandIntro({
       onLayout={handleLayout}
       style={[styles.container, overlayStyle]}>
       <LinearGradient
-        colors={['#05251A', '#0E5A3E', '#072418']}
+        colors={['#06271C', '#0C4F38', '#062018']}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.8, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-
-      <View pointerEvents="none" style={styles.backdrop}>
-        <View style={[styles.emeraldBloom, { width: width * 1.1, height: width * 1.1 }]} />
-        <View style={[styles.goldBloom, { width: width * 0.95, height: width * 0.95 }]} />
-        <CornerFlourish style={styles.cornerTopRight} />
-        <CornerFlourish style={styles.cornerBottomLeft} />
-        <Image
-          source={GRAIN_SOURCE}
-          resizeMode="repeat"
-          style={[StyleSheet.absoluteFill, styles.grain]}
-        />
-      </View>
+      <Image
+        source={GRAIN_SOURCE}
+        resizeMode="repeat"
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.grain]}
+      />
 
       <View style={[styles.stage, { paddingTop: insets.top }]}>
         <Animated.View
-          style={[
-            styles.emblemWrap,
-            { width: seal, height: seal, marginBottom: seal * 0.4 },
-            emblemStyle,
-          ]}>
-          <SoftGlow
-            rgb="229,184,95"
-            size={glowSize}
-            style={[styles.haloCenter, { width: glowSize, height: glowSize }, haloStyle]}
-          />
-          <Animated.View
-            style={[
-              styles.ring,
-              {
-                width: seal * 1.38,
-                height: seal * 1.38,
-                borderRadius: seal * 0.69,
-              },
-              ringForwardStyle,
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.ring,
-              styles.ringOuter,
-              {
-                width: seal * 1.18,
-                height: seal * 1.18,
-                borderRadius: seal * 0.59,
-              },
-              ringBackwardStyle,
-            ]}
-          />
-
-          <View style={[styles.seal, { width: seal, height: seal, borderRadius: seal / 2 }]}>
-            {BEAD_ANGLES.map((angle) => {
-              const radians = (angle * Math.PI) / 180;
-              const radius = seal * 0.43;
-              const bead = seal * 0.042;
-              return (
-                <View
-                  key={angle}
-                  style={[
-                    styles.bead,
-                    {
-                      width: bead,
-                      height: bead,
-                      borderRadius: bead / 2,
-                      left: seal / 2 + radius * Math.cos(radians) - bead / 2,
-                      top: seal / 2 + radius * Math.sin(radians) - bead / 2,
-                    },
-                  ]}
-                />
-              );
-            })}
-            <Animated.View style={[styles.innerGroup, innerStyle]}>
+          style={[styles.niche, { width: panelWidth, minHeight: nicheHeight }, panelStyle]}>
+          {/* The dimmer arch standing behind the niche. */}
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, ghostStyle]}>
+            <View
+              style={[
+                styles.ghostHead,
+                { left: -GHOST_INSET, top: springY - ghostRadius, width: ghostRadius * 2 },
+              ]}>
               <View
-                style={[
-                  styles.innerRing,
-                  { width: seal * 0.72, height: seal * 0.72, borderRadius: seal * 0.36 },
-                ]}>
-                <View
-                  style={[
-                    styles.core,
-                    { width: seal * 0.42, height: seal * 0.42, borderRadius: seal * 0.21 },
-                  ]}>
-                  <Ionicons name="book" size={seal * 0.2} color={CREAM} />
-                </View>
-              </View>
-            </Animated.View>
-          </View>
-        </Animated.View>
+                style={{
+                  width: ghostRadius * 2,
+                  height: ghostRadius * 2,
+                  borderRadius: ghostRadius,
+                  backgroundColor: GHOST_GLASS,
+                }}
+              />
+            </View>
+            <View
+              style={[
+                styles.ghostShaft,
+                {
+                  top: springY,
+                  left: -GHOST_INSET,
+                  right: -GHOST_INSET,
+                  bottom: -GHOST_INSET,
+                  backgroundColor: GHOST_GLASS,
+                  borderBottomLeftRadius: FOOT_RADIUS + GHOST_INSET,
+                  borderBottomRightRadius: FOOT_RADIUS + GHOST_INSET,
+                },
+              ]}
+            />
+          </Animated.View>
 
-        <Animated.View style={[styles.titleBlock, titleStyle]}>
-          <Text style={[styles.title, { fontSize: width < 370 ? 30 : 35 }]}>
-            المصحف الشريف
-          </Text>
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <View style={styles.dividerDiamond} />
-            <View style={styles.dividerLine} />
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, frameStyle]}>
+            {/* The dark lip that makes the niche read as cut into the wall. */}
+            <ArchFrame
+              panelWidth={panelWidth}
+              springY={springY}
+              inset={RECESS_INSET}
+              strokeWidth={3}
+              color={RECESS}
+            />
+
+            {/* Head: the upper half of a disc, and the light crossing it. */}
+            <View
+              style={[
+                styles.headClip,
+                { width: panelWidth, height: springY },
+              ]}>
+              <View
+                style={{
+                  width: panelWidth,
+                  height: panelWidth,
+                  borderRadius: archRadius,
+                  backgroundColor: HEAD_GLASS,
+                  overflow: 'hidden',
+                }}>
+                <SweepBand sweep={sweep} travel={panelWidth} />
+              </View>
+            </View>
+
+            {/* Shaft: the straight body, with its own share of the light. */}
+            <View style={[styles.shaft, { top: springY }]}>
+              <SweepBand sweep={sweep} travel={panelWidth} />
+              <Animated.View style={[StyleSheet.absoluteFill, motesStyle]}>
+                {MOTES.map((mote) => (
+                  <Mote key={mote.key} mote={mote} drift={drift} />
+                ))}
+              </Animated.View>
+            </View>
+
+            <ArchFrame
+              panelWidth={panelWidth}
+              springY={springY}
+              inset={FRAME_INSET}
+              strokeWidth={1.5}
+              color={FRAME}
+            />
+            <ArchFrame
+              panelWidth={panelWidth}
+              springY={springY}
+              inset={HAIRLINE_INSET}
+              strokeWidth={1}
+              color={HAIRLINE}
+            />
+
+            {/* Finial on the apex, with a dot on each shoulder of the arch. */}
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.finial, { left: panelWidth / 2 - 5 }, finialStyle]}
+            />
+            <View pointerEvents="none" style={[styles.dot, { left: dotLeft, top: dotTop }]} />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.dot,
+                { left: panelWidth - dotLeft - DOT_SIZE, top: dotTop },
+              ]}
+            />
+          </Animated.View>
+
+          <View
+            style={[
+              styles.content,
+              {
+                paddingTop: Math.round(archRadius * 0.45),
+                paddingBottom: Math.round(archRadius * 0.95),
+              },
+            ]}>
+            <Animated.View
+              style={[styles.markWrap, { width: ringSize, height: ringSize }, markStyle]}>
+              <View pointerEvents="none" style={styles.ringBase} />
+              <Animated.View pointerEvents="none" style={[styles.ringSpin, spinStyle]}>
+                <View style={styles.ringArc} />
+                <View style={styles.ringDot} />
+              </Animated.View>
+              <Image
+                source={MARK_SOURCE}
+                resizeMode="contain"
+                accessibilityLabel="شعار مصحف"
+                style={{
+                  width: markSize,
+                  height: markSize,
+                  borderRadius: Math.round(markSize * 0.24),
+                }}
+              />
+            </Animated.View>
+
+            <Animated.Text
+              numberOfLines={1}
+              style={[styles.title, { fontSize: titleSize }, titleStyle]}>
+              المصحف الشريف
+            </Animated.Text>
+            <Animated.View style={[styles.divider, dividerStyle]}>
+              <View style={styles.dividerLine} />
+              <Animated.View style={[styles.dividerDiamond, gemStyle]} />
+              <View style={styles.dividerLine} />
+            </Animated.View>
+            <Animated.Text style={[styles.tagline, taglineStyle]}>
+              رفيقك في رحاب القرآن
+            </Animated.Text>
           </View>
-          <Text style={styles.tagline}>رفيقك في رحاب القرآن</Text>
         </Animated.View>
       </View>
 
@@ -317,57 +510,136 @@ export function BrandIntro({
         accessibilityLabel="تخطي المقدمة"
         onPress={() => setExiting(true)}
         style={[styles.skipButton, { top: insets.top + 10 }]}>
-        <Ionicons name="play-skip-forward" size={13} color="rgba(255,246,226,0.86)" />
+        <Ionicons name="play-skip-forward" size={13} color={CREAM} />
         <Text style={styles.skipText}>تخطي</Text>
       </Pressable>
     </Animated.View>
   );
 }
 
-/** Concentric low-alpha circles read as a single soft radial bloom. */
-function SoftGlow({
-  rgb,
-  size,
-  style,
+/**
+ * Strokes the niche outline: an arc over the head and plain sides down the shaft.
+ *
+ * The arc is a circle that paints only its top and left borders, which together
+ * cover the upper-left half of the circle — from the lower-left diagonal, round
+ * through the west, to the upper-right diagonal. Turned a quarter turn clockwise
+ * that half swings onto the top half exactly, its ends landing on the spring
+ * line where the shaft's sides begin. Because each view only ever paints the edge
+ * it owns, the strokes meet at the spring line instead of crossing each other.
+ */
+function ArchFrame({
+  panelWidth,
+  springY,
+  inset,
+  strokeWidth,
+  color,
 }: {
-  rgb: string;
-  size: number;
-  style?: StyleProp<AnimatedStyle<ViewStyle>>;
+  panelWidth: number;
+  springY: number;
+  inset: number;
+  strokeWidth: number;
+  color: string;
 }) {
-  const rings = [0.34, 0.5, 0.68, 0.84, 1];
+  const size = panelWidth - inset * 2;
+  const footRadius = Math.max(FOOT_RADIUS - inset, 0);
+
   return (
-    <Animated.View pointerEvents="none" style={style}>
-      {rings.map((ring) => {
-        const diameter = size * ring;
-        return (
-          <View
-            key={ring}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              marginLeft: -diameter / 2,
-              marginTop: -diameter / 2,
-              width: diameter,
-              height: diameter,
-              borderRadius: diameter / 2,
-              backgroundColor: `rgba(${rgb},0.06)`,
-            }}
-          />
-        );
-      })}
+    <>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: inset,
+          top: springY - size / 2,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: strokeWidth,
+          borderColor: 'transparent',
+          borderTopColor: color,
+          borderLeftColor: color,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: inset,
+          right: inset,
+          top: springY,
+          bottom: inset,
+          borderWidth: strokeWidth,
+          borderTopWidth: 0,
+          borderColor: color,
+          borderBottomLeftRadius: footRadius,
+          borderBottomRightRadius: footRadius,
+        }}
+      />
+    </>
+  );
+}
+
+/** Band of light crossing whatever clips it; it overhangs so no edge shows. */
+function SweepBand({ sweep, travel }: { sweep: SharedValue<number>; travel: number }) {
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: interpolate(sweep.value, [0, 1], [-travel * 1.2, travel * 1.2]) },
+      { rotate: '14deg' },
+    ],
+  }));
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.sweep, style]}>
+      <LinearGradient
+        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.16)', 'rgba(255,255,255,0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={StyleSheet.absoluteFill}
+      />
     </Animated.View>
   );
 }
 
-/** A hairline gold bracket that frames a corner of the stage. */
-function CornerFlourish({ style }: { style?: StyleProp<ViewStyle> }) {
+/** One grain of dust: rises and fades inside its own slice of the shared loop. */
+function Mote({
+  mote,
+  drift,
+}: {
+  mote: (typeof MOTES)[number];
+  drift: SharedValue<number>;
+}) {
+  const style = useAnimatedStyle(() => {
+    const { start } = mote;
+    const end = start + MOTE_WINDOW;
+    return {
+      opacity: interpolate(
+        drift.value,
+        [start, start + 0.12, start + 0.22, end],
+        [0, mote.peak, mote.peak, 0],
+        'clamp',
+      ),
+      transform: [
+        { translateY: interpolate(drift.value, [start, end], [mote.travel, -mote.travel], 'clamp') },
+      ],
+    };
+  });
+
   return (
-    <View pointerEvents="none" style={[styles.flourish, style]}>
-      <View style={styles.flourishH} />
-      <View style={styles.flourishV} />
-      <View style={styles.flourishNode} />
-    </View>
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.mote,
+        {
+          left: mote.left,
+          top: mote.top,
+          width: mote.size,
+          height: mote.size,
+          borderRadius: mote.size / 2,
+        },
+        style,
+      ]}
+    />
   );
 }
 
@@ -377,147 +649,124 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     overflow: 'hidden',
-    backgroundColor: '#05251A',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    overflow: 'hidden',
-  },
-  emeraldBloom: {
-    position: 'absolute',
-    top: '-52%',
-    left: '-38%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(14,122,87,0.28)',
-  },
-  goldBloom: {
-    position: 'absolute',
-    bottom: '-46%',
-    right: '-34%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(201,151,60,0.09)',
+    backgroundColor: '#06271C',
   },
   grain: {
-    opacity: 0.16,
-  },
-  flourish: {
-    position: 'absolute',
-    width: 74,
-    height: 74,
-  },
-  cornerTopRight: {
-    top: 70,
-    right: 24,
-    transform: [{ scaleX: -1 }],
-  },
-  cornerBottomLeft: {
-    bottom: 96,
-    left: 24,
-    transform: [{ rotate: '180deg' }],
-  },
-  flourishH: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: 1,
-    backgroundColor: 'rgba(229,184,95,0.4)',
-  },
-  flourishV: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 1,
-    height: '100%',
-    backgroundColor: 'rgba(229,184,95,0.4)',
-  },
-  flourishNode: {
-    position: 'absolute',
-    top: -3,
-    left: -3,
-    width: 7,
-    height: 7,
-    borderRadius: 2,
-    backgroundColor: GOLD,
+    opacity: 0.14,
   },
   stage: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emblemWrap: {
+  /** The niche itself: its height is set by the copy standing inside it. */
+  niche: {
+    alignItems: 'stretch',
+  },
+  ghostHead: {
+    position: 'absolute',
+    height: undefined,
+    overflow: 'hidden',
+    aspectRatio: 2,
+  },
+  ghostShaft: {
+    position: 'absolute',
+  },
+  /** Rect that clips the head disc down to its upper half. */
+  headClip: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    overflow: 'hidden',
+  },
+  shaft: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    backgroundColor: SHAFT_GLASS,
+    borderBottomLeftRadius: FOOT_RADIUS,
+    borderBottomRightRadius: FOOT_RADIUS,
+  },
+  sweep: {
+    position: 'absolute',
+    top: -SWEEP_BLEED,
+    bottom: -SWEEP_BLEED,
+    width: SWEEP_WIDTH,
+  },
+  mote: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,246,226,0.9)',
+  },
+  finial: {
+    position: 'absolute',
+    top: -5,
+    width: 10,
+    height: 10,
+    backgroundColor: GOLD,
+  },
+  dot: {
+    position: 'absolute',
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
+    backgroundColor: GOLD,
+  },
+  /** Stretches the full height of the niche so the copy can be seated in it. */
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 18,
+  },
+  markWrap: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  haloCenter: {
+  ringBase: {
     position: 'absolute',
-  },
-  ring: {
-    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: 'transparent',
-    borderTopColor: 'rgba(229,184,95,0.85)',
-    borderRightColor: 'rgba(229,184,95,0.22)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
-  ringOuter: {
-    borderTopColor: 'rgba(243,210,140,0.32)',
-    borderLeftColor: 'rgba(243,210,140,0.72)',
-  },
-  seal: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(229,184,95,0.4)',
-    shadowColor: GOLD,
-    shadowOpacity: 0.35,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
-  },
-  bead: {
-    position: 'absolute',
-    backgroundColor: 'rgba(229,184,95,0.9)',
-  },
-  innerGroup: {
+  /** Rotated as a whole, which is what sends the arc and its head around. */
+  ringSpin: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  innerRing: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(229,184,95,0.45)',
+  ringArc: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: Radius.pill,
+    borderWidth: 1.4,
+    borderColor: 'transparent',
+    borderTopColor: GOLD,
+    borderRightColor: 'rgba(229,184,95,0.32)',
   },
-  core: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(8,52,36,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(229,184,95,0.55)',
-  },
-  titleBlock: {
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    gap: 16,
+  ringDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: GOLD,
   },
   title: {
     color: CREAM,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
     textAlign: 'center',
-    textShadowColor: 'rgba(229,184,95,0.45)',
-    textShadowRadius: 20,
-    textShadowOffset: { width: 0, height: 0 },
   },
   divider: {
     width: '58%',
-    maxWidth: 240,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    marginTop: -4,
   },
   dividerLine: {
     flex: 1,
@@ -525,16 +774,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(229,184,95,0.7)',
   },
   dividerDiamond: {
-    width: 9,
-    height: 9,
+    width: 8,
+    height: 8,
     backgroundColor: GOLD,
-    transform: [{ rotate: '45deg' }],
   },
   tagline: {
-    color: 'rgba(255,246,226,0.74)',
+    color: 'rgba(255,246,226,0.76)',
     fontSize: 14,
-    fontWeight: '500',
-    letterSpacing: 0.3,
+    fontWeight: '600',
+    letterSpacing: 0.2,
     textAlign: 'center',
   },
   footer: {
@@ -550,17 +798,12 @@ const styles = StyleSheet.create({
     height: 4,
     overflow: 'hidden',
     borderRadius: Radius.pill,
-    backgroundColor: 'rgba(255,246,226,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   progressFill: {
     height: '100%',
     borderRadius: Radius.pill,
-    backgroundColor: GOLD_SOFT,
-    shadowColor: GOLD,
-    shadowOpacity: 0.95,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
+    backgroundColor: GOLD,
   },
   loadingText: {
     color: 'rgba(255,246,226,0.72)',
@@ -578,8 +821,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(229,184,95,0.3)',
-    backgroundColor: 'rgba(255,246,226,0.08)',
+    borderColor: 'rgba(255,255,255,0.24)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     zIndex: 2,
   },
   skipText: {
