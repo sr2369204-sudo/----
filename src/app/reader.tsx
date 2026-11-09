@@ -180,11 +180,15 @@ export default function ReaderScreen() {
   // Snapshot of the playback state read from inside the page's background-tap
   // callback, which must keep a stable identity while the status ticks.
   const playbackRef = useRef<{ hasPlaylist: boolean }>({ hasPlaylist: false });
+  // Mirrors `navVisible` so the page's background-tap callback can read the
+  // current state without depending on render state.
+  const navVisibleRef = useRef(false);
 
-  // The reader controls are no longer opened from a floating button: they come
-  // up together with the word tools, so revealing the ring always reveals the
-  // navbar too.
+  // The navbar and the floating recitation button are one piece of chrome: a
+  // single tap anywhere on the page brings both up, so the reader never has to
+  // aim at a specific control to reach the recitation settings.
   const showNavbar = useCallback(() => {
+    navVisibleRef.current = true;
     setNavVisible(true);
     Animated.timing(navAnimation, {
       toValue: 1,
@@ -194,6 +198,7 @@ export default function ReaderScreen() {
   }, [navAnimation]);
 
   const hideNavbar = useCallback(() => {
+    navVisibleRef.current = false;
     setNavVisible(false);
     Animated.timing(navAnimation, {
       toValue: 0,
@@ -201,6 +206,17 @@ export default function ReaderScreen() {
       useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, [navAnimation]);
+
+  // A tap toggles the chrome: the first one brings the navbar and the recitation
+  // button up, the next puts them — and any word/ayah tools — away again.
+  const toggleChrome = useCallback(() => {
+    if (navVisibleRef.current) {
+      useReaderSelectionStore.getState().clearSelection();
+      hideNavbar();
+      return;
+    }
+    showNavbar();
+  }, [hideNavbar, showNavbar]);
 
   const startLocationQuery = useQuery({
     queryKey: [
@@ -761,6 +777,9 @@ export default function ReaderScreen() {
         current.surahNumber !== surahNumber ||
         (current.type !== 'ayah' && current.type !== 'range')
       ) {
+        // A lone tap that does not extend an existing ayah selection toggles
+        // the chrome: picking a verse stays on the long press.
+        toggleChrome();
         return;
       }
     }
@@ -803,7 +822,7 @@ export default function ReaderScreen() {
 
     selectAyah(surahNumber, ayah, 'compact');
     showNavbar();
-  }, [page, player, recitationQueue, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar]);
+  }, [page, player, recitationQueue, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar, toggleChrome]);
 
   const onWordPress = useCallback((
     surahNumber: number,
@@ -831,6 +850,9 @@ export default function ReaderScreen() {
       return;
     }
     if (gesture !== 'longPress') {
+      // Same as the ayah head: a single tap toggles the chrome, while the long
+      // press picks the word itself.
+      toggleChrome();
       return;
     }
     const ayah = page?.ayahs.find(
@@ -858,6 +880,7 @@ export default function ReaderScreen() {
     rememberReadingPosition,
     selectWord,
     showNavbar,
+    toggleChrome,
   ]);
 
   /**
@@ -937,7 +960,9 @@ export default function ReaderScreen() {
     setTasmi3Revealed(false);
     setScopeDialogOpen(false);
     useReaderSelectionStore.getState().clearSelection();
-  }, [player, recitationPlaylist, selection]);
+    // Memorisation mode hides its ayahs, so the chrome goes away with them.
+    hideNavbar();
+  }, [hideNavbar, player, recitationPlaylist, selection]);
 
   const playSelection = useCallback(async (currentSelection: ReaderSelection) => {
     if (currentSelection.type === 'range') {
@@ -1005,9 +1030,10 @@ export default function ReaderScreen() {
     // screen did not know about.
     setPageNumber(destination);
     useReaderSelectionStore.getState().clearSelection();
+    hideNavbar();
     audioRequest.current += 1;
     player.pause();
-  }, [player]);
+  }, [hideNavbar, player]);
 
   const toggleBookmark = useCallback((surahNumber: number, ayahNumber: number) => {
     const repository = new SqliteAnnotationRepository(database);
@@ -1163,16 +1189,16 @@ export default function ReaderScreen() {
   // Reported by the page itself when a tap misses every word and ayah. With a
   // recitation queue loaded the tap tucks the floating player away — or brings
   // it back — so the verse underneath can be read while the reciter goes on.
-  // Otherwise it simply dismisses the word/ayah tools. Because the report comes
-  // from inside the page, a tap on another ayah is never read as a dismissal
-  // and can still stretch the selection into a range.
+  // Otherwise it toggles the chrome. Because the report comes from inside the
+  // page, a tap on another ayah is never read as a dismissal and can still
+  // stretch the selection into a range.
   const handleBackgroundPress = useCallback(() => {
     if (!useReaderSelectionStore.getState().selection && playbackRef.current.hasPlaylist) {
       setPlayerHidden((hidden) => !hidden);
       return;
     }
-    useReaderSelectionStore.getState().clearSelection();
-  }, []);
+    toggleChrome();
+  }, [toggleChrome]);
 
   const handlePageTurn = useCallback((targetPageNumber: number) => {
     // The strip only turns to a page that is mounted and painted, and it has
@@ -1342,7 +1368,10 @@ export default function ReaderScreen() {
   }, [navigateToPage, quranCache]);
 
   useEffect(() => {
-    if ((!selection || isPlayingAudio) && navVisible) {
+    // Playback takes the page over: the chrome slides away on its own so the
+    // reciting ayah and the floating player stand alone. Everything else is
+    // driven by the tap handlers, which now toggle the chrome directly.
+    if (isPlayingAudio && navVisible) {
       // Avoid calling setState synchronously during render/effect to satisfy
       // strict lint rules, especially since hideNavbar starts an animation.
       const task = requestAnimationFrame(() => {
@@ -1350,7 +1379,7 @@ export default function ReaderScreen() {
       });
       return () => cancelAnimationFrame(task);
     }
-  }, [selection, isPlayingAudio, navVisible, hideNavbar]);
+  }, [isPlayingAudio, navVisible, hideNavbar]);
 
   const initialError = startLocationQuery.error;
   const pageError = pageQuery.error;
@@ -1363,8 +1392,8 @@ export default function ReaderScreen() {
 
   return (
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      {/* The reader controls come up together with the word tools, never from a
-          floating button of their own. */}
+      {/* The navbar and the floating recitation button share one visibility
+          state: the first tap anywhere on the page brings both up. */}
       <Animated.View
         onLayout={(event) => setNavbarHeight(event.nativeEvent.layout.height)}
         style={[
@@ -1514,7 +1543,7 @@ export default function ReaderScreen() {
         />
       ) : null}
 
-      {!recitationQueue && !tasmi3Session && (
+      {navVisible && !recitationQueue && !tasmi3Session && (
         <Animated.View
           {...recitationFabResponder.panHandlers}
           style={[
