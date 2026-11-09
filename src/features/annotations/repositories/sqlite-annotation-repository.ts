@@ -8,10 +8,12 @@ import type {
   CreateAyahVoiceNoteInput,
   CreateHighlightInput,
   CreateNoteInput,
+  CreateRecordingInput,
   CreateSavedWordInput,
   CreateWordVoiceNoteInput,
   Highlight,
   Note,
+  Recording,
   SavedWord,
   WordVoiceNote,
 } from '../types';
@@ -66,6 +68,13 @@ type AyahVoiceNoteRow = {
   id: string;
   surah_number: number;
   ayah_number: number;
+  file_uri: string;
+  duration_ms: number;
+  created_at: string;
+};
+
+type RecordingRow = {
+  id: string;
   file_uri: string;
   duration_ms: number;
   created_at: string;
@@ -480,6 +489,56 @@ export class SqliteAnnotationRepository {
   async deleteAyahVoiceNote(id: string): Promise<void> {
     await this.database.runAsync('DELETE FROM ayah_voice_notes WHERE id = ?', id);
   }
+
+  async listRecordings(): Promise<Recording[]> {
+    const rows = await this.database.getAllAsync<RecordingRow>(
+      `SELECT * FROM recordings
+       ORDER BY created_at DESC, id DESC`,
+    );
+    return rows.map(toRecording);
+  }
+
+  /** The newest recordings, for the short list inside the «التسميع» panel. */
+  async listRecentRecordings(limit: number): Promise<Recording[]> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error('Recent recordings require a positive limit.');
+    }
+    const rows = await this.database.getAllAsync<RecordingRow>(
+      `SELECT * FROM recordings
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?`,
+      limit,
+    );
+    return rows.map(toRecording);
+  }
+
+  async createRecording(input: CreateRecordingInput): Promise<Recording> {
+    const fileUri = input.fileUri.trim();
+    if (fileUri.length === 0) {
+      throw new Error('Recordings require the recorded file.');
+    }
+    if (!Number.isFinite(input.durationMs) || input.durationMs < 0) {
+      throw new Error('Recordings require a non-negative duration.');
+    }
+
+    const id = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    const durationMs = Math.round(input.durationMs);
+    await this.database.runAsync(
+      `INSERT INTO recordings (id, file_uri, duration_ms, created_at)
+       VALUES (?, ?, ?, ?)`,
+      id,
+      fileUri,
+      durationMs,
+      now,
+    );
+
+    return { id, fileUri, durationMs, createdAt: now };
+  }
+
+  async deleteRecording(id: string): Promise<void> {
+    await this.database.runAsync('DELETE FROM recordings WHERE id = ?', id);
+  }
 }
 
 function validateHighlight(input: CreateHighlightInput): void {
@@ -699,6 +758,15 @@ function toAyahVoiceNote(row: AyahVoiceNoteRow): AyahVoiceNote {
     id: row.id,
     surahNumber: row.surah_number,
     ayahNumber: row.ayah_number,
+    fileUri: row.file_uri,
+    durationMs: row.duration_ms,
+    createdAt: row.created_at,
+  };
+}
+
+function toRecording(row: RecordingRow): Recording {
+  return {
+    id: row.id,
     fileUri: row.file_uri,
     durationMs: row.duration_ms,
     createdAt: row.created_at,

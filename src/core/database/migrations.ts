@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 10;
+const DATABASE_VERSION = 11;
 
 export async function initializeDatabase(database: SQLiteDatabase): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = ON;');
@@ -193,6 +193,22 @@ export async function initializeDatabase(database: SQLiteDatabase): Promise<void
           ON ayah_voice_notes (surah_number, ayah_number);
 
         PRAGMA user_version = 10;
+      `);
+    }
+
+    if (currentVersion < 11) {
+      await database.execAsync(`
+        CREATE TABLE recordings (
+          id TEXT PRIMARY KEY NOT NULL,
+          file_uri TEXT NOT NULL CHECK (length(file_uri) > 0),
+          duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX recordings_by_created
+          ON recordings (created_at DESC);
+
+        PRAGMA user_version = 11;
       `);
     }
   });

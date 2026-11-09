@@ -105,3 +105,17 @@ export type CreateAyahVoiceNoteInput = {
   fileUri: string;
   durationMs: number;
 };
+
+/** A free-standing recording the reader keeps for themselves, tied to no ayah. */
+export type Recording = {
+  id: string;
+  /** Persistent location of the recorded audio file on the device. */
+  fileUri: string;
+  durationMs: number;
+  createdAt: string;
+};
+
+export type CreateRecordingInput = {
+  fileUri: string;
+  durationMs: number;
+};

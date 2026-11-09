@@ -17,6 +17,7 @@ import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import { ContinueReadingCard } from '@/features/home/components/continue-reading-card';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
+import { RecordingsCard } from '@/features/home/components/recordings-card';
 import { OfflineDownloadBanner } from '@/features/home/components/offline-download-banner';
 import { DailyReadingPlan } from '@/features/home/components/daily-reading-plan';
 import { HomeHero } from '@/features/home/components/home-hero';
@@ -113,6 +114,11 @@ export default function HomeScreen() {
   const savedWords = useQuery({
     queryKey: ['annotations', 'saved-words'],
     queryFn: () => new SqliteAnnotationRepository(database).listSavedWords(),
+  });
+
+  const recordings = useQuery({
+    queryKey: ['recordings', 'all'],
+    queryFn: () => new SqliteAnnotationRepository(database).listRecordings(),
   });
 
   const dailyPlanQuery = useQuery({
@@ -213,6 +219,10 @@ export default function HomeScreen() {
               loading={lastReadingPositionQuery.isPending}
             />
             <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
+            <RecordingsCard
+              count={recordings.data?.length ?? 0}
+              loading={recordings.isPending}
+            />
             <DailyReadingPlan
               plan={dailyPlanQuery.data ?? null}
               surahNameByNumber={surahNames}

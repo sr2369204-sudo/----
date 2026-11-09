@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/refs -- PanResponder callbacks read gesture offsets only during gestures. */
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -9,20 +10,35 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
+import { Directory, File, Paths } from 'expo-file-system';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SeekBar } from '@/components/ui/seek-bar';
+import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
+import type { Recording } from '@/features/annotations/types';
+import {
+  formatRecordingDuration,
+  formatRecordingStamp,
+} from '@/features/annotations/utils/recordings-format';
 import type { RecitationScope } from '@/features/reader/services/recitation-queue';
 import { useTheme } from '@/hooks/use-theme';
+
+/** Folder inside the document directory that keeps the reader's own recordings. */
+const RECORDINGS_DIRECTORY = 'recordings';
+/** The panel lists only the newest takes it can show without crowding. */
+const RECENT_RECORDINGS_LIMIT = 3;
 
 type Props = {
   visible: boolean;
@@ -35,12 +51,21 @@ type Props = {
 export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
+  const database = useSQLiteContext();
+  const queryClient = useQueryClient();
+  const repository = useMemo(() => new SqliteAnnotationRepository(database), [database]);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 200);
   const player = useAudioPlayer();
   const playerStatus = useAudioPlayerStatus(player);
-  const [recordingUri, setRecordingUri] = useState<string | null>(null);
+  const recordingsQuery = useQuery({
+    queryKey: ['recordings', 'recent'],
+    queryFn: () => repository.listRecentRecordings(RECENT_RECORDINGS_LIMIT),
+  });
+  const recordings = recordingsQuery.data ?? [];
+  const [playingId, setPlayingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [pan] = useState(() => new Animated.ValueXY());
@@ -49,8 +74,10 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
+        // The open panel stays anchored so it never slides while reading; only
+        // the collapsed floating button is free to be dragged around.
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
+          !expanded && (Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6),
         onPanResponderGrant: () => {
           pan.setOffset(panOffset.current);
           pan.setValue({ x: 0, y: 0 });
@@ -66,12 +93,13 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
           pan.flattenOffset();
         },
       }),
-    [pan],
+    [pan, expanded],
   );
 
   async function startRecording(): Promise<void> {
     setError(null);
     player.pause();
+    setPlayingId(null);
     try {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
@@ -81,7 +109,6 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
-      setRecordingUri(null);
       onHide();
       setExpanded(true);
     } catch (recordingError) {
@@ -94,6 +121,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
     setBusy(true);
     setError(null);
     try {
+      const durationMs = recorderState.durationMillis;
       await recorder.stop();
       const uri = recorder.uri;
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
@@ -101,7 +129,21 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
         throw new Error('تعذر إنشاء ملف التسجيل.');
       }
 
-      setRecordingUri(uri);
+      // The recorder writes into the cache directory, which the system is free
+      // to clear, so the take is moved somewhere durable before it is stored.
+      const directory = new Directory(Paths.document, RECORDINGS_DIRECTORY);
+      if (!directory.exists) {
+        directory.create({ intermediates: true, idempotent: true });
+      }
+      const extension = RecordingPresets.HIGH_QUALITY.extension ?? '.m4a';
+      const destination = new File(
+        directory,
+        `tasmi3-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}${extension}`,
+      );
+      await new File(uri).move(destination);
+
+      await repository.createRecording({ fileUri: destination.uri, durationMs });
+      await queryClient.invalidateQueries({ queryKey: ['recordings'] });
       onReveal();
       setExpanded(true);
     } catch (recordingError) {
@@ -111,20 +153,49 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
     }
   }
 
-  function playRecording(): void {
-    if (!recordingUri) {
+  function togglePlayback(recording: Recording): void {
+    if (playingId === recording.id) {
+      if (playerStatus.playing) {
+        player.pause();
+      } else {
+        // A take that already played to its end has to be wound back first.
+        if (playerStatus.duration > 0 && playerStatus.currentTime >= playerStatus.duration - 0.05) {
+          void player.seekTo(0);
+        }
+        player.play();
+      }
       return;
     }
-    if (playerStatus.playing) {
-      player.pause();
-      return;
-    }
-    player.replace({ uri: recordingUri });
+    player.replace({ uri: recording.fileUri });
     player.play();
+    setPlayingId(recording.id);
   }
 
   function toggleTasmi3Button(): void {
     setExpanded((value) => !value);
+  }
+
+  async function removeRecording(recording: Recording): Promise<void> {
+    setDeletingId(recording.id);
+    setError(null);
+    try {
+      if (playingId === recording.id) {
+        player.pause();
+        setPlayingId(null);
+      }
+      await repository.deleteRecording(recording.id);
+      const file = new File(recording.fileUri);
+      if (file.exists) {
+        file.delete();
+      }
+      await queryClient.invalidateQueries({ queryKey: ['recordings'] });
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? `تعذر حذف التسجيل: ${deleteError.message}` : 'تعذر حذف التسجيل.',
+      );
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   async function exitTasmi3(): Promise<void> {
@@ -133,6 +204,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
     }
     player.pause();
+    setPlayingId(null);
     onExit();
   }
 
@@ -202,22 +274,78 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
           </View>
           <Text style={[styles.timer, { color: recorderState.isRecording ? '#C62828' : colors.textSecondary }]}>
             {recorderState.isRecording
-              ? formatDuration(recorderState.durationMillis)
-              : recordingUri
-                ? 'تم التسجيل'
-                : 'اضغط لبدء التسميع'}
+              ? formatRecordingDuration(recorderState.durationMillis)
+              : 'اضغط لبدء التسميع'}
           </Text>
 
-          {recordingUri && (
-            <Pressable
-              accessibilityRole="button"
-              onPress={playRecording}
-              style={[styles.playButton, { borderColor: colors.primary }]}>
-              <Ionicons name={playerStatus.playing ? 'stop' : 'play'} size={18} color={colors.primary} />
-              <Text style={[styles.playLabel, { color: colors.primary }]}>
-                {playerStatus.playing ? 'إيقاف التسجيل' : 'تشغيل تسجيلك للمراجعة'}
+          {recordings.length > 0 && (
+            <View style={styles.recordings}>
+              <Text style={[styles.recordingsHeading, { color: colors.textSecondary }]}>
+                آخر التسجيلات
               </Text>
-            </Pressable>
+              <ScrollView
+                style={styles.recordingsList}
+                contentContainerStyle={styles.recordingsListContent}
+                showsVerticalScrollIndicator={false}>
+                {recordings.map((recording) => {
+                  const active = playingId === recording.id;
+                  const playing = active && playerStatus.playing;
+                  const durationSeconds =
+                    active && playerStatus.duration > 0
+                      ? playerStatus.duration
+                      : recording.durationMs / 1000;
+                  const positionSeconds = active
+                    ? Math.min(playerStatus.currentTime, durationSeconds)
+                    : 0;
+                  return (
+                    <View
+                      key={recording.id}
+                      style={[styles.recordingRow, { borderColor: colors.border }]}>
+                      <View style={styles.recordingHead}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={playing ? 'إيقاف التسجيل مؤقتًا' : 'تشغيل التسجيل'}
+                          onPress={() => togglePlayback(recording)}
+                          style={({ pressed }) => [
+                            styles.recordingPlay,
+                            { backgroundColor: colors.primary },
+                            pressed && styles.pressed,
+                          ]}>
+                          <Ionicons
+                            name={playing ? 'pause' : 'play'}
+                            size={15}
+                            color={colors.onPrimary}
+                          />
+                        </Pressable>
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.recordingStamp, { color: colors.text }]}>
+                          {formatRecordingStamp(recording.createdAt)}
+                        </Text>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="حذف التسجيل"
+                          disabled={deletingId === recording.id}
+                          onPress={() => void removeRecording(recording)}
+                          style={({ pressed }) => [
+                            styles.recordingDelete,
+                            { backgroundColor: colors.backgroundSelected },
+                            pressed && styles.pressed,
+                          ]}>
+                          <Ionicons name="trash-outline" size={14} color="#B24C4C" />
+                        </Pressable>
+                      </View>
+                      <SeekBar
+                        position={positionSeconds}
+                        duration={durationSeconds}
+                        enabled={active}
+                        onSeek={(seconds) => void player.seekTo(Math.max(0, seconds))}
+                      />
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
           )}
           <Pressable
             accessibilityRole="button"
@@ -268,13 +396,6 @@ function describeScope(scope: RecitationScope): string {
   return `الآيات ${scope.surahNumber}:${scope.fromAyah}–${scope.toAyah}`;
 }
 
-function formatDuration(durationMs: number): string {
-  const seconds = Math.floor(durationMs / 1000);
-  return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60)
-    .toString()
-    .padStart(2, '0')}`;
-}
-
 const styles = StyleSheet.create({
   root: { position: 'absolute', right: 18, alignItems: 'flex-end', zIndex: 30, gap: 10 },
   panel: { width: 300, borderWidth: 1, borderRadius: 22, padding: 18, gap: 14, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
@@ -288,8 +409,15 @@ const styles = StyleSheet.create({
   recordRing: { alignSelf: 'center', width: 96, height: 96, borderRadius: 48, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   recordButton: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center' },
   timer: { fontSize: 16, fontWeight: '800', textAlign: 'center' },
-  playButton: { minHeight: 48, borderWidth: 1, borderRadius: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
-  playLabel: { fontSize: 14, fontWeight: '800' },
+  recordings: { gap: 8 },
+  recordingsHeading: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
+  recordingsList: { maxHeight: 236 },
+  recordingsListContent: { gap: 10 },
+  recordingRow: { gap: 8, borderWidth: 1, borderRadius: 14, padding: 10 },
+  recordingHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  recordingPlay: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  recordingStamp: { flex: 1, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+  recordingDelete: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   exitButton: { minHeight: 40, borderRadius: 12, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
   exitLabel: { fontSize: 12, fontWeight: '700' },
   error: { color: '#C62828', fontSize: 13, textAlign: 'center' },
