@@ -27,6 +27,7 @@ import {
 } from '@/features/home/components/home-search-results';
 import { SurahFilters, type RevelationFilter } from '@/features/home/components/surah-filters';
 import { SurahGridItemModern } from '@/features/home/components/surah-list-item-modern';
+import { QuranHeartCard } from '@/features/memorization/components/quran-heart-card';
 import {
   HOME_SEARCH_RESULTS_LIMIT,
   resolveAyahSearchReference,
@@ -218,6 +219,7 @@ export default function HomeScreen() {
               surahNameByNumber={surahNames}
               loading={lastReadingPositionQuery.isPending}
             />
+            <QuranHeartCard />
             <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
             <RecordingsCard
               count={recordings.data?.length ?? 0}
