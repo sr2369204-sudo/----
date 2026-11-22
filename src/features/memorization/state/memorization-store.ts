@@ -16,6 +16,12 @@ type MemorizationState = {
   load: (database: SQLiteDatabase) => Promise<void>;
   /** Flips one surah and persists the result. */
   toggle: (database: SQLiteDatabase, surahNumber: number) => Promise<void>;
+  /** Marks several surahs memorized (`true`) or not (`false`) in one save. */
+  setMemorized: (
+    database: SQLiteDatabase,
+    surahNumbers: number[],
+    value: boolean,
+  ) => Promise<void>;
   /** Clears every memorized surah. */
   reset: (database: SQLiteDatabase) => Promise<void>;
   setError: (error: string | null) => void;
@@ -57,6 +63,33 @@ export const useMemorizationStore = create<MemorizationState>((set, get) => ({
       next.add(surahNumber);
     }
     // Optimistic so the cell lights up the instant it is tapped.
+    set({ memorized: next, error: null });
+    try {
+      await saveMemorizedSurahs(database, [...next]);
+    } catch (error) {
+      set({
+        memorized: previous,
+        error: error instanceof Error ? error.message : 'تعذر حفظ تقدم الحفظ.',
+      });
+    }
+  },
+
+  setMemorized: async (database, surahNumbers, value) => {
+    const previous = get().memorized;
+    const next = new Set(previous);
+    let changed = false;
+    for (const surahNumber of surahNumbers) {
+      if (value && !next.has(surahNumber)) {
+        next.add(surahNumber);
+        changed = true;
+      } else if (!value && next.delete(surahNumber)) {
+        changed = true;
+      }
+    }
+    if (!changed) {
+      return;
+    }
+    // One write for the whole batch keeps multi-select fast.
     set({ memorized: next, error: null });
     try {
       await saveMemorizedSurahs(database, [...next]);

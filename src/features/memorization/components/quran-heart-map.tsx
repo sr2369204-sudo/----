@@ -52,6 +52,8 @@ type QuranHeartMapProps = {
   onPressSurah: (surahNumber: number) => void;
   /** Highlights the cell that was tapped last. */
   focusedSurah: number | null;
+  /** Extra cells to outline, used by the multi-select mode. */
+  selected: ReadonlySet<number>;
   /** Draws every surah name over its cell. */
   showLabels: boolean;
   /** Colours for the backdrop, the two cell states and both label states. */
@@ -67,6 +69,7 @@ export function QuranHeartMap({
   memorized,
   onPressSurah,
   focusedSurah,
+  selected,
   showLabels,
   palette,
 }: QuranHeartMapProps) {
@@ -223,14 +226,15 @@ export function QuranHeartMap({
                 viewBox={`${HEART_VIEWBOX.x} ${HEART_VIEWBOX.y} ${HEART_VIEWBOX.width} ${HEART_VIEWBOX.height}`}>
                 {cells.map((cell) => {
                   const active = memorized.has(cell.surahNumber);
-                  const focused = focusedSurah === cell.surahNumber;
+                  const highlighted =
+                    focusedSurah === cell.surahNumber || selected.has(cell.surahNumber);
                   return cell.paths.map((d, index) => (
                     <Path
                       key={`${cell.surahNumber}-${index}`}
                       d={d}
                       fill={active ? palette.memorizedFill : palette.cellFill}
-                      stroke={focused ? palette.focusStroke : palette.background}
-                      strokeWidth={focused ? 3 : 1}
+                      stroke={highlighted ? palette.focusStroke : palette.background}
+                      strokeWidth={highlighted ? 3 : 1}
                       strokeLinejoin="round"
                     />
                   ));

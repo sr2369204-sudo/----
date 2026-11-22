@@ -30,6 +30,7 @@ export default function QuranHeartScreen() {
   const memorizationError = useMemorizationStore((state) => state.error);
   const load = useMemorizationStore((state) => state.load);
   const toggle = useMemorizationStore((state) => state.toggle);
+  const setMemorized = useMemorizationStore((state) => state.setMemorized);
   const reset = useMemorizationStore((state) => state.reset);
 
   const colorOverrides = useHeartAppearanceStore((state) => state.overrides);
@@ -44,6 +45,12 @@ export default function QuranHeartScreen() {
   const [focusedSurah, setFocusedSurah] = useState<number | null>(null);
   const [showLabels, setShowLabels] = useState(true);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  /**
+   * Multi-select: when on, tapping cells only builds a batch and never changes
+   * storage, so the reader can mark many surahs with one confirm.
+   */
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set<number>());
 
   useEffect(() => {
     void load(database);
@@ -65,20 +72,61 @@ export default function QuranHeartScreen() {
   );
 
   const handlePressSurah = useCallback((surahNumber: number) => {
+    if (selectionMode) {
+      setSelected((previous) => {
+        const next = new Set(previous);
+        if (next.has(surahNumber)) {
+          next.delete(surahNumber);
+        } else {
+          next.add(surahNumber);
+        }
+        return next;
+      });
+      return;
+    }
     setFocusedSurah(surahNumber);
     void toggle(database, surahNumber);
-  }, [database, toggle]);
+  }, [database, selectionMode, toggle]);
+
+  const handleToggleSelectionMode = useCallback(() => {
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelected(new Set<number>());
+      return;
+    }
+    setFocusedSurah(null);
+    setSelected(new Set<number>());
+    setSelectionMode(true);
+  }, [selectionMode]);
+
+  const allSelected = selected.size === HEART_CELLS.length;
+
+  const handleSelectAll = useCallback(() => {
+    setSelected((previous) => (previous.size === HEART_CELLS.length
+      ? new Set<number>()
+      : new Set(HEART_CELLS.map((cell) => cell.surahNumber))));
+  }, []);
+
+  /** Applies the batch in a single write, then leaves multi-select. */
+  const handleApplySelection = useCallback((value: boolean) => {
+    if (selected.size === 0) {
+      return;
+    }
+    void setMemorized(database, [...selected], value);
+    setSelectionMode(false);
+    setSelected(new Set<number>());
+  }, [database, selected, setMemorized]);
 
   const handleReset = useCallback(() => {
     Alert.alert(
-      'إعادة ضبط التقدم',
-      'هل تريد حذف كل السور التي حفظتها؟ لا يمكن التراجع عن هذه الخطوة.',
+      'إعادة ضبط كل التقدم',
+      `سيتم إلغاء حفظ ${toArabicNumbers(progress.memorizedCount)} سورة (${toArabicNumbers(progress.percentage)}٪ من القرآن). لا يمكن التراجع عن هذه الخطوة.`,
       [
         { text: 'إلغاء', style: 'cancel' },
-        { text: 'إعادة الضبط', style: 'destructive', onPress: () => void reset(database) },
+        { text: 'إلغاء الكل', style: 'destructive', onPress: () => void reset(database) },
       ],
     );
-  }, [database, reset]);
+  }, [database, progress.memorizedCount, progress.percentage, reset]);
 
   const handleSelectColor = useCallback((key: HeartColorKey, color: string) => {
     void setColor(database, key, color);
@@ -106,45 +154,112 @@ export default function QuranHeartScreen() {
           <View style={styles.titleGroup}>
             <Text style={[styles.title, { color: colors.text }]}>قلب القرآن</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              كل خلية سورة — اضغط لتعليمها محفوظة
+              {selectionMode
+                ? 'اضغط الخلايا لتحديدها ثم طبّق دفعة واحدة'
+                : 'كل خلية سورة — اضغط لتعليمها محفوظة'}
             </Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="إظهار أسماء السور"
-            accessibilityState={{ selected: showLabels }}
-            onPress={() => setShowLabels((value) => !value)}
-            style={StyleSheet.flatten([
-              styles.toggleButton,
-              {
-                backgroundColor: showLabels ? colors.primary : colors.surface,
-                borderColor: showLabels ? colors.primary : colors.border,
-              },
-            ])}>
-            <Ionicons
-              name="text-outline"
-              size={18}
-              color={showLabels ? colors.onPrimary : colors.primary}
-            />
-            <Text
-              style={[
-                styles.toggleText,
-                { color: showLabels ? colors.onPrimary : colors.primary },
-              ]}>
-              الأسماء
-            </Text>
-          </Pressable>
+        </View>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تخصيص ألوان القلب"
-            onPress={() => setAppearanceOpen(true)}
-            style={StyleSheet.flatten([
-              styles.colorButton,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ])}>
-            <Ionicons name="color-palette-outline" size={19} color={colors.primary} />
-          </Pressable>
+        <View style={styles.controlRow}>
+          {selectionMode ? (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={allSelected ? 'مسح التحديد' : 'تحديد كل السور'}
+                onPress={handleSelectAll}
+                style={StyleSheet.flatten([
+                  styles.toggleButton,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ])}>
+                <Ionicons
+                  name={allSelected ? 'close-circle-outline' : 'checkmark-done-outline'}
+                  size={17}
+                  color={colors.primary}
+                />
+                <Text style={[styles.toggleText, { color: colors.primary }]}>
+                  {allSelected ? 'مسح' : 'الكل'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إنهاء وضع التحديد"
+                onPress={handleToggleSelectionMode}
+                style={StyleSheet.flatten([
+                  styles.toggleButton,
+                  { backgroundColor: colors.primary, borderColor: colors.primary },
+                ])}>
+                <Ionicons name="exit-outline" size={17} color={colors.onPrimary} />
+                <Text style={[styles.toggleText, { color: colors.onPrimary }]}>إنهاء</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إظهار أسماء السور"
+                accessibilityState={{ selected: showLabels }}
+                onPress={() => setShowLabels((value) => !value)}
+                style={StyleSheet.flatten([
+                  styles.toggleButton,
+                  {
+                    backgroundColor: showLabels ? colors.primary : colors.surface,
+                    borderColor: showLabels ? colors.primary : colors.border,
+                  },
+                ])}>
+                <Ionicons
+                  name="text-outline"
+                  size={17}
+                  color={showLabels ? colors.onPrimary : colors.primary}
+                />
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: showLabels ? colors.onPrimary : colors.primary },
+                  ]}>
+                  الأسماء
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="تحديد عدة سور دفعة واحدة"
+                onPress={handleToggleSelectionMode}
+                style={StyleSheet.flatten([
+                  styles.toggleButton,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ])}>
+                <Ionicons name="checkmark-done-outline" size={17} color={colors.primary} />
+                <Text style={[styles.toggleText, { color: colors.primary }]}>تحديد متعدد</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="تخصيص ألوان القلب"
+                onPress={() => setAppearanceOpen(true)}
+                style={StyleSheet.flatten([
+                  styles.iconButton,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ])}>
+                <Ionicons name="color-palette-outline" size={19} color={colors.primary} />
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إعادة ضبط كل التقدم"
+                accessibilityState={{ disabled: progress.memorizedCount === 0 }}
+                disabled={progress.memorizedCount === 0}
+                onPress={handleReset}
+                style={StyleSheet.flatten([
+                  styles.iconButton,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  progress.memorizedCount === 0 && styles.disabled,
+                ])}>
+                <Ionicons name="refresh" size={19} color={colors.textSecondary} />
+              </Pressable>
+            </>
+          )}
         </View>
 
         <GlassSurface variant="ivory" radius={Radius.lg} contentStyle={styles.statsCard}>
@@ -189,6 +304,7 @@ export default function QuranHeartScreen() {
         <QuranHeartMap
           memorized={memorized}
           focusedSurah={focusedSurah}
+          selected={selected}
           showLabels={showLabels}
           palette={palette}
           onPressSurah={handlePressSurah}
@@ -203,7 +319,47 @@ export default function QuranHeartScreen() {
       )}
 
       <View style={styles.footer}>
-        {focusedCell ? (
+        {selectionMode ? (
+          <View style={[styles.selectionBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.selectionCount, { color: colors.textSecondary }]}>
+              {`محدد ${toArabicNumbers(selected.size)} سورة`}
+            </Text>
+            <View style={styles.selectionActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="تعليم السور المحددة محفوظة"
+                accessibilityState={{ disabled: selected.size === 0 }}
+                disabled={selected.size === 0}
+                onPress={() => handleApplySelection(true)}
+                style={StyleSheet.flatten([
+                  styles.selectionAction,
+                  { backgroundColor: colors.primary, borderColor: colors.primary },
+                  selected.size === 0 && styles.disabled,
+                ])}>
+                <Ionicons name="checkmark-circle-outline" size={17} color={colors.onPrimary} />
+                <Text style={[styles.selectionActionText, { color: colors.onPrimary }]}>
+                  تعليم محفوظة
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إلغاء حفظ السور المحددة"
+                accessibilityState={{ disabled: selected.size === 0 }}
+                disabled={selected.size === 0}
+                onPress={() => handleApplySelection(false)}
+                style={StyleSheet.flatten([
+                  styles.selectionAction,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  selected.size === 0 && styles.disabled,
+                ])}>
+                <Ionicons name="close-circle-outline" size={17} color={colors.textSecondary} />
+                <Text style={[styles.selectionActionText, { color: colors.textSecondary }]}>
+                  إلغاء الحفظ
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : focusedCell ? (
           <GlassSurface variant={memorized.has(focusedCell.surahNumber) ? 'emerald' : 'ivory'} radius={Radius.lg} contentStyle={styles.focusedCard}>
             <View style={styles.focusedIcon}>
               <Ionicons
@@ -220,13 +376,6 @@ export default function QuranHeartScreen() {
                 {`ترتيبها ${toArabicNumbers(focusedCell.surahNumber)} • ${formatAyahCount(focusedCell.ayahCount)}`}
               </Text>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إزالة التقدم الكامل"
-              onPress={handleReset}
-              style={StyleSheet.flatten([styles.resetButton, { borderColor: colors.border }])}>
-              <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-            </Pressable>
           </GlassSurface>
         ) : (
           <View style={styles.emptyFooter}>
@@ -284,6 +433,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
   },
+  controlRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
   backButton: {
     width: 44,
     height: 44,
@@ -319,13 +474,16 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.micro,
     fontWeight: '800',
   },
-  colorButton: {
+  iconButton: {
     width: 40,
     height: 40,
     borderRadius: Radius.pill,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  disabled: {
+    opacity: 0.4,
   },
   statsCard: {
     gap: Spacing.two,
@@ -440,13 +598,34 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.micro,
     textAlign: 'right',
   },
-  resetButton: {
-    width: 38,
-    height: 38,
-    borderRadius: Radius.pill,
+  selectionBar: {
+    gap: Spacing.two,
+    padding: Spacing.two,
     borderWidth: 1,
+    borderRadius: Radius.lg,
+  },
+  selectionCount: {
+    fontSize: TypeScale.caption,
+    textAlign: 'right',
+  },
+  selectionActions: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  selectionAction: {
+    flex: 1,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 5,
+    height: 40,
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+  },
+  selectionActionText: {
+    fontSize: TypeScale.label,
+    fontWeight: '700',
   },
   emptyFooter: {
     flexDirection: 'row-reverse',
