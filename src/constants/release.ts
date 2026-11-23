@@ -13,13 +13,14 @@ import { Linking, Platform } from 'react-native';
 export const LATEST_NATIVE_VERSION = '1.0.1';
 
 /**
- * Direct download of the signed Android build, attached to the matching GitHub
- * release. The link must stay valid forever, which a release asset does and a
- * build-artifact URL does not. Replace `mohamedsaeed7` with the account that
- * hosts the release.
+ * Download page of the signed Android build, hosted on MediaFire. The file's
+ * *page* URL is used on purpose: MediaFire hands out a different direct file
+ * link on every request, so a captured direct link expires and would leave old
+ * devices with a dead download. The page URL stays valid for as long as the
+ * file exists.
  */
 export const ANDROID_APK_URL =
-  'https://github.com/mohamedsaeed7/mushaf/releases/latest/download/mushaf.apk';
+  'https://www.mediafire.com/file/ueg0wlpbsg47ou1/mushaf.apk/file';
 
 /** True when the installed binary is older than the JavaScript it is running. */
 export function isNativeUpdateRequired(): boolean {
