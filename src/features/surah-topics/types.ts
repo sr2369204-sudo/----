@@ -16,6 +16,7 @@ export type TopicSectionConfidence =
   | 'supported_by_multiple_tafsir_sources'
   | 'classical_scholarly_observation'
   | 'textually_observable'
+  | 'published_editorial_classification'
   | 'research_hypothesis';
 
 /**

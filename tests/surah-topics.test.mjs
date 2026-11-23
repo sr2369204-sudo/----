@@ -14,7 +14,7 @@ const jsonDataset = JSON.parse(
 );
 
 const EVIDENCE_IDS = TOPIC_EVIDENCE_SOURCES.map((source) => source.id);
-const DOCUMENTED_SURAHS = [1, 26, 37, 54, 55, 77];
+const DOCUMENTED_SURAHS = Array.from({ length: 114 }, (_, index) => index + 1);
 
 function sectionContaining(surahNumber, ayahNumber) {
   const record = SURAH_TOPICS_DATASET.surahs.find((item) => item.surahNumber === surahNumber);
@@ -87,17 +87,31 @@ test('marks only source-backed surahs as documented and tiles each one end to en
   }
 });
 
-test('never fabricates a division for pending surahs', () => {
+test('leaves no surah pending and keeps every section source-backed', () => {
   const pending = SURAH_TOPICS_DATASET.surahs.filter(
     (record) => record.status === 'pending_review',
   );
-  assert.equal(pending.length, 108);
+  assert.equal(pending.length, 0);
+  assert.equal(SURAH_TOPICS_DATASET.meta.pendingSurahs, 0);
   assert.ok(SURAH_TOPICS_DATASET.meta.pendingReason.length > 0);
   assert.ok(SURAH_TOPICS_DATASET.meta.disclaimer.length > 0);
+  assert.ok(EVIDENCE_IDS.includes('qul_tarteel_ayah_themes'));
+  for (const record of SURAH_TOPICS_DATASET.surahs) {
+    for (const section of record.sections) {
+      assert.ok(section.summary.trim().length > 0, `empty summary at ${section.id}`);
+      assert.ok(
+        section.structuralObservations.trim().length > 0,
+        `empty observations at ${section.id}`,
+      );
+    }
+  }
 });
 
 test('resolves the section that contains a given ayah', () => {
-  assert.equal(sectionContaining(2, 10), null);
+  const second = sectionContaining(2, 10);
+  assert.equal(second?.surahNumber, 2);
+  assert.ok(second.startAyah <= 10 && second.endAyah >= 10);
+  assert.equal(sectionContaining(2, 600), null);
 
   assert.equal(sectionContaining(1, 3)?.id, 's001-01');
   assert.equal(sectionContaining(1, 7)?.id, 's001-02');

@@ -20,6 +20,13 @@ export const TOPIC_EVIDENCE_SOURCES: TopicEvidenceSource[] = [
     kind: 'hadith',
   },
   {
+    id: 'qul_tarteel_ayah_themes',
+    label: 'موضوعات الآيات — مكتبة QUL',
+    citation:
+      'Quranic Universal Library (QUL), Tarteel AI — Ayah Themes: 1049 thematic segments covering all 114 surahs (open data, qul.tarteel.ai).',
+    kind: 'ulum_al_quran',
+  },
+  {
     id: 'src_ibn_kathir',
     label: 'تفسير ابن كثير',
     citation:
