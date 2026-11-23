@@ -3,7 +3,7 @@ import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { HEART_CELLS, HEART_VIEWBOX } from '@/features/memorization/data/heart-cells';
@@ -239,22 +239,34 @@ export function QuranHeartMap({
                     />
                   ));
                 })}
-                {showLabels && cells.map((cell) => (
-                  <SvgText
-                    key={`label-${cell.surahNumber}`}
-                    x={cell.labelX}
-                    y={cell.labelY}
-                    fill={memorized.has(cell.surahNumber)
-                      ? palette.memorizedLabelColor
-                      : palette.labelColor}
-                    fontSize={cell.labelFontSize}
-                    fontWeight="normal"
-                    textAnchor="middle">
-                    {cell.surahName}
-                  </SvgText>
-                ))}
               </Svg>
             )}
+
+            {/*
+             * The names are real `Text` nodes, not SVG `<Text>`: react-native-svg
+             * draws each glyph on its own and never runs Arabic shaping, so the
+             * letters came out disconnected. They sit in the same zoomed view as
+             * the paths, positioned from the label's viewBox anchor scaled by the
+             * same `fit` factor the SVG uses, and centred on it.
+             */}
+            {drawWidth > 0 && showLabels && cells.map((cell) => (
+              <Text
+                key={`label-${cell.surahNumber}`}
+                pointerEvents="none"
+                style={[
+                  styles.cellLabel,
+                  {
+                    left: (cell.labelX - HEART_VIEWBOX.x) * fit,
+                    top: (cell.labelY - HEART_VIEWBOX.y) * fit,
+                    fontSize: cell.labelFontSize * fit,
+                    color: memorized.has(cell.surahNumber)
+                      ? palette.memorizedLabelColor
+                      : palette.labelColor,
+                  },
+                ]}>
+                {cell.surahName}
+              </Text>
+            ))}
           </Animated.View>
         </View>
       </GestureDetector>
@@ -353,5 +365,15 @@ const styles = StyleSheet.create({
   pressed: {
     transform: [{ scale: 0.94 }],
     opacity: 0.9,
+  },
+  cellLabel: {
+    position: 'absolute',
+    textAlign: 'center',
+    fontWeight: '600',
+    /**
+     * The anchor point is the cell's inmost point, so the name is centred on it
+     * rather than baseline-aligned as the SVG version was.
+     */
+    transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
   },
 });

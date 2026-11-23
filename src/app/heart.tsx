@@ -9,6 +9,7 @@ import { GlassSurface } from '@/components/ui/glass-surface';
 import { isNativeUpdateRequired, openAndroidUpdateDownload } from '@/constants/release';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { HeartAppearanceSheet } from '@/features/memorization/components/heart-appearance-sheet';
+import { HeartSelectionSheet } from '@/features/memorization/components/heart-selection-sheet';
 import { QuranHeartMap } from '@/features/memorization/components/quran-heart-map';
 import { HEART_CELLS } from '@/features/memorization/data/heart-cells';
 import {
@@ -52,6 +53,8 @@ export default function QuranHeartScreen() {
    */
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set<number>());
+  /** Opens the list picker that fills the same batch the tiles fill. */
+  const [selectionSheetOpen, setSelectionSheetOpen] = useState(false);
   const [updateDownloadFailed, setUpdateDownloadFailed] = useState(false);
   /**
    * The map is drawn with `react-native-svg`, which an older binary does not
@@ -99,12 +102,36 @@ export default function QuranHeartScreen() {
     if (selectionMode) {
       setSelectionMode(false);
       setSelected(new Set<number>());
+      setSelectionSheetOpen(false);
       return;
     }
     setFocusedSurah(null);
     setSelected(new Set<number>());
     setSelectionMode(true);
   }, [selectionMode]);
+
+  /** Merges a whole juz — or any group of surahs — into the batch. */
+  const handleAddSurahs = useCallback((surahNumbers: number[]) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      for (const surahNumber of surahNumbers) {
+        next.add(surahNumber);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectedSurah = useCallback((surahNumber: number) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(surahNumber)) {
+        next.delete(surahNumber);
+      } else {
+        next.add(surahNumber);
+      }
+      return next;
+    });
+  }, []);
 
   const allSelected = selected.size === HEART_CELLS.length;
 
@@ -122,6 +149,7 @@ export default function QuranHeartScreen() {
     void setMemorized(database, [...selected], value);
     setSelectionMode(false);
     setSelected(new Set<number>());
+    setSelectionSheetOpen(false);
   }, [database, selected, setMemorized]);
 
   const handleReset = useCallback(() => {
@@ -181,6 +209,18 @@ export default function QuranHeartScreen() {
         <View style={styles.controlRow}>
           {selectionMode ? (
             <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="اختيار سور أو أجزاء من قائمة"
+                onPress={() => setSelectionSheetOpen(true)}
+                style={StyleSheet.flatten([
+                  styles.toggleButton,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ])}>
+                <Ionicons name="list-outline" size={17} color={colors.primary} />
+                <Text style={[styles.toggleText, { color: colors.primary }]}>قائمة</Text>
+              </Pressable>
+
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={allSelected ? 'مسح التحديد' : 'تحديد كل السور'}
@@ -441,6 +481,15 @@ export default function QuranHeartScreen() {
         onSelectColor={handleSelectColor}
         onReset={handleResetColors}
         onClose={() => setAppearanceOpen(false)}
+      />
+
+      <HeartSelectionSheet
+        visible={selectionSheetOpen}
+        selected={selected}
+        onToggleSurah={handleToggleSelectedSurah}
+        onSelectJuz={handleAddSurahs}
+        onApply={handleApplySelection}
+        onClose={() => setSelectionSheetOpen(false)}
       />
     </SafeAreaView>
   );
