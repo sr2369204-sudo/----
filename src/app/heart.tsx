@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { isNativeUpdateRequired, openAndroidUpdateDownload } from '@/constants/release';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { HeartAppearanceSheet } from '@/features/memorization/components/heart-appearance-sheet';
 import { QuranHeartMap } from '@/features/memorization/components/quran-heart-map';
@@ -51,6 +52,12 @@ export default function QuranHeartScreen() {
    */
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set<number>());
+  const [updateDownloadFailed, setUpdateDownloadFailed] = useState(false);
+  /**
+   * The map is drawn with `react-native-svg`, which an older binary does not
+   * contain; rendering it there throws and takes the whole app down.
+   */
+  const nativeUpdateRequired = isNativeUpdateRequired();
 
   useEffect(() => {
     void load(database);
@@ -135,6 +142,16 @@ export default function QuranHeartScreen() {
   const handleResetColors = useCallback(() => {
     void resetColors(database);
   }, [database, resetColors]);
+
+  const handleDownloadUpdate = useCallback(async () => {
+    try {
+      await openAndroidUpdateDownload();
+      setUpdateDownloadFailed(false);
+    } catch (error) {
+      console.error('تعذر فتح رابط تنزيل الإصدار الجديد.', error);
+      setUpdateDownloadFailed(true);
+    }
+  }, []);
 
   return (
     <SafeAreaView style={StyleSheet.flatten([styles.safeArea, { backgroundColor: colors.background }])}>
@@ -300,7 +317,37 @@ export default function QuranHeartScreen() {
         )}
       </View>
 
-      {loaded ? (
+      {nativeUpdateRequired ? (
+        <View style={styles.updateNotice}>
+          <View style={[styles.updateIconBadge, { backgroundColor: colors.backgroundSelected }]}>
+            <Ionicons name="cloud-download-outline" size={24} color={colors.primary} />
+          </View>
+          <Text style={[styles.updateTitle, { color: colors.text }]}>تحتاج إلى تحديث التطبيق</Text>
+          <Text style={[styles.updateBody, { color: colors.textSecondary }]}>
+            خريطة قلب القرآن تُرسم بمكوّن أُضيف في إصدار أحدث من التطبيق، ولا يمكن
+            إضافته إلا بتنزيل النسخة الجديدة. نزّلها ثم عُد إلى هذه الشاشة.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="تنزيل الإصدار الجديد"
+            onPress={() => void handleDownloadUpdate()}
+            style={({ pressed }) => [
+              styles.updateAction,
+              { backgroundColor: colors.primary, borderColor: colors.primary },
+              pressed && styles.updateActionPressed,
+            ]}>
+            <Ionicons name="download-outline" size={18} color={colors.onPrimary} />
+            <Text style={[styles.updateActionText, { color: colors.onPrimary }]}>
+              تنزيل الإصدار الجديد
+            </Text>
+          </Pressable>
+          {updateDownloadFailed && (
+            <Text style={[styles.updateError, { color: colors.textSecondary }]}>
+              تعذّر فتح رابط التنزيل. تحقّق من اتصالك وحاول مرة أخرى.
+            </Text>
+          )}
+        </View>
+      ) : loaded ? (
         <QuranHeartMap
           memorized={memorized}
           focusedSurah={focusedSurah}
@@ -566,6 +613,53 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: TypeScale.body,
+  },
+  updateNotice: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+  },
+  updateIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateTitle: {
+    fontSize: TypeScale.title,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  updateBody: {
+    fontSize: TypeScale.body,
+    lineHeight: 23,
+    textAlign: 'center',
+  },
+  updateAction: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 46,
+    marginTop: Spacing.one,
+    paddingHorizontal: Spacing.four,
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+  },
+  updateActionPressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.98 }],
+  },
+  updateActionText: {
+    fontSize: TypeScale.label,
+    fontWeight: '900',
+  },
+  updateError: {
+    fontSize: TypeScale.caption,
+    textAlign: 'center',
   },
   footer: {
     paddingHorizontal: Spacing.three,

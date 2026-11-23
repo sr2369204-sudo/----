@@ -12,6 +12,7 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 
+import { AppUpdateBanner } from '@/components/app-update-banner';
 import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
@@ -209,6 +210,7 @@ export default function HomeScreen() {
         renderItem={renderSurah}
         ListHeaderComponent={
           <View style={styles.headerContent}>
+            <AppUpdateBanner />
             <HomeHero
               searchValue={search}
               onSearchChange={setSearch}
