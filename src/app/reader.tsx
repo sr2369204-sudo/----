@@ -75,6 +75,8 @@ import {
   useReaderSelectionStore,
   type ReaderSelection,
 } from '@/features/reader/state/selection-store';
+import { SurahTopicsSheet } from '@/features/surah-topics/components/SurahTopicsSheet';
+import type { TopicSection } from '@/features/surah-topics/types';
 import { useTheme } from '@/hooks/use-theme';
 
 type NavigationMode = 'page' | 'surah' | 'juz';
@@ -134,6 +136,11 @@ export default function ReaderScreen() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [tajweedGuideOpen, setTajweedGuideOpen] = useState(false);
   const [tajweedExampleSeed, setTajweedExampleSeed] = useState(0);
+  const [topicsOpen, setTopicsOpen] = useState(false);
+  // The thematic section the reader chose: jumped to and highlighted once its
+  // page is the one actually on screen. A ref, not state, so applying the jump
+  // never adds a second render pass.
+  const pendingTopicSection = useRef<{ section: TopicSection; pageNumber: number } | null>(null);
   const [navigationMode, setNavigationMode] = useState<NavigationMode>('surah');
   const [navigationValue, setNavigationValue] = useState('');
   const [navigationBusy, setNavigationBusy] = useState(false);
@@ -718,6 +725,41 @@ export default function ReaderScreen() {
     };
   }, [database, page, savedWordRevision]);
 
+  // Highlights the part of a thematic section that lies on the page in hand:
+  // the run is selected so the very ayahs on screen light up.
+  const highlightTopicSection = useCallback(
+    (section: TopicSection, target: MushafPage) => {
+      const sectionAyahs = target.ayahs
+        .filter(
+          (item) =>
+            item.surahNumber === section.surahNumber &&
+            item.ayahNumber >= section.startAyah &&
+            item.ayahNumber <= section.endAyah,
+        )
+        .sort((first, second) => first.ayahNumber - second.ayahNumber);
+      if (sectionAyahs.length > 0) {
+        selectAyahRange(section.surahNumber, sectionAyahs, 'compact');
+      }
+    },
+    [selectAyahRange],
+  );
+
+  // Applies the section the reader picked once its page is on screen: the part
+  // of the section that falls on that page is selected as a run, which is what
+  // lights it up. The page is matched by number so the run is never built from
+  // ayahs the reader is not actually looking at.
+  useEffect(() => {
+    const pending = pendingTopicSection.current;
+    if (!pending || !page) {
+      return;
+    }
+    if (page.pageNumber !== pending.pageNumber || page.pageNumber !== activePageNumber) {
+      return;
+    }
+    highlightTopicSection(pending.section, page);
+    pendingTopicSection.current = null;
+  }, [activePageNumber, highlightTopicSection, page]);
+
   useEffect(() => {
     let active = true;
     setAudioModeAsync({ playsInSilentMode: true }).catch((error: unknown) => {
@@ -1066,6 +1108,34 @@ export default function ReaderScreen() {
         );
       });
   }, [navigateToPage, quranCache]);
+
+  // Opens a documented thematic section: the reader is sent to the page that
+  // holds the section's first ayah, and the run is highlighted — right away if
+  // that page is already on screen, otherwise once it renders (see the pending
+  // section effect above).
+  const openTopicSection = useCallback(
+    (section: TopicSection) => {
+      setTopicsOpen(false);
+      quranCache
+        .getPageNumberForAyah(section.surahNumber, section.startAyah)
+        .then((destination) => {
+          if (page && page.pageNumber === destination) {
+            highlightTopicSection(section, page);
+            return;
+          }
+          pendingTopicSection.current = { section, pageNumber: destination };
+          navigateToPage(destination);
+        })
+        .catch((error: unknown) => {
+          setInteractionError(
+            error instanceof Error
+              ? `تعذر الانتقال إلى المقطع: ${error.message}`
+              : 'تعذر الانتقال إلى المقطع.',
+          );
+        });
+    },
+    [highlightTopicSection, navigateToPage, page, quranCache],
+  );
 
   const toggleSaveWord = useCallback((
     surahNumber: number,
@@ -1461,6 +1531,20 @@ export default function ReaderScreen() {
         <View style={styles.navLeftActions}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="التفصيل الموضوعي للسورة"
+            onPress={() => setTopicsOpen(true)}
+            style={({ pressed }) => [
+              styles.navIconBtn,
+              styles.navTopicsBtn,
+              { backgroundColor: colors.primary, borderColor: colors.primaryDark },
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <Ionicons name="layers-outline" size={18} color={colors.onPrimary} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="دليل أحكام التجويد"
             onPress={() => {
               setTajweedExampleSeed(Math.random());
@@ -1676,6 +1760,14 @@ export default function ReaderScreen() {
         onToggleTajweed={toggleTajweed}
         onRandomize={() => setTajweedExampleSeed(Math.random())}
         onClose={() => setTajweedGuideOpen(false)}
+      />
+
+      <SurahTopicsSheet
+        visible={topicsOpen}
+        surahNumber={selection?.surahNumber ?? page?.surahs[0]?.surahNumber ?? null}
+        surahName={currentSurahName}
+        onSelectSection={openTopicSection}
+        onClose={() => setTopicsOpen(false)}
       />
 
       {scopeDialogOpen && (
@@ -2022,6 +2114,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  /** The thematic-detail entry point: a filled chip so it stands out in the bar. */
+  navTopicsBtn: {
+    shadowColor: '#0E7A57',
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   recitationFab: {
     position: 'absolute',
