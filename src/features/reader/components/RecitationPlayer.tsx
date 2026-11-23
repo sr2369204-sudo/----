@@ -313,8 +313,10 @@ export function ReciterPickerDialog({
   onSelect,
   onClose,
 }: ReciterPickerProps) {
+  const orderedReciters = sortRecitersForDisplay(reciters);
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.dialogOverlay}>
         <Pressable
           accessibilityRole="button"
@@ -328,50 +330,72 @@ export function ReciterPickerDialog({
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}>
           <View style={styles.dialogHeader}>
-            <View style={styles.sheetHandle} />
+            <View style={[styles.headerAccent, { backgroundColor: colors.accent }]} />
             <View style={styles.headerRow}>
-              <Text style={[styles.dialogTitle, { color: colors.text }]}>اختر القارئ</Text>
+              <View style={styles.titleGroup}>
+                <View style={[styles.titleIcon, { backgroundColor: `${colors.primary}1A` }]}>
+                  <Ionicons name="headset" size={16} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={[styles.dialogTitle, { color: colors.text }]}>اختر القارئ</Text>
+                  <Text style={[styles.dialogSubtitle, { color: colors.textSecondary }]}>
+                    {`${toArabicDigits(reciters.length)} قارئًا متاحًا`}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق"
+                onPress={onClose}
+                style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
+                <Ionicons name="close" size={17} color={colors.text} />
+              </Pressable>
             </View>
+            <OrnamentDivider colors={colors} />
           </View>
 
           <ScrollView
             style={styles.reciterList}
             contentContainerStyle={styles.reciterListContent}
             showsVerticalScrollIndicator={false}>
-            {reciters.map((reciter) => {
+            {orderedReciters.map((reciter) => {
               const selected = reciter.id === reciterId;
               return (
-                <View key={reciter.id} style={styles.reciterItemGroup}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    onPress={() => {
-                      onSelect(reciter.id);
-                      onClose();
-                    }}
-                    style={({ pressed }) => [
-                      styles.reciterItem,
-                      { backgroundColor: selected ? colors.primary + '10' : colors.background },
-                      selected && { borderColor: colors.primary },
-                      pressed && styles.pressed,
+                <Pressable
+                  key={reciter.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => {
+                    onSelect(reciter.id);
+                    onClose();
+                  }}
+                  style={({ pressed }) => [
+                    styles.reciterItem,
+                    {
+                      backgroundColor: selected ? `${colors.primary}14` : colors.background,
+                      borderColor: selected ? colors.primary : colors.border,
+                    },
+                    pressed && styles.pressed,
+                  ]}>
+                  <ReciterAvatar
+                    reciterId={reciter.id}
+                    size={44}
+                    backgroundColor={selected ? colors.primary : colors.backgroundSelected}
+                    iconColor={selected ? colors.onPrimary : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.reciterItemLabel,
+                      { color: selected ? colors.primary : colors.text },
                     ]}>
-                    <ReciterAvatar
-                      reciterId={reciter.id}
-                      size={46}
-                      backgroundColor={selected ? colors.primary : colors.backgroundSelected}
-                      iconColor={selected ? colors.background : colors.textSecondary}
-                    />
-                    <Text
-                      style={[
-                        styles.reciterItemLabel,
-                        { color: selected ? colors.primary : colors.text },
-                        selected && { fontWeight: '900' },
-                      ]}>
-                      {getArabicReciterName(reciter)}
-                    </Text>
-                    {selected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
-                  </Pressable>
-                </View>
+                    {getArabicReciterName(reciter)}
+                  </Text>
+                  <Ionicons
+                    name={selected ? 'checkmark-circle' : 'chevron-back'}
+                    size={selected ? 22 : 16}
+                    color={selected ? colors.primary : colors.border}
+                  />
+                </Pressable>
               );
             })}
           </ScrollView>
@@ -439,6 +463,7 @@ export function RecitationScopeDialog({
   const [fromPage, setFromPage] = useState(String(currentPageNumber));
   const [toPage, setToPage] = useState(String(Math.min(604, currentPageNumber + 4)));
   const [localError, setLocalError] = useState<string | null>(null);
+  const orderedReciters = sortRecitersForDisplay(reciters);
 
   const modes: { key: Mode; label: string }[] = chapterOnly
     ? [{ key: 'surah', label: 'سورة' }]
@@ -493,7 +518,7 @@ export function RecitationScopeDialog({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.dialogOverlay}>
         <Pressable
           accessibilityRole="button"
@@ -507,44 +532,35 @@ export function RecitationScopeDialog({
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}>
           <View style={styles.dialogHeader}>
-            <View style={styles.sheetHandle} />
+            <View style={[styles.headerAccent, { backgroundColor: colors.accent }]} />
             <View style={styles.headerRow}>
               <View style={styles.titleGroup}>
-                <View style={[styles.titleIcon, { backgroundColor: colors.backgroundSelected }]}>
-                  <Ionicons name="headset" size={17} color={colors.primary} />
+                <View style={[styles.titleIcon, { backgroundColor: `${colors.primary}1A` }]}>
+                  <Ionicons name="book" size={16} color={colors.primary} />
                 </View>
-                <Text style={[styles.dialogTitle, { color: colors.text }]}>إعدادات التلاوة</Text>
+                <View>
+                  <Text style={[styles.dialogTitle, { color: colors.text }]}>إعدادات التلاوة</Text>
+                  <Text style={[styles.dialogSubtitle, { color: colors.textSecondary }]}>
+                    اختر القارئ والنطاق ثم ابدأ
+                  </Text>
+                </View>
               </View>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="بدء التسميع"
-                disabled={busy}
-                onPress={() => {
-                  setLocalError(null);
-                  try {
-                    onTasmi3(getSelectedScope());
-                  } catch (validationError) {
-                    setLocalError(
-                      validationError instanceof Error
-                        ? validationError.message
-                        : 'تحقق من القيم المدخلة.',
-                    );
-                  }
-                }}
-                style={({ pressed }) => [
-                  styles.secondaryConfirmButton,
-                  { backgroundColor: TASMI3_TINT, borderColor: colors.accent },
-                  busy && styles.disabled,
-                  pressed && styles.pressed,
-                ]}>
-                <Ionicons name="mic" size={16} color={colors.accent} />
-                <Text style={[styles.secondaryConfirmLabel, { color: colors.accent }]}>تسميع</Text>
+                accessibilityLabel="إغلاق"
+                onPress={onClose}
+                style={[styles.closeCircle, { backgroundColor: colors.backgroundSelected }]}>
+                <Ionicons name="close" size={17} color={colors.text} />
               </Pressable>
             </View>
+            <OrnamentDivider colors={colors} />
           </View>
 
           <View style={styles.dialogContent}>
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>اختر القارئ</Text>
+            <View style={styles.sectionLabelRow}>
+              <View style={[styles.sectionBullet, { backgroundColor: colors.accent }]} />
+              <Text style={[styles.sectionLabel, { color: colors.text }]}>اختر القارئ</Text>
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -554,7 +570,7 @@ export function RecitationScopeDialog({
                   جارٍ تحميل قائمة القرّاء…
                 </Text>
               ) : (
-                reciters.map((reciter) => {
+                orderedReciters.map((reciter) => {
                   const selected = reciter.id === reciterId;
                   return (
                     <Pressable
@@ -565,30 +581,38 @@ export function RecitationScopeDialog({
                       style={[
                         styles.reciterChoice,
                         {
-                          backgroundColor: selected ? colors.primary : colors.backgroundSelected,
+                          backgroundColor: selected ? `${colors.primary}14` : colors.background,
                           borderColor: selected ? colors.primary : colors.border,
                         },
                       ]}>
                       <ReciterAvatar
                         reciterId={reciter.id}
-                        size={42}
-                        backgroundColor={selected ? colors.background : colors.surface}
-                        iconColor={selected ? colors.primary : colors.textSecondary}
+                        size={48}
+                        backgroundColor={selected ? colors.primary : colors.backgroundSelected}
+                        iconColor={selected ? colors.onPrimary : colors.textSecondary}
                       />
                       <Text
                         style={[
                           styles.reciterChoiceLabel,
-                          { color: selected ? colors.background : colors.text },
+                          { color: selected ? colors.primary : colors.text },
                         ]}>
                         {getArabicReciterName(reciter)}
                       </Text>
+                      {selected && (
+                        <View style={[styles.choiceCheck, { backgroundColor: colors.primary }]}>
+                          <Ionicons name="checkmark" size={11} color={colors.onPrimary} />
+                        </View>
+                      )}
                     </Pressable>
                   );
                 })
               )}
             </ScrollView>
 
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>النطاق</Text>
+            <View style={styles.sectionLabelRow}>
+              <View style={[styles.sectionBullet, { backgroundColor: colors.accent }]} />
+              <Text style={[styles.sectionLabel, { color: colors.text }]}>النطاق</Text>
+            </View>
             {chapterOnly && (
               <View style={[styles.chapterOnlyNotice, { backgroundColor: colors.backgroundSelected }]}>
                 <Ionicons name="information-circle-outline" size={19} color={colors.primary} />
@@ -597,7 +621,7 @@ export function RecitationScopeDialog({
                 </Text>
               </View>
             )}
-            <View style={styles.modeRow}>
+            <View style={[styles.segment, { backgroundColor: colors.backgroundSelected, borderColor: colors.border }]}>
               {modes.map((option) => {
                 const selected = mode === option.key;
                 return (
@@ -606,17 +630,11 @@ export function RecitationScopeDialog({
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
                     onPress={() => setMode(option.key)}
-                    style={[
-                      styles.modeChip,
-                      {
-                        backgroundColor: selected ? colors.backgroundSelected : colors.background,
-                        borderColor: selected ? colors.primary : colors.border,
-                      },
-                    ]}>
+                    style={[styles.segmentItem, selected && { backgroundColor: colors.primary }]}>
                     <Text
                       style={[
-                        styles.modeLabel,
-                        { color: selected ? colors.primary : colors.text },
+                        styles.segmentLabel,
+                        { color: selected ? colors.onPrimary : colors.textSecondary },
                       ]}>
                       {option.label}
                     </Text>
@@ -646,13 +664,23 @@ export function RecitationScopeDialog({
                     style={[
                       styles.scopeChoice,
                       {
-                        backgroundColor: selected ? colors.backgroundSelected : colors.background,
+                        backgroundColor: selected ? `${colors.primary}14` : colors.background,
                         borderColor: selected ? colors.primary : colors.border,
                       },
                     ]}>
-                    <Text style={[styles.scopeChoiceNumber, { color: colors.primary }]}>
-                      {toArabicDigits(surah.surahNumber)}
-                    </Text>
+                    <View
+                      style={[
+                        styles.scopeNumberBadge,
+                        { backgroundColor: selected ? colors.primary : colors.backgroundSelected },
+                      ]}>
+                      <Text
+                        style={[
+                          styles.scopeChoiceNumber,
+                          { color: selected ? colors.onPrimary : colors.primary },
+                        ]}>
+                        {toArabicDigits(surah.surahNumber)}
+                      </Text>
+                    </View>
                     <Text style={[styles.scopeChoiceName, { color: colors.text }]}>
                       {surah.nameArabic}
                     </Text>
@@ -727,25 +755,53 @@ export function RecitationScopeDialog({
             </Text>
           )}
 
-          <Pressable
-            accessibilityRole="button"
-            disabled={busy}
-            onPress={submit}
-            style={({ pressed }) => [
-              styles.confirmButton,
-              { backgroundColor: colors.primary },
-              busy && styles.disabled,
-              pressed && styles.pressed,
-            ]}>
-            {busy ? (
-              <ActivityIndicator size="small" color={colors.onPrimary} />
-            ) : (
-              <View style={styles.confirmContent}>
-                <Ionicons name="play" size={16} color={colors.onPrimary} />
-                <Text style={[styles.confirmLabel, { color: colors.onPrimary }]}>تشغيل</Text>
-              </View>
-            )}
-          </Pressable>
+          <View style={styles.footerRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="بدء التسميع"
+              disabled={busy}
+              onPress={() => {
+                setLocalError(null);
+                try {
+                  onTasmi3(getSelectedScope());
+                } catch (validationError) {
+                  setLocalError(
+                    validationError instanceof Error
+                      ? validationError.message
+                      : 'تحقق من القيم المدخلة.',
+                  );
+                }
+              }}
+              style={({ pressed }) => [
+                styles.secondaryConfirmButton,
+                { backgroundColor: TASMI3_TINT, borderColor: colors.accent },
+                busy && styles.disabled,
+                pressed && styles.pressed,
+              ]}>
+              <Ionicons name="mic" size={17} color={colors.accent} />
+              <Text style={[styles.secondaryConfirmLabel, { color: colors.accent }]}>تسميع</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={submit}
+              style={({ pressed }) => [
+                styles.confirmButton,
+                { backgroundColor: colors.primary },
+                busy && styles.disabled,
+                pressed && styles.pressed,
+              ]}>
+              {busy ? (
+                <ActivityIndicator size="small" color={colors.onPrimary} />
+              ) : (
+                <View style={styles.confirmContent}>
+                  <Ionicons name="play" size={16} color={colors.onPrimary} />
+                  <Text style={[styles.confirmLabel, { color: colors.onPrimary }]}>تشغيل</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
         </View>
       </View>
     </Modal>
@@ -872,6 +928,48 @@ function parseNumber(value: string): number {
     String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)),
   );
   return Number(normalized.trim());
+}
+
+/**
+ * The reciters readers reach for first. They open every reciter list, while
+ * the rest keep the order the source returned so the list stays stable.
+ */
+const RECITER_LEADER_RANKS: { pattern: RegExp; rank: number }[] = [
+  { pattern: /الحصري|الحصرى|husary|hussary|husari/i, rank: 1 },
+  { pattern: /عبد ?الباسط|عبدالباسط|abdul ?basit|abdulbasit/i, rank: 2 },
+  { pattern: /العفاسي|العفاسى|مشاري|mishary|afasy/i, rank: 3 },
+  { pattern: /المنشاوي|المنشاوى|minshawi|minshawy/i, rank: 4 },
+  { pattern: /المعيقلي|muaiqly|maher/i, rank: 5 },
+  { pattern: /السديس|sudais|sudays/i, rank: 6 },
+  { pattern: /الشريم|shuraim/i, rank: 7 },
+];
+
+const RECITER_UNRANKED = 99;
+
+/**
+ * Reorders the reciters so the well-known ones lead the list. Everyone else
+ * keeps the source order, so rows never reshuffle between renders.
+ */
+export function sortRecitersForDisplay(reciters: QuranReciter[]): QuranReciter[] {
+  return reciters
+    .map((reciter, index) => {
+      const name = getArabicReciterName(reciter);
+      const leader = RECITER_LEADER_RANKS.find((entry) => entry.pattern.test(name));
+      return { reciter, index, rank: leader ? leader.rank : RECITER_UNRANKED };
+    })
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.reciter);
+}
+
+/** Gold-flanked rule separating a dialog header from its content. */
+function OrnamentDivider({ colors }: { colors: Palette }) {
+  return (
+    <View style={styles.ornamentRow}>
+      <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
+      <View style={[styles.ornamentDiamond, { backgroundColor: colors.accent }]} />
+      <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
+    </View>
+  );
 }
 
 function getArabicReciterName(reciter: QuranReciter): string {
@@ -1097,11 +1195,39 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: 'rgba(0, 0, 0, 0.12)',
   },
+  /** Gold handle that tops the redesigned recitation sheets. */
+  headerAccent: {
+    width: 46,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+  },
+  dialogSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    textAlign: 'right',
+  },
   headerRow: {
     width: '100%',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  ornamentRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ornamentLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  ornamentDiamond: {
+    width: 7,
+    height: 7,
+    borderRadius: 1,
+    transform: [{ rotate: '45deg' }],
   },
   closeCircle: {
     width: 32,
@@ -1132,7 +1258,36 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   dialogContent: {
-    gap: Spacing.two,
+    gap: Spacing.three,
+  },
+  sectionLabelRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 7,
+  },
+  sectionBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 1,
+    transform: [{ rotate: '45deg' }],
+  },
+  segment: {
+    flexDirection: 'row-reverse',
+    gap: 4,
+    padding: 4,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  segmentItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  segmentLabel: {
+    fontSize: 13,
+    fontWeight: '800',
   },
   ayahReference: {
     flexDirection: 'row-reverse',
@@ -1155,9 +1310,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingBottom: Spacing.two,
   },
-  reciterItemGroup: {
-    gap: 3,
-  },
   reciterItem: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1165,7 +1317,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: 'transparent',
   },
   reciterItemLabel: {
     flex: 1,
@@ -1227,24 +1378,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   reciterChoice: {
-    width: 112,
-    minHeight: 104,
+    width: 106,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderRadius: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderRadius: 18,
     borderWidth: 1.5,
+  },
+  choiceCheck: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   reciterChoiceLabel: {
     fontSize: 11.5,
     fontWeight: '800',
     textAlign: 'center',
-  },
-  modeRow: {
-    flexDirection: 'row-reverse',
-    gap: Spacing.two,
   },
   chapterOnlyNotice: {
     flexDirection: 'row-reverse',
@@ -1258,17 +1415,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 19,
     textAlign: 'right',
-  },
-  modeChip: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  modeLabel: {
-    fontSize: 13.5,
-    fontWeight: '700',
   },
   inputGroup: {
     gap: Spacing.one,
@@ -1290,10 +1436,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   scopeChoiceNumber: {
-    width: 28,
     fontSize: 13,
     fontWeight: '900',
-    textAlign: 'center',
+  },
+  scopeNumberBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scopeChoiceName: {
     flex: 1,
@@ -1349,10 +1500,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'right',
   },
+  footerRow: {
+    flexDirection: 'row-reverse',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
   confirmButton: {
-    marginTop: Spacing.two,
-    minHeight: 48,
-    borderRadius: 14,
+    flex: 2,
+    minHeight: 50,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1366,9 +1522,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   secondaryConfirmButton: {
-    minHeight: 40,
-    paddingHorizontal: Spacing.three,
-    borderRadius: 20,
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
     borderWidth: 1.5,
     flexDirection: 'row-reverse',
     gap: 7,

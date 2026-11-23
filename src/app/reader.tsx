@@ -47,6 +47,7 @@ import {
   RecitationScopeDialog,
   ReciterPickerDialog,
   nextPlaybackRate,
+  sortRecitersForDisplay,
   type PlayScopeChoice,
   type RepeatMode,
 } from '@/features/reader/components/RecitationPlayer';
@@ -489,6 +490,12 @@ export default function ReaderScreen() {
     queryFn: () => quranContentProvider.getReciters(),
     staleTime: 24 * 60 * 60 * 1000,
   });
+
+  // The reciters readers look for first lead every list; the rest keep source order.
+  const reciters = useMemo(
+    () => sortRecitersForDisplay(recitersQuery.data ?? []),
+    [recitersQuery.data],
+  );
 
   const page = pageQuery.data?.page;
 
@@ -1784,7 +1791,7 @@ export default function ReaderScreen() {
           onClose={closeRecitation}
           onOpenPicker={() => setScopeDialogOpen(true)}
           onOpenReciterPicker={() => setReciterPickerOpen(true)}
-          reciters={recitersQuery.data ?? []}
+          reciters={reciters}
           reciterId={reciterId}
           onSelectReciter={selectReciter}
           hidden={playerHidden}
@@ -1881,7 +1888,7 @@ export default function ReaderScreen() {
            key={reciterId}
           visible
           colors={colors}
-          reciters={recitersQuery.data ?? []}
+          reciters={reciters}
           reciterId={reciterId}
           surahs={directory?.surahs}
           currentSurahNumber={selection?.surahNumber ?? page?.surahs[0]?.surahNumber ?? 1}
@@ -1921,7 +1928,7 @@ export default function ReaderScreen() {
         <ReciterPickerDialog
           visible
           colors={colors}
-          reciters={recitersQuery.data ?? []}
+          reciters={reciters}
           reciterId={reciterId}
           onSelect={selectReciter}
           onClose={() => setReciterPickerOpen(false)}
@@ -1988,10 +1995,26 @@ function NavigationDialog({
         />
         <View style={[styles.navigationDialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.navigationHeader}>
-            <Text style={[styles.navigationTitle, { color: colors.text }]}>انتقال إلى</Text>
-            <Pressable accessibilityRole="button" onPress={onClose}>
-              <Text style={[styles.closeLabel, { color: colors.primary }]}>إغلاق</Text>
-            </Pressable>
+            <View style={styles.navigationTitleRow}>
+              <View style={styles.navigationTitleGroup}>
+                <View style={[styles.navigationTitleIcon, { backgroundColor: `${colors.primary}1A` }]}>
+                  <Ionicons name="navigate-outline" size={15} color={colors.primary} />
+                </View>
+                <Text style={[styles.navigationTitle, { color: colors.text }]}>انتقال إلى</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق التنقل"
+                onPress={onClose}
+                style={[styles.navigationClose, { backgroundColor: colors.backgroundSelected }]}>
+                <Ionicons name="close" size={17} color={colors.text} />
+              </Pressable>
+            </View>
+            <View style={styles.navigationOrnament}>
+              <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
+              <View style={[styles.ornamentDiamond, { backgroundColor: colors.accent }]} />
+              <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
+            </View>
           </View>
           <View style={styles.navigationModes}>
             {modes.map((option) => (
@@ -2055,11 +2078,18 @@ function NavigationDialog({
                   accessibilityRole="button"
                   disabled={busy}
                   onPress={() => onChoose('surah', surah.surahNumber)}
-                  style={[styles.surahItem, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.surahNumber, { color: colors.textSecondary }]}>
-                    {toArabicNumbers(surah.surahNumber)}
-                  </Text>
+                  style={({ pressed }) => [
+                    styles.surahItem,
+                    { borderBottomColor: colors.border },
+                    pressed && styles.surahItemPressed,
+                  ]}>
+                  <View style={[styles.surahNumberBadge, { backgroundColor: colors.backgroundSelected }]}>
+                    <Text style={[styles.surahNumber, { color: colors.primary }]}>
+                      {toArabicNumbers(surah.surahNumber)}
+                    </Text>
+                  </View>
                   <Text style={[styles.surahName, { color: colors.text }]}>{surah.nameArabic}</Text>
+                  <Ionicons name="chevron-back" size={15} color={colors.border} />
                 </Pressable>
               ))}
             </ScrollView>
@@ -2335,22 +2365,55 @@ const styles = StyleSheet.create({
     maxWidth: 480,
     maxHeight: '82%',
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: Spacing.three,
     gap: Spacing.three,
   },
   navigationHeader: {
+    gap: 10,
+  },
+  navigationTitleRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  navigationTitleGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  navigationTitleIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigationClose: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigationOrnament: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ornamentLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  ornamentDiamond: {
+    width: 7,
+    height: 7,
+    borderRadius: 1,
+    transform: [{ rotate: '45deg' }],
+  },
   navigationTitle: {
     fontSize: 18,
     fontWeight: '800',
-  },
-  closeLabel: {
-    fontSize: 14,
-    fontWeight: '700',
   },
   navigationModes: {
     flexDirection: 'row-reverse',
@@ -2410,16 +2473,26 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.three,
   },
   surahItem: {
-    minHeight: 42,
+    minHeight: 48,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.three,
+    paddingHorizontal: Spacing.one,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  surahItemPressed: {
+    opacity: 0.6,
+  },
+  surahNumberBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   surahNumber: {
-    width: 28,
-    fontSize: 13,
-    textAlign: 'center',
+    fontSize: 12.5,
+    fontWeight: '800',
   },
   surahName: {
     flex: 1,

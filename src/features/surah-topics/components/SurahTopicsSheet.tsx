@@ -51,11 +51,14 @@ export function SurahTopicsSheet({
           onPress={onClose}
         />
         <View style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[styles.handle, { backgroundColor: colors.border }]} />
-
           <View style={styles.header}>
             <View style={styles.heading}>
-              <Text style={[styles.title, { color: colors.text }]}>التفصيل الموضوعي</Text>
+              <View style={styles.titleRow}>
+                <View style={[styles.titleIcon, { backgroundColor: `${colors.primary}1A` }]}>
+                  <Ionicons name="layers-outline" size={16} color={colors.primary} />
+                </View>
+                <Text style={[styles.title, { color: colors.text }]}>التفصيل الموضوعي</Text>
+              </View>
               <Text style={[styles.caption, { color: colors.textSecondary }]}>
                 {`سورة ${surahName} · ${toArabicNumbers(record?.ayahCount ?? 0)} آية`}
               </Text>
@@ -67,6 +70,12 @@ export function SurahTopicsSheet({
               style={[styles.iconButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Ionicons name="close" size={18} color={colors.text} />
             </Pressable>
+          </View>
+
+          <View style={styles.ornamentRow}>
+            <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
+            <View style={[styles.ornamentDiamond, { backgroundColor: colors.accent }]} />
+            <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
           </View>
 
           <View style={[styles.statusRow, { borderColor: colors.border }]}>
@@ -114,32 +123,41 @@ export function SurahTopicsSheet({
                     { borderColor: colors.border, backgroundColor: colors.background },
                     pressed && styles.pressed,
                   ]}>
-                  <View style={styles.rowHeader}>
-                    <View
-                      style={[
-                        styles.rangeBadge,
-                        { backgroundColor: `${colors.accent}22`, borderColor: colors.accent },
-                      ]}>
-                      <Text style={[styles.rangeText, { color: colors.accent }]}>
-                        {toArabicNumbers(item.startAyah)}
-                        {' – '}
-                        {toArabicNumbers(item.endAyah)}
+                  <View style={[styles.rowAccent, { backgroundColor: colors.accent }]} />
+                  <View style={styles.rowBody}>
+                    <View style={styles.rowHeader}>
+                      <View style={[styles.rangeBadge, { backgroundColor: `${colors.accent}1F` }]}>
+                        <Text style={[styles.rangeText, { color: colors.accent }]}>
+                          {toArabicNumbers(item.startAyah)}
+                          {' – '}
+                          {toArabicNumbers(item.endAyah)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={2}>
+                        {item.title}
                       </Text>
                     </View>
-                    <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                  </View>
 
-                  <Text style={[styles.rowSummary, { color: colors.textSecondary }]}>
-                    {item.summary}
-                  </Text>
-
-                  <View style={styles.rowFooter}>
-                    <Text style={[styles.confidence, { color: colors.textSecondary }]}>
-                      {CONFIDENCE_LABELS[item.confidence] ?? item.confidence}
+                    <Text style={[styles.rowSummary, { color: colors.textSecondary }]}>
+                      {item.summary}
                     </Text>
-                    <Ionicons name="locate-outline" size={15} color={colors.primary} />
+
+                    <View style={styles.rowFooter}>
+                      <View style={styles.confidenceRow}>
+                        <Ionicons
+                          name="shield-checkmark-outline"
+                          size={13}
+                          color={colors.textSecondary}
+                        />
+                        <Text style={[styles.confidence, { color: colors.textSecondary }]}>
+                          {CONFIDENCE_LABELS[item.confidence] ?? item.confidence}
+                        </Text>
+                      </View>
+                      <View style={[styles.locateChip, { backgroundColor: `${colors.primary}14` }]}>
+                        <Ionicons name="locate-outline" size={14} color={colors.primary} />
+                        <Text style={[styles.locateLabel, { color: colors.primary }]}>انتقل</Text>
+                      </View>
+                    </View>
                   </View>
                 </Pressable>
               )}
@@ -188,13 +206,6 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: Spacing.two,
   },
-  handle: {
-    width: 44,
-    height: 5,
-    borderRadius: 3,
-    alignSelf: 'center',
-    marginTop: -Spacing.one,
-  },
   header: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -204,6 +215,33 @@ const styles = StyleSheet.create({
   heading: {
     flex: 1,
     gap: 3,
+  },
+  titleRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  titleIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ornamentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ornamentLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  ornamentDiamond: {
+    width: 7,
+    height: 7,
+    borderRadius: 1,
+    transform: [{ rotate: '45deg' }],
   },
   title: {
     fontSize: TypeScale.title,
@@ -254,10 +292,19 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
   },
   row: {
-    gap: 6,
-    padding: Spacing.two,
+    flexDirection: 'row-reverse',
+    alignItems: 'stretch',
     borderWidth: 1,
     borderRadius: Radius.md,
+    overflow: 'hidden',
+  },
+  rowAccent: {
+    width: 4,
+  },
+  rowBody: {
+    flex: 1,
+    gap: 6,
+    padding: Spacing.two,
   },
   rowHeader: {
     flexDirection: 'row-reverse',
@@ -266,9 +313,8 @@ const styles = StyleSheet.create({
   },
   rangeBadge: {
     paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderRadius: Radius.sm,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
   },
   rangeText: {
     fontSize: TypeScale.micro,
@@ -289,9 +335,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  confidenceRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
   },
   confidence: {
     fontSize: TypeScale.micro,
+  },
+  locateChip: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+  },
+  locateLabel: {
+    fontSize: TypeScale.micro,
+    fontWeight: '800',
   },
   emptyWrap: {
     flex: 1,
