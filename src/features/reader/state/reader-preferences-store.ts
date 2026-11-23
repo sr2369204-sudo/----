@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+/**
+ * `dark` paints the app dark but keeps the Mushaf page light, while `night`
+ * paints the whole app — including the Mushaf page itself — on a black
+ * surface with light text.
+ */
+export type ThemePreference = 'system' | 'light' | 'dark' | 'night';
 
 /**
  * Shape of the word/ayah tools that ring the selection. `round` and `rounded`

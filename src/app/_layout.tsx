@@ -28,6 +28,7 @@ import { useOfflineDownloadStore } from '@/features/reader/state/offline-downloa
 import {
   DEFAULT_RECITER_ID,
   useReaderPreferencesStore,
+  type ThemePreference,
 } from '@/features/reader/state/reader-preferences-store';
 
 if (Platform.OS !== 'web') {
@@ -60,7 +61,7 @@ function AppLayout() {
   const setPreferenceError = useReaderPreferencesStore((state) => state.setError);
   const dark = themePreference === 'system'
     ? colorScheme === 'dark'
-    : themePreference === 'dark';
+    : themePreference === 'dark' || themePreference === 'night';
   const palette = Colors[dark ? 'dark' : 'light'];
   const baseTheme = dark ? DarkTheme : DefaultTheme;
   const theme = {
@@ -119,15 +120,17 @@ function AppLayout() {
           return;
         }
         const settings = new Map(rows.map((row) => [row.key, row.value]));
-        const savedTheme = settings.get('theme') ?? 'light';
-        const savedReciter = Number(settings.get('reciterId') ?? DEFAULT_RECITER_ID);
-        if (!isThemePreference(savedTheme)) {
-          throw new Error('إعداد المظهر المحفوظ غير صالح.');
-        }
-        if (!Number.isInteger(savedReciter) || savedReciter < 1) {
-          throw new Error('إعداد القارئ المحفوظ غير صالح.');
-        }
-        setPreferences(savedTheme, savedReciter);
+        const savedTheme = settings.get('theme');
+        const savedReciterValue = settings.get('reciterId');
+        const parsedReciter =
+          savedReciterValue === undefined ? DEFAULT_RECITER_ID : Number(savedReciterValue);
+        // Each setting falls back on its own so one stale value can never
+        // discard the other; a saved reciter id is valid as long as it is a
+        // non-zero integer, since full-surah reciters use negative ids.
+        setPreferences(
+          savedTheme !== undefined && isThemePreference(savedTheme) ? savedTheme : 'light',
+          Number.isInteger(parsedReciter) && parsedReciter !== 0 ? parsedReciter : DEFAULT_RECITER_ID,
+        );
         setPreferenceError(null);
       })
       .catch((error: unknown) => {
@@ -223,8 +226,8 @@ function AppLayout() {
   );
 }
 
-function isThemePreference(value: string): value is 'system' | 'light' | 'dark' {
-  return value === 'system' || value === 'light' || value === 'dark';
+function isThemePreference(value: string): value is ThemePreference {
+  return value === 'system' || value === 'light' || value === 'dark' || value === 'night';
 }
 
 function getUpdateNotes(manifest: Updates.Manifest): string[] {

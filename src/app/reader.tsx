@@ -81,7 +81,7 @@ import {
 } from '@/features/surah-topics/services/surah-topics';
 import { SurahTopicsSheet } from '@/features/surah-topics/components/SurahTopicsSheet';
 import type { TopicSection } from '@/features/surah-topics/types';
-import { useTheme } from '@/hooks/use-theme';
+import { useIsNightTheme, useTheme } from '@/hooks/use-theme';
 
 type NavigationMode = 'page' | 'surah' | 'juz';
 type BookmarkedAyah = { surahNumber: number; ayahNumber: number };
@@ -130,6 +130,9 @@ export default function ReaderScreen() {
   const rawPageNumber = firstParam(params.pageNumber);
   const rawAyahNumber = firstParam(params.ayahNumber);
   const colors = useTheme();
+  // The Mushaf page goes fully dark (black page, light text) only in the night
+  // appearance; the regular dark appearance keeps it on the light parchment.
+  const isNightTheme = useIsNightTheme();
   const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
@@ -1688,7 +1691,7 @@ export default function ReaderScreen() {
           fontSize={MUSHAF_FONT_SIZE}
           markerScale={displayPreferencesQuery.data?.markerScale ?? 1.1}
           showTajweed={showTajweed}
-          isDark={false}
+          isDark={isNightTheme}
           highlights={highlights}
           hiddenAyahIds={tasmi3HiddenAyahIds}
           selectedElementIds={selectedElementIds}

@@ -46,6 +46,7 @@ const themeOptions: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'تلقائي' },
   { value: 'light', label: 'فاتح' },
   { value: 'dark', label: 'داكن' },
+  { value: 'night', label: 'ليلي' },
 ];
 
 /** Shipped defaults for the reader tools and verse marks. */
@@ -217,7 +218,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>المظهر</Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>
-            اختر المظهر الذي يناسب وقت قراءتك.
+            اختر المظهر الذي يناسب وقت قراءتك. «داكن» يُبقي صفحات المصحف على لونها الفاتح، بينما «ليلي» يجعل المصحف نفسه داكنًا بخلفية سوداء.
           </Text>
           <View style={styles.optionRow}>
             {themeOptions.map((option) => {
@@ -785,7 +786,7 @@ function DownloadProgressBar({
 }
 
 function parseThemePreference(value: string): ThemePreference {
-  if (value !== 'system' && value !== 'light' && value !== 'dark') {
+  if (value !== 'system' && value !== 'light' && value !== 'dark' && value !== 'night') {
     throw new Error('إعداد المظهر غير صالح.');
   }
   return value;
