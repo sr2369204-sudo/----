@@ -40,7 +40,7 @@ import {
 import { resolveOfflineTracks } from '@/features/reader/services/recitation-offline';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
-import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
+import type { ElementRect, TopicBand } from '@/features/reader/components/MushafPageViewer';
 import {
   RecitationPlayMenu,
   RecitationPlayer,
@@ -75,6 +75,10 @@ import {
   useReaderSelectionStore,
   type ReaderSelection,
 } from '@/features/reader/state/selection-store';
+import {
+  getSectionContainingAyah,
+  getTopicSections,
+} from '@/features/surah-topics/services/surah-topics';
 import { SurahTopicsSheet } from '@/features/surah-topics/components/SurahTopicsSheet';
 import type { TopicSection } from '@/features/surah-topics/types';
 import { useTheme } from '@/hooks/use-theme';
@@ -86,6 +90,35 @@ const PAGE_QUERY_RETRY_COUNT = 2;
 const MUSHAF_FONT_SIZE = 44;
 /** Gap between the floating recitation player and the bottom safe area. */
 const RECITATION_PLAYER_BOTTOM_GAP = 10;
+/**
+ * Fills for the thematic-section bands, cycled in order so two neighbouring
+ * sections on the same page never share a colour. Translucent, so the words
+ * under a band stay as legible as they are without it.
+ */
+const TOPIC_BAND_COLORS = [
+  'rgba(214, 158, 46, 0.34)',
+  'rgba(76, 155, 104, 0.32)',
+  'rgba(74, 132, 196, 0.30)',
+  'rgba(186, 104, 148, 0.30)',
+  'rgba(138, 112, 196, 0.30)',
+  'rgba(206, 122, 72, 0.32)',
+  'rgba(60, 168, 166, 0.30)',
+  'rgba(160, 140, 70, 0.32)',
+];
+/** Stable empty list so the viewer never re-renders on a fresh array. */
+const EMPTY_TOPIC_BANDS: TopicBand[] = [];
+
+/**
+ * The palette slot of a section: its ordinal among its surah's sections. Tying
+ * the colour to the section itself — rather than to its order on the page —
+ * keeps a section that runs over a page break the same colour on every page.
+ */
+function topicSectionColorIndex(section: TopicSection): number {
+  const ordinal = getTopicSections(section.surahNumber).findIndex(
+    (candidate) => candidate.id === section.id,
+  );
+  return (ordinal < 0 ? 0 : ordinal) % TOPIC_BAND_COLORS.length;
+}
 
 export default function ReaderScreen() {
   const params = useLocalSearchParams<{
@@ -137,6 +170,11 @@ export default function ReaderScreen() {
   const [tajweedGuideOpen, setTajweedGuideOpen] = useState(false);
   const [tajweedExampleSeed, setTajweedExampleSeed] = useState(0);
   const [topicsOpen, setTopicsOpen] = useState(false);
+  // True while the thematic-section overlay is on: every section on the current
+  // page is tinted in its own colour so the reader sees the grouping at a
+  // glance. Kept apart from the sheet, so the bands stay on after the list is
+  // closed and the reader can study the page without any chrome.
+  const [topicOverlayOn, setTopicOverlayOn] = useState(false);
   // The thematic section the reader chose: jumped to and highlighted once its
   // page is the one actually on screen. A ref, not state, so applying the jump
   // never adds a second render pass.
@@ -1109,10 +1147,20 @@ export default function ReaderScreen() {
       });
   }, [navigateToPage, quranCache]);
 
+  // The layers button: opens the section list and turns the thematic overlay on
+  // at the same time, so the very ayahs on the page are tinted — one colour per
+  // section — the moment the button is pressed. The colours are turned off by
+  // the dismiss chip that floats over the page (see `styles.topicDismiss`).
+  const openTopics = useCallback(() => {
+    setTopicsOpen(true);
+    setTopicOverlayOn(true);
+  }, []);
+
   // Opens a documented thematic section: the reader is sent to the page that
   // holds the section's first ayah, and the run is highlighted — right away if
   // that page is already on screen, otherwise once it renders (see the pending
-  // section effect above).
+  // section effect above). The overlay stays on, so the section shows on the
+  // page after the jump.
   const openTopicSection = useCallback(
     (section: TopicSection) => {
       setTopicsOpen(false);
@@ -1297,6 +1345,35 @@ export default function ReaderScreen() {
     }
     return selection.ayahs.map((ayah) => `ayah-${selection.surahNumber}-${ayah.ayahNumber}`);
   }, [selection]);
+
+  // The thematic sections that fall on the page in hand, each with its own
+  // colour, so pressing the layers button tints the very ayahs on screen and
+  // the reader can see at a glance which ayahs belong together. Only the part
+  // of a section printed on this page is banded; the rest shows on its page.
+  const topicBands = useMemo<TopicBand[]>(() => {
+    if (!topicOverlayOn || !page) {
+      return EMPTY_TOPIC_BANDS;
+    }
+    const grouped = new Map<string, { section: TopicSection; ayahIds: string[] }>();
+    for (const ayah of page.ayahs) {
+      const section = getSectionContainingAyah(ayah.surahNumber, ayah.ayahNumber);
+      if (!section) {
+        continue;
+      }
+      const ayahId = `ayah-${ayah.surahNumber}-${ayah.ayahNumber}`;
+      const existing = grouped.get(section.id);
+      if (existing) {
+        existing.ayahIds.push(ayahId);
+      } else {
+        grouped.set(section.id, { section, ayahIds: [ayahId] });
+      }
+    }
+    return [...grouped.values()].map(({ section, ayahIds }) => ({
+      id: section.id,
+      color: TOPIC_BAND_COLORS[topicSectionColorIndex(section)],
+      ayahIds,
+    }));
+  }, [page, topicOverlayOn]);
 
   const selectedAyahReferences = useMemo<AyahReference[]>(() => {
     if (!selection) {
@@ -1532,7 +1609,7 @@ export default function ReaderScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="التفصيل الموضوعي للسورة"
-            onPress={() => setTopicsOpen(true)}
+            onPress={openTopics}
             style={({ pressed }) => [
               styles.navIconBtn,
               styles.navTopicsBtn,
@@ -1615,6 +1692,7 @@ export default function ReaderScreen() {
           highlights={highlights}
           hiddenAyahIds={tasmi3HiddenAyahIds}
           selectedElementIds={selectedElementIds}
+          topicBands={topicBands}
           activeAyahId={activeAyahId}
           activeWordId={activeWordId}
           recitationFocus={isReciting}
@@ -1626,6 +1704,31 @@ export default function ReaderScreen() {
           loadingColor={colors.primary}
         />
       ) : null}
+
+      {/* Turns the thematic-section colours back off. It floats over the page —
+          it is not tied to the navbar, which hides on a tap — so the reader can
+          always clear the bands and get back to a plain page. */}
+      {topicOverlayOn && !recitationQueue && !tasmi3Session && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="إخفاء ألوان التفصيل الموضوعي"
+          onPress={() => setTopicOverlayOn(false)}
+          style={({ pressed }) => [
+            styles.topicDismiss,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.primary,
+              bottom: insets.bottom + 24,
+            },
+            pressed && { opacity: 0.8 },
+          ]}
+        >
+          <Ionicons name="close-circle" size={18} color={colors.primary} />
+          <Text style={[styles.topicDismissText, { color: colors.primary }]}>
+            إخفاء ألوان التفصيل
+          </Text>
+        </Pressable>
+      )}
 
       {navVisible && !recitationQueue && !tasmi3Session && (
         <Animated.View
@@ -2149,6 +2252,28 @@ const styles = StyleSheet.create({
   recitationFabPressed: {
     opacity: 0.78,
     transform: [{ scale: 0.95 }],
+  },
+  /** Floating chip that clears the thematic-section colours from the page. */
+  topicDismiss: {
+    position: 'absolute',
+    right: 18,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 22,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+    zIndex: 31,
+  },
+  topicDismissText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   navIconGlyph: {
     fontSize: 16,

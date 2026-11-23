@@ -20,6 +20,7 @@ import {
   MushafPageViewer,
   type ElementRect,
   type PageTurnDirection,
+  type TopicBand,
 } from './MushafPageViewer';
 
 export type SwipePageViewerProps = {
@@ -33,6 +34,8 @@ export type SwipePageViewerProps = {
   highlights: Highlight[];
   /** Document ids of the selected elements: one word, or a run of ayahs. */
   selectedElementIds: string[] | null;
+  /** Coloured bands grouping the current page's ayahs by thematic section. */
+  topicBands?: TopicBand[];
   hiddenAyahIds?: string[];
   /** Document id of the ayah being recited right now, if any. */
   activeAyahId: string | null;
@@ -86,6 +89,7 @@ export function SwipePageViewer({
   isDark,
   highlights,
   selectedElementIds,
+  topicBands = NO_TOPIC_BANDS,
   hiddenAyahIds = [],
   activeAyahId,
   activeWordId,
@@ -349,6 +353,7 @@ export function SwipePageViewer({
                     isDark={isDark}
                     highlights={isCurrent ? highlights : NO_HIGHLIGHTS}
                     selectedElementIds={isCurrent ? selectedElementIds : null}
+                    topicBands={isCurrent ? topicBands : NO_TOPIC_BANDS}
                     // Keep the memorisation mask on preloaded neighbours too,
                     // so a page is blurred before it becomes visible after a swipe.
                     hiddenAyahIds={hiddenAyahIds}
@@ -395,6 +400,8 @@ type PageSlotProps = {
   highlights: Highlight[];
   /** Document ids of the selected elements: one word, or a run of ayahs. */
   selectedElementIds: string[] | null;
+  /** Coloured bands grouping the current page's ayahs by thematic section. */
+  topicBands: TopicBand[];
   hiddenAyahIds: string[];
   /** Document id of the ayah being recited right now, if any. */
   activeAyahId: string | null;
@@ -440,6 +447,7 @@ const PageSlot = memo(function PageSlot({
   isDark,
   highlights,
   selectedElementIds,
+  topicBands,
   hiddenAyahIds,
   activeAyahId,
   activeWordId,
@@ -477,6 +485,7 @@ const PageSlot = memo(function PageSlot({
         isDark={isDark}
         highlights={highlights}
         selectedElementIds={selectedElementIds}
+        topicBands={topicBands}
         hiddenAyahIds={hiddenAyahIds}
         activeAyahId={activeAyahId}
         activeWordId={activeWordId}
@@ -496,6 +505,7 @@ const PageSlot = memo(function PageSlot({
 });
 
 const NO_HIGHLIGHTS: Highlight[] = [];
+const NO_TOPIC_BANDS: TopicBand[] = [];
 
 const styles = StyleSheet.create({
   container: {

@@ -22,6 +22,21 @@ export type ElementRect = {
   height: number;
 };
 
+/**
+ * A run of ayahs on this page that belongs to one thematic section, painted as
+ * a soft coloured band behind its words. Several bands — one per section on the
+ * page, each a different colour — let the reader see at a glance where one
+ * section ends and the next begins, without reading the section list.
+ */
+export type TopicBand = {
+  /** Stable id of the section the band belongs to. */
+  id: string;
+  /** Fill of the band; a translucent colour so the words stay legible. */
+  color: string;
+  /** Document ids of the ayahs in the band, e.g. `ayah-2-10`. */
+  ayahIds: string[];
+};
+
 type Props = {
   page: MushafPage;
   fontBase64: string;
@@ -37,6 +52,12 @@ type Props = {
    * selection, so a range of ayahs reads as one continuous frame.
    */
   selectedElementIds: string[] | null;
+  /**
+   * Coloured bands that group the ayahs of this page by thematic section. Drawn
+   * as an overlay, so a page can be pre-rendered as a neighbour and still stay
+   * byte-identical when the bands change.
+   */
+  topicBands?: TopicBand[];
   /** Ayah ids whose text is hidden during memorisation recording. */
   hiddenAyahIds?: string[];
   /**
@@ -120,6 +141,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   isDark,
   highlights,
   selectedElementIds,
+  topicBands = NO_TOPIC_BANDS,
   hiddenAyahIds = [],
   activeAyahId,
   activeWordId = null,
@@ -312,6 +334,19 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     }
   }, []);
 
+  const syncTopicBands = useCallback(() => {
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(
+        { source: 'mushaf-page-parent', topicBands },
+        '*',
+      );
+    } else {
+      webViewRef.current?.injectJavaScript(
+        `window.applyTopicBands?.(${JSON.stringify(topicBands)}); true;`,
+      );
+    }
+  }, [topicBands]);
+
   const syncOverlays = useCallback(() => {
     syncSelectedElement();
     syncRecitationAyah();
@@ -319,6 +354,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     syncRecitationFocus();
     syncHiddenAyahs();
     syncHighlights(highlightEntries);
+    syncTopicBands();
   }, [
     highlightEntries,
     syncHighlights,
@@ -327,11 +363,14 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     syncRecitationWord,
     syncHiddenAyahs,
     syncSelectedElement,
+    syncTopicBands,
   ]);
 
   useEffect(() => {
     syncHighlights(highlightEntries);
   }, [highlightEntries, syncHighlights]);
+
+  useEffect(syncTopicBands, [syncTopicBands]);
 
   useEffect(() => {
     syncHiddenAyahs();
@@ -773,7 +812,8 @@ body.tasmi3-hidden-page .surah-title-text {
 #selection-layer,
 #recitation-layer,
 #recitation-word-layer,
-#highlight-layer {
+#highlight-layer,
+#topic-band-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -786,11 +826,19 @@ body.tasmi3-hidden-page .surah-title-text {
   background: ${isDark ? 'rgba(217, 169, 74, 0.14)' : 'rgba(217, 169, 74, 0.16)'};
   border-radius: 8px;
 }
+#topic-band-layer { z-index: 0; }
 #highlight-layer { z-index: 0; }
 .ayah-highlight-box {
   position: absolute;
   border-radius: 3px;
   background: var(--ayah-highlight-color);
+}
+/* One band per thematic section on the page, each its own colour, so the run of
+   ayahs that belong together reads as one block at a glance. */
+.topic-band-box {
+  position: absolute;
+  border-radius: 4px;
+  background: var(--topic-band-color);
 }
 /* The reciting ayah is only tinted, never framed: a second outline around it
    competed with the box travelling over the word, so the reader now just sees
@@ -871,7 +919,7 @@ body.tasmi3-hidden-page .surah-title-text {
     <span class="header-ornament">۞</span>
     <span class="header-label" id="header-juz-label">${juzHeaderLabel}</span>
   </header>
-  <section class="lines" id="mushaf-lines">${linesHtml}<div id="highlight-layer"></div><div id="selection-layer"></div><div id="recitation-layer"></div><div id="recitation-word-layer"></div></section>
+  <section class="lines" id="mushaf-lines">${linesHtml}<div id="topic-band-layer"></div><div id="highlight-layer"></div><div id="selection-layer"></div><div id="recitation-layer"></div><div id="recitation-word-layer"></div></section>
   <footer class="page-footer">
     <div class="page-number-ornament">
       <span class="page-num-bracket">۞</span>
@@ -1128,6 +1176,41 @@ function applyMushafHighlights(entries) {
 }
 window.applyMushafHighlights = applyMushafHighlights;
 
+/**
+ * Coloured bands grouping the ayahs of the page by thematic section.
+ *
+ * Kept on their own layer and applied as an overlay, exactly like the saved
+ * highlights: the page document never changes, so a neighbour page stays
+ * byte-identical when the bands are turned on or off.
+ */
+let topicBands = [];
+
+function renderTopicBandBoxes(bands) {
+  const layer = document.getElementById("topic-band-layer");
+  if (!layer) return;
+  layer.innerHTML = "";
+  const layerRect = layer.getBoundingClientRect();
+  for (const band of bands) {
+    if (!band || !Array.isArray(band.ayahIds)) continue;
+    for (const rect of ayahFrameRects(band.ayahIds)) {
+      const box = document.createElement("div");
+      box.className = "topic-band-box";
+      box.style.setProperty("--topic-band-color", band.color);
+      box.style.left = rect.left - layerRect.left + "px";
+      box.style.top = rect.top - layerRect.top + "px";
+      box.style.width = rect.width + "px";
+      box.style.height = rect.height + "px";
+      layer.appendChild(box);
+    }
+  }
+}
+
+function applyTopicBands(bands) {
+  topicBands = Array.isArray(bands) ? bands : [];
+  renderTopicBandBoxes(topicBands);
+}
+window.applyTopicBands = applyTopicBands;
+
 function postPageMessage(message) {
   if (window.ReactNativeWebView) {
     window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -1262,6 +1345,7 @@ function preparePage() {
   selectMushafElements(selectedIds);
   selectRecitationAyah(recitationAyahId);
   selectRecitationWord(recitationWordId);
+  renderTopicBandBoxes(topicBands);
   signalPageReady();
 }
 
@@ -1288,6 +1372,7 @@ window.addEventListener("resize", () => {
     selectMushafElements(selectedIds);
     selectRecitationAyah(recitationAyahId);
     selectRecitationWord(recitationWordId);
+    renderTopicBandBoxes(topicBands);
     if (pageElement) pageElement.classList.add("is-ready");
   });
 });
@@ -1445,6 +1530,9 @@ window.addEventListener("message", (event) => {
     if (event.data.highlights !== undefined) {
       applyMushafHighlights(event.data.highlights);
     }
+    if (event.data.topicBands !== undefined) {
+      applyTopicBands(event.data.topicBands);
+    }
   }
 });
 </script>
@@ -1510,6 +1598,9 @@ function isElementRect(value: unknown): value is ElementRect {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+
+/** Stable empty list so a page with no bands never re-renders on a new array. */
+const NO_TOPIC_BANDS: TopicBand[] = [];
 
 const styles = StyleSheet.create({
   container: {
