@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppUpdateBanner } from '@/components/app-update-banner';
 import { IntroAnimationContext } from '@/components/brand-intro';
@@ -50,6 +51,7 @@ const GRAIN_SOURCE = require('../../assets/images/glass-grain.png');
 export default function HomeScreen() {
   const introFinished = useContext(IntroAnimationContext);
   const colors = useTheme();
+  const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -210,7 +212,6 @@ export default function HomeScreen() {
         renderItem={renderSurah}
         ListHeaderComponent={
           <View style={styles.headerContent}>
-            <AppUpdateBanner />
             <HomeHero
               searchValue={search}
               onSearchChange={setSearch}
@@ -303,7 +304,12 @@ export default function HomeScreen() {
           onRetrySearch={() => void ayahSearch.refetch()}
         />
       )}
-      <OfflineDownloadBanner />
+      <View
+        pointerEvents="box-none"
+        style={[styles.bottomStack, { paddingBottom: insets.bottom + Spacing.three }]}>
+        <AppUpdateBanner />
+        <OfflineDownloadBanner />
+      </View>
     </View>
   );
 }
@@ -421,6 +427,14 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.six,
+  },
+  bottomStack: {
+    position: 'absolute',
+    start: 0,
+    end: 0,
+    bottom: 0,
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
   },
   surahEntry: {
     width: '100%',

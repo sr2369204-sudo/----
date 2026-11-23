@@ -9,8 +9,6 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import { Radius, Spacing } from '@/constants/theme';
 import { OfflineLibrary } from '@/features/reader/services/offline-library';
 import { useOfflineDownloadStore } from '@/features/reader/state/offline-download-store';
@@ -36,7 +34,6 @@ const READY_AUTO_HIDE_MS = 8_000;
  */
 export function OfflineDownloadBanner() {
   const colors = useTheme();
-  const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const running = useOfflineDownloadStore((state) => state.running);
   const done = useOfflineDownloadStore((state) => state.done);
@@ -100,7 +97,6 @@ export function OfflineDownloadBanner() {
         {
           backgroundColor: colors.surface,
           borderColor: colors.border,
-          bottom: insets.bottom + Spacing.three,
         },
       ]}>
       <View style={[styles.iconBadge, { backgroundColor: colors.backgroundSelected }]}>
@@ -212,9 +208,6 @@ function formatMegabytes(bytes: number): string {
 
 const styles = StyleSheet.create({
   banner: {
-    position: 'absolute',
-    start: Spacing.three,
-    end: Spacing.three,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.two,
