@@ -822,9 +822,11 @@ body.tasmi3-hidden-page .surah-title-text {
 .selection-box,
 .recitation-box {
   position: absolute;
-  border: 2px solid ${isDark ? 'rgba(217, 169, 74, 0.95)' : 'rgba(163, 122, 38, 0.9)'};
-  background: ${isDark ? 'rgba(217, 169, 74, 0.14)' : 'rgba(217, 169, 74, 0.16)'};
-  border-radius: 8px;
+  border-radius: 10px;
+}
+.selection-box {
+  border: 1.5px solid ${isDark ? 'rgba(122, 180, 235, 0.82)' : 'rgba(41, 98, 158, 0.62)'};
+  background: ${isDark ? 'rgba(122, 180, 235, 0.10)' : 'rgba(41, 98, 158, 0.06)'};
 }
 #topic-band-layer { z-index: 0; }
 #highlight-layer { z-index: 0; }
@@ -845,7 +847,6 @@ body.tasmi3-hidden-page .surah-title-text {
    which ayah is sounding through a very light wash behind its words. */
 .recitation-box {
   border: 0;
-  border-radius: 10px;
   background: ${isDark ? 'rgba(122, 180, 235, 0.10)' : 'rgba(41, 98, 158, 0.06)'};
 }
 /* The word being recited. It is one persistent box whose geometry is updated
