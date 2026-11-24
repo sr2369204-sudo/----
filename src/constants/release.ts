@@ -4,6 +4,7 @@ import { Linking, Platform } from 'react-native';
 
 import {
   compareVersions,
+  isDirectApkLink,
   isNewerRelease,
   LATEST_RELEASE_URL,
   type LatestRelease,
@@ -104,6 +105,15 @@ export function useApkInstall(release: LatestRelease | null) {
 
   const start = useCallback(async () => {
     const target = release ?? FALLBACK_RELEASE;
+    if (!isDirectApkLink(target.apkUrl)) {
+      // A download page (MediaFire): the browser handles the download and the installer.
+      try {
+        await Linking.openURL(target.apkUrl);
+      } catch (openError) {
+        console.error('تعذر فتح صفحة التنزيل.', openError);
+      }
+      return;
+    }
     setState({ status: 'downloading', progress: null });
     try {
       await downloadAndInstallApk(target.apkUrl, (progress) =>
