@@ -1290,6 +1290,7 @@ function TafsirPanel({
   onAyahChange: (ayahNumber: number) => void;
   palette: ReturnType<typeof useTheme>;
 }) {
+  const database = useSQLiteContext();
   const [reloadKey, setReloadKey] = useState(0);
   const [ayahContent, setAyahContent] = useState(initialAyah);
   const [ayahCount, setAyahCount] = useState<number | null>(null);
@@ -1323,7 +1324,7 @@ function TafsirPanel({
 
   useEffect(() => {
     let active = true;
-    quranContentProvider
+    new LocalQuranCache(database)
       .getAyahTafsir(surahNumber, ayahNumber)
       .then((text) => {
         if (active) {
@@ -1342,7 +1343,7 @@ function TafsirPanel({
     return () => {
       active = false;
     };
-  }, [ayahNumber, requestKey, surahNumber]);
+  }, [ayahNumber, database, requestKey, surahNumber]);
 
   const ayahText = ayahContent.ayahNumber === ayahNumber
     ? ayahContent.words.map((word) => word.textUthmani).join(' ')
@@ -1473,6 +1474,7 @@ function MeaningPanel({
   selectedWordId: string;
   palette: ReturnType<typeof useTheme>;
 }) {
+  const database = useSQLiteContext();
   const initialWordIndex = Math.max(
     0,
     ayah.words.findIndex((word) => word.id === selectedWordId),
@@ -1489,7 +1491,7 @@ function MeaningPanel({
 
   useEffect(() => {
     let active = true;
-    quranContentProvider
+    new LocalQuranCache(database)
       .getAyahWordMeanings(surahNumber, ayah.ayahNumber)
       .then((meanings) => {
         if (active) {
@@ -1508,7 +1510,7 @@ function MeaningPanel({
     return () => {
       active = false;
     };
-  }, [ayah.ayahNumber, requestKey, surahNumber]);
+  }, [ayah.ayahNumber, database, requestKey, surahNumber]);
 
   const loading = !state || state.key !== requestKey;
   const currentWordIndex = Math.min(wordIndex, Math.max(0, ayah.words.length - 1));

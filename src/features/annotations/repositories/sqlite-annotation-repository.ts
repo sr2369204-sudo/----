@@ -161,6 +161,22 @@ export class SqliteAnnotationRepository {
     await this.database.runAsync('DELETE FROM highlights WHERE id = ?', id);
   }
 
+  /** Every written note, newest first, for the "my notes" screen. */
+  async listAllNotes(): Promise<Note[]> {
+    const rows = await this.database.getAllAsync<NoteRow>(
+      'SELECT * FROM notes ORDER BY updated_at DESC, id ASC',
+    );
+    return rows.map(toNote);
+  }
+
+  /** Every highlight, newest first, for the "my notes" screen. */
+  async listAllHighlights(): Promise<Highlight[]> {
+    const rows = await this.database.getAllAsync<HighlightRow>(
+      'SELECT * FROM highlights ORDER BY updated_at DESC, id ASC',
+    );
+    return rows.map(toHighlight);
+  }
+
   async listNotesForTarget(target: AnnotationTarget): Promise<Note[]> {
     const { sql, parameters } = exactTargetQuery('notes', target);
     const rows = await this.database.getAllAsync<NoteRow>(sql, ...parameters);

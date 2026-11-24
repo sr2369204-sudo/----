@@ -20,7 +20,11 @@ import { SqliteAnnotationRepository } from '@/features/annotations/repositories/
 import { ContinueReadingCard } from '@/features/home/components/continue-reading-card';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { RecordingsCard } from '@/features/home/components/recordings-card';
+import { useOfflineDownloadStore } from '@/features/reader/state/offline-download-store';
 import { OfflineDownloadBanner } from '@/features/home/components/offline-download-banner';
+import { ReadingStreakCard } from '@/features/home/components/reading-streak-card';
+import { loadReadingHistory } from '@/features/reader/services/reading-history';
+import { toDateKey } from '@/features/memorization/services/review-schedule';
 import { DailyReadingPlan } from '@/features/home/components/daily-reading-plan';
 import { HomeHero } from '@/features/home/components/home-hero';
 import {
@@ -54,6 +58,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
+  const libraryComplete = useOfflineDownloadStore((state) => state.complete);
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [searchAnchor, setSearchAnchor] = useState<SearchAnchor | null>(null);
@@ -128,6 +133,11 @@ export default function HomeScreen() {
   const dailyPlanQuery = useQuery({
     queryKey: ['reading', 'daily-plan'],
     queryFn: () => loadDailyReadingPlan(database),
+  });
+
+  const readingHistoryQuery = useQuery({
+    queryKey: ['reading', 'history'],
+    queryFn: () => loadReadingHistory(database),
   });
 
   const lastReadingPositionQuery = useQuery({
@@ -249,6 +259,10 @@ export default function HomeScreen() {
               updating={dailyPlanUpdating}
               onChangeTarget={(target) => void updateDailyTarget(target)}
             />
+            <ReadingStreakCard
+              history={readingHistoryQuery.data ?? null}
+              today={toDateKey(new Date())}
+            />
 
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
@@ -307,6 +321,7 @@ export default function HomeScreen() {
             search.trim() !== submittedSearch || ayahSearch.isPending
           }
           searchError={Boolean(ayahSearch.error && search.trim() === submittedSearch)}
+          libraryIncomplete={!libraryComplete}
           onRetrySearch={() => void ayahSearch.refetch()}
         />
       )}

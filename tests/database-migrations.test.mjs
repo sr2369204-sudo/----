@@ -103,7 +103,7 @@ test('adds ayah voice notes to a version-nine database', async () => {
 });
 
 test('rejects databases newer than the app schema', async () => {
-  const database = createDatabase(11);
+  const database = createDatabase(999);
 
   await assert.rejects(initializeDatabase(database), /newer than supported/);
 });

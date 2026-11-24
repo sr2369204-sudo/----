@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { confirmDelete } from '@/components/confirm-delete';
 import { SeekBar } from '@/components/ui/seek-bar';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
@@ -173,7 +174,9 @@ export default function RecordingsScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="حذف التسجيل"
                   disabled={busy}
-                  onPress={() => void removeRecording(recording)}
+                  onPress={() =>
+                    confirmDelete('حذف التسجيل؟', 'سيتم حذف هذا التسجيل نهائياً.', () => void removeRecording(recording))
+                  }
                   style={({ pressed }) => [
                     styles.deleteButton,
                     { backgroundColor: colors.backgroundSelected },

@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { quranContentProvider } from '@/features/quran/services/content-provider';
+import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
+import { ContentUnavailableError, quranContentProvider, type AyahWordMeaning } from '@/features/quran/services/content-provider';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 
@@ -34,9 +35,18 @@ export class LocalQuranCache {
     if (isSurahDirectory(cached)) {
       return cached;
     }
-    const directory = await quranContentProvider.getSurahDirectory();
-    await this.writeJson(DIRECTORY_KEY, directory);
-    return directory;
+    try {
+      const directory = await quranContentProvider.getSurahDirectory();
+      await this.writeJson(DIRECTORY_KEY, directory);
+      return directory;
+    } catch (error) {
+      // First launch with no connection: the list of surahs is fixed text, so
+      // the copy shipped inside the app is used instead of showing an error.
+      if (error instanceof ContentUnavailableError) {
+        return BUNDLED_SURAH_DIRECTORY;
+      }
+      throw error;
+    }
   }
 
   /** First Mushaf page of a surah, from the local index or the source. */
@@ -112,6 +122,16 @@ export class LocalQuranCache {
     const index = await this.loadStoredAyahIndex();
     if (index.pageCount === 0) {
       return quranContentProvider.searchAyahs(trimmed, limit);
+    }
+    if (index.pageCount < 604) {
+      // Only part of the Mushaf is stored, so searching the saved pages alone
+      // could say "not found" for an ayah that exists. Ask the source first and
+      // use the saved pages only when there is no connection.
+      try {
+        return await quranContentProvider.searchAyahs(trimmed, limit);
+      } catch {
+        // Offline: fall through to the partial local search below.
+      }
     }
 
     const normalizedQuery = normalizeSurahSearch(trimmed);
@@ -274,6 +294,38 @@ export class LocalQuranCache {
       }
     }
     return null;
+  }
+
+  /**
+   * Tafsir of one ayah. Once read it is kept on the phone, so it opens with no
+   * connection the next time. Only the reader's own source is called when it
+   * has not been stored yet.
+   */
+  async getAyahTafsir(surahNumber: number, ayahNumber: number): Promise<string> {
+    const key = `tafsir:${surahNumber}:${ayahNumber}`;
+    const stored = await this.readJson<string>(key);
+    if (typeof stored === 'string' && stored.length > 0) {
+      return stored;
+    }
+    const text = await quranContentProvider.getAyahTafsir(surahNumber, ayahNumber);
+    if (text.trim().length > 0) {
+      await this.writeJson(key, text).catch(() => undefined);
+    }
+    return text;
+  }
+
+  /** Meanings of the words of one ayah, stored after the first successful read. */
+  async getAyahWordMeanings(surahNumber: number, ayahNumber: number): Promise<AyahWordMeaning[]> {
+    const key = `word-meanings:${surahNumber}:${ayahNumber}`;
+    const stored = await this.readJson<AyahWordMeaning[]>(key);
+    if (Array.isArray(stored) && stored.length > 0) {
+      return stored;
+    }
+    const meanings = await quranContentProvider.getAyahWordMeanings(surahNumber, ayahNumber);
+    if (meanings.length > 0) {
+      await this.writeJson(key, meanings).catch(() => undefined);
+    }
+    return meanings;
   }
 
   private async readJson<T>(key: string): Promise<T | null> {

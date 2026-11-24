@@ -2,7 +2,7 @@ import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -30,9 +30,13 @@ import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import { downloadRecitationSurahs } from '@/features/reader/services/recitation-offline';
 import {
+  deleteRecitations,
+  getRecitationStoredBytes,
   getRecitationSurahStatuses,
   type RecitationDownloadProgress,
 } from '@/features/reader/services/recitation-offline';
+import { confirmDelete } from '@/components/confirm-delete';
+import { formatMegabytes } from '@/features/settings/utils/format';
 import {
   DEFAULT_READER_TOOLBAR_SHAPE,
   READER_TOOLBAR_SHAPE_OPTIONS,
@@ -41,6 +45,8 @@ import {
   type ThemePreference,
 } from '@/features/reader/state/reader-preferences-store';
 import { useTheme } from '@/hooks/use-theme';
+import { BackupCard } from '@/features/settings/components/backup-card';
+import { OfflineMushafCard } from '@/features/settings/components/offline-mushaf-card';
 
 const themeOptions: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'تلقائي' },
@@ -89,6 +95,11 @@ export default function SettingsScreen() {
   const [recitationDownloading, setRecitationDownloading] = useState(false);
   const [recitationProgress, setRecitationProgress] = useState<RecitationDownloadProgress | null>(null);
   const [recitationStatuses, setRecitationStatuses] = useState<Record<number, boolean>>({});
+  const recitationCancelRef = useRef(false);
+  const [recitationRevision, setRecitationRevision] = useState(0);
+  // The folder is listed again only when the reciter or the stored files change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const recitationBytes = useMemo(() => getRecitationStoredBytes(reciterId), [reciterId, recitationRevision]);
 
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
   const recitersQuery = useQuery({
@@ -111,9 +122,9 @@ export default function SettingsScreen() {
       const values = new Map(rows.map((row) => [row.key, row.value]));
       const savedShape = values.get('reader.toolbarShape') ?? DEFAULT_READER_TOOLBAR_SHAPE;
       return {
-        toolbarSize: Math.min(56, Math.max(32, Number(values.get('reader.toolbarSize') ?? DISPLAY_DEFAULT_TOOLBAR_SIZE))),
+        toolbarSize: Math.min(56, Math.max(32, Number(values.get('reader.toolbarSize') ?? DISPLAY_DEFAULT_TOOLBAR_SIZE) || DISPLAY_DEFAULT_TOOLBAR_SIZE)),
         toolbarShape: isReaderToolbarShape(savedShape) ? savedShape : DEFAULT_READER_TOOLBAR_SHAPE,
-        markerScale: Math.min(1.8, Math.max(0.8, Number(values.get('reader.markerScale') ?? DISPLAY_DEFAULT_MARKER_SCALE))),
+        markerScale: Math.min(1.8, Math.max(0.8, Number(values.get('reader.markerScale') ?? DISPLAY_DEFAULT_MARKER_SCALE) || DISPLAY_DEFAULT_MARKER_SCALE)),
       };
     },
     staleTime: Infinity,
@@ -172,22 +183,43 @@ export default function SettingsScreen() {
 
   async function downloadRecitations(surahNumbers: number[]): Promise<void> {
     setRecitationDownloading(true);
+    recitationCancelRef.current = false;
     setPreferenceError(null);
     try {
-      await downloadRecitationSurahs(reciterId, surahNumbers, setRecitationProgress);
-      if (directoryQuery.data?.surahs) {
-        setRecitationStatuses(
-          await getRecitationSurahStatuses(reciterId, directoryQuery.data.surahs),
-        );
-      }
+      await downloadRecitationSurahs(reciterId, surahNumbers, {
+        onProgress: setRecitationProgress,
+        shouldCancel: () => recitationCancelRef.current,
+      });
     } catch (error) {
       setPreferenceError(
         error instanceof Error ? `تعذر تحميل التلاوة: ${error.message}` : 'تعذر تحميل التلاوة.',
       );
     } finally {
+      if (directoryQuery.data?.surahs) {
+        setRecitationStatuses(
+          await getRecitationSurahStatuses(reciterId, directoryQuery.data.surahs),
+        );
+      }
+      setRecitationRevision((value) => value + 1);
       setRecitationDownloading(false);
       setRecitationProgress(null);
     }
+  }
+
+  function removeRecitations(): void {
+    confirmDelete(
+      'حذف التلاوات المحمّلة؟',
+      'ستُحذف تلاوات القارئ الحالي من جهازك لتوفير المساحة، ويمكنك تحميلها مرة أخرى.',
+      () => {
+        try {
+          deleteRecitations(reciterId);
+          setRecitationStatuses({});
+          setRecitationRevision((value) => value + 1);
+        } catch (error) {
+          setPreferenceError(error instanceof Error ? error.message : 'تعذر حذف التلاوات المحمّلة.');
+        }
+      },
+    );
   }
 
   const refreshRecitationStatuses = useCallback(async (): Promise<void> => {
@@ -303,6 +335,8 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        <OfflineMushafCard />
+
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: colors.backgroundSelected }]}>
@@ -322,6 +356,20 @@ export default function SettingsScreen() {
             <Ionicons name="download-outline" size={18} color={colors.background} />
             <Text style={[styles.primaryButtonText, { color: colors.background }]}>اختيار السور للتلاوة</Text>
           </Pressable>
+          {recitationBytes > 0 && (
+            <>
+              <Text style={[styles.body, { color: colors.textSecondary }]}>
+                {`المحمّل للقارئ الحالي: ${formatMegabytes(recitationBytes)} ميجابايت.`}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={removeRecitations}
+                style={[styles.wideButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Ionicons name="trash-outline" size={18} color={colors.text} />
+                <Text style={[styles.primaryButtonText, { color: colors.text }]}>حذف التلاوات المحمّلة</Text>
+              </Pressable>
+            </>
+          )}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -381,6 +429,8 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        <BackupCard />
+
         {(savedError || !recitersQuery.data?.some((reciter) => reciter.id === reciterId)) && (
           <Text accessibilityRole="alert" style={styles.error}>
             {savedError ?? 'القارئ المحفوظ غير موجود في قائمة المصدر. اختر قارئًا آخر.'}
@@ -401,6 +451,9 @@ export default function SettingsScreen() {
         failed={Boolean(directoryQuery.error)}
         onRetry={() => void directoryQuery.refetch()}
         onDownloadRecitation={(surahNumbers) => downloadRecitations(surahNumbers)}
+        onCancelRecitation={() => {
+          recitationCancelRef.current = true;
+        }}
         recitationDownloading={recitationDownloading}
         recitationStatuses={recitationStatuses}
         recitationProgress={recitationProgress}
@@ -458,6 +511,7 @@ function SurahDownloadPicker({
   failed,
   onRetry,
   onDownloadRecitation,
+  onCancelRecitation,
   recitationDownloading,
   recitationStatuses,
   recitationProgress,
@@ -471,6 +525,7 @@ function SurahDownloadPicker({
   failed: boolean;
   onRetry: () => void;
   onDownloadRecitation: (surahNumbers: number[]) => Promise<void>;
+  onCancelRecitation: () => void;
   recitationDownloading: boolean;
   recitationStatuses: Record<number, boolean>;
   recitationProgress: RecitationDownloadProgress | null;
@@ -744,6 +799,15 @@ function SurahDownloadPicker({
                     {recitationDownloading ? 'جارٍ تحميل التلاوة…' : 'تحميل التلاوة'}
                   </Text>
                 </Pressable>
+                {recitationDownloading && (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={onCancelRecitation}
+                    style={[styles.primaryButton, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <Ionicons name="close-circle-outline" size={18} color={colors.text} />
+                    <Text style={[styles.primaryButtonText, { color: colors.text }]}>إيقاف</Text>
+                  </Pressable>
+                )}
               </View>
             </>
           )}

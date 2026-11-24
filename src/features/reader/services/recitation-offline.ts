@@ -32,63 +32,140 @@ export function getOfflineTrackUri(reciterId: number, track: RecitationTrack): s
   return file.exists ? file.uri : null;
 }
 
+/** Tracks are fetched this many at a time: faster, without flooding the source. */
+const TRACK_CONCURRENCY = 3;
+const TRACK_ATTEMPTS = 3;
+const TRACK_RETRY_BACKOFF_MS = 600;
+
+export type RecitationDownloadOptions = {
+  onProgress?: (progress: RecitationDownloadProgress) => void;
+  /** Checked between tracks; returning true stops the download cleanly. */
+  shouldCancel?: () => boolean;
+};
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function downloadTrack(reciterId: number, track: RecitationTrack): Promise<void> {
+  const file = getOfflineTrackFile(reciterId, track);
+  if (file.exists) {
+    return;
+  }
+  // Download to a temporary .part file first, so an interrupted download
+  // never looks like a completed track.
+  const tempFile = new File(file.parentDirectory, `${file.name}.part`);
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      if (tempFile.exists) {
+        tempFile.delete();
+      }
+      await File.downloadFileAsync(track.url, tempFile);
+      await tempFile.move(file);
+      return;
+    } catch (error) {
+      try {
+        if (tempFile.exists) {
+          tempFile.delete();
+        }
+      } catch {
+        // Best-effort cleanup only.
+      }
+      if (attempt >= TRACK_ATTEMPTS) {
+        throw error;
+      }
+      await delay(TRACK_RETRY_BACKOFF_MS * attempt);
+    }
+  }
+}
+
+/**
+ * Stores the recitation of the given surahs. A track that keeps failing no
+ * longer stops the whole download: the rest are still fetched and the failure
+ * is reported at the end. Tracks that were stored stay stored, so running it
+ * again only fetches what is missing.
+ */
 export async function downloadRecitationSurahs(
   reciterId: number,
   surahNumbers: number[],
-  onProgress?: (progress: RecitationDownloadProgress) => void,
-): Promise<void> {
-  const total = await Promise.all(
-    surahNumbers.map(async (surahNumber) => {
-      const tracks = await quranContentProvider.getChapterRecitation(reciterId, surahNumber);
-      return tracks.length;
-    }),
-  ).then((counts) => counts.reduce((sum, count) => sum + count, 0));
-  let done = 0;
-  onProgress?.({ done, total });
-
+  optionsOrProgress?: RecitationDownloadOptions | ((progress: RecitationDownloadProgress) => void),
+): Promise<{ failed: number; cancelled: boolean }> {
+  const options: RecitationDownloadOptions =
+    typeof optionsOrProgress === 'function' ? { onProgress: optionsOrProgress } : optionsOrProgress ?? {};
+  const tracks: RecitationTrack[] = [];
   for (const surahNumber of surahNumbers) {
-    const tracks = await quranContentProvider.getChapterRecitation(reciterId, surahNumber);
-    for (const track of tracks) {
-      const file = getOfflineTrackFile(reciterId, track);
-      if (!file.exists) {
-        // Download to a temporary .part file first, so an interrupted download
-        // never looks like a completed track.
-        const tempFile = new File(file.parentDirectory, `${file.name}.part`);
-        try {
-          await File.downloadFileAsync(track.url, tempFile);
-          await tempFile.move(file);
-        } catch (error) {
-          try {
-            tempFile.delete();
-          } catch {
-            // Best-effort cleanup only.
-          }
-          throw error;
-        }
-      }
-      done += 1;
-      onProgress?.({ done, total });
+    if (options.shouldCancel?.()) {
+      return { failed: 0, cancelled: true };
     }
+    tracks.push(...(await quranContentProvider.getChapterRecitation(reciterId, surahNumber)));
   }
+  const total = tracks.length;
+  let done = 0;
+  let failed = 0;
+  let cursor = 0;
+  let firstError: unknown = null;
+  options.onProgress?.({ done, total });
+
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (options.shouldCancel?.()) {
+        return;
+      }
+      const index = cursor;
+      cursor += 1;
+      if (index >= tracks.length) {
+        return;
+      }
+      try {
+        await downloadTrack(reciterId, tracks[index]);
+        done += 1;
+        options.onProgress?.({ done, total });
+      } catch (error) {
+        failed += 1;
+        firstError ??= error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: TRACK_CONCURRENCY }, worker));
+
+  const cancelled = options.shouldCancel?.() ?? false;
+  if (failed > 0 && !cancelled) {
+    throw firstError instanceof Error
+      ? new Error(`تعذر تحميل ${failed} مقطع. أعد المحاولة لاستكمال الباقي. (${firstError.message})`)
+      : new Error(`تعذر تحميل ${failed} مقطع. أعد المحاولة لاستكمال الباقي.`);
+  }
+  return { failed, cancelled };
+}
+
+function listStoredNames(reciterId: number): Set<string> {
+  const names = new Set<string>();
+  try {
+    for (const entry of getDirectory(reciterId).list()) {
+      if (entry instanceof File) {
+        names.add(entry.name);
+      }
+    }
+  } catch {
+    // An unreadable folder simply counts as empty.
+  }
+  return names;
 }
 
 export async function getRecitationSurahStatuses(
   reciterId: number,
   surahs: QuranSurahSummary[],
 ): Promise<Record<number, boolean>> {
+  // One folder listing replaces thousands of per-track existence checks.
+  const names = listStoredNames(reciterId);
   const statuses: Record<number, boolean> = {};
   for (const surah of surahs) {
     if (isFullSurahReciter(reciterId)) {
-      statuses[surah.surahNumber] = getOfflineTrackFile(reciterId, {
-        surahNumber: surah.surahNumber,
-        ayahNumber: 0,
-        url: '',
-      }).exists;
+      statuses[surah.surahNumber] = names.has(`${surah.surahNumber}-0.mp3`);
       continue;
     }
     let complete = true;
     for (let ayahNumber = 1; ayahNumber <= surah.ayahCount; ayahNumber += 1) {
-      if (!getOfflineTrackFile(reciterId, { surahNumber: surah.surahNumber, ayahNumber, url: '' }).exists) {
+      if (!names.has(`${surah.surahNumber}-${ayahNumber}.mp3`)) {
         complete = false;
         break;
       }
@@ -96,6 +173,34 @@ export async function getRecitationSurahStatuses(
     statuses[surah.surahNumber] = complete;
   }
   return statuses;
+}
+
+/** Bytes the stored recitation of one reciter occupies on the device. */
+export function getRecitationStoredBytes(reciterId: number): number {
+  let bytes = 0;
+  try {
+    for (const entry of getDirectory(reciterId).list()) {
+      if (entry instanceof File && entry.name.endsWith('.mp3')) {
+        bytes += entry.size ?? 0;
+      }
+    }
+  } catch {
+    // Unreadable folder counts as empty.
+  }
+  return bytes;
+}
+
+/** Removes every stored track of one reciter. Nothing else is affected. */
+export function deleteRecitations(reciterId: number): void {
+  try {
+    for (const entry of getDirectory(reciterId).list()) {
+      if (entry instanceof File) {
+        entry.delete();
+      }
+    }
+  } catch (error) {
+    throw error instanceof Error ? error : new Error('تعذر حذف التلاوات المحمّلة.');
+  }
 }
 
 export function resolveOfflineTracks(

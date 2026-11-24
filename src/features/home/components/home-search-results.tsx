@@ -38,6 +38,8 @@ type HomeSearchResultsProps = {
   ayahResults: AyahSearchResult[];
   searchLoading: boolean;
   searchError: boolean;
+  /** True while the Mushaf is not fully stored, so offline search may miss ayahs. */
+  libraryIncomplete?: boolean;
   onRetrySearch: () => void;
 };
 
@@ -48,6 +50,7 @@ export function HomeSearchResults({
   ayahResults,
   searchLoading,
   searchError,
+  libraryIncomplete = false,
   onRetrySearch,
 }: HomeSearchResultsProps) {
   const { height, width } = useWindowDimensions();
@@ -137,6 +140,11 @@ export function HomeSearchResults({
             <Text style={styles.messageText}>لا توجد نتائج مطابقة في المصحف.</Text>
           </View>
         )}
+        {!searchLoading && libraryIncomplete && (
+          <Text style={styles.incompleteNote}>
+            المصحف لم يكتمل تحميله على جهازك، فقد يكون البحث بدون إنترنت ناقصاً.
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -193,6 +201,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'right',
     color: PANEL_ACCENT,
+  },
+  incompleteNote: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: TypeScale.caption,
+    textAlign: 'right',
+    color: PANEL_TEXT_MUTED,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: PANEL_DIVIDER,
   },
   message: {
     minHeight: 76,

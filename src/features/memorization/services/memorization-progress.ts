@@ -50,12 +50,50 @@ export function serializeMemorizedSurahs(surahs: number[]): string {
   });
 }
 
+/**
+ * Reads whatever valid surah numbers a damaged payload still holds, so a bad
+ * save never wipes the screen: unreadable text gives an empty list.
+ */
+export function salvageMemorizedSurahs(value: string | null): number[] {
+  if (value === null) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    const list = Array.isArray(parsed)
+      ? parsed
+      : isRecord(parsed) && Array.isArray(parsed.surahs)
+        ? parsed.surahs
+        : [];
+    return [...new Set(list.filter(isValidSurahNumber) as number[])].sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
+}
+
 export async function loadMemorizedSurahs(database: SQLiteDatabase): Promise<number[]> {
   const row = await database.getFirstAsync<{ value: string }>(
     'SELECT value FROM app_settings WHERE key = ?',
     MEMORIZED_KEY,
   );
-  return parseMemorizedSurahs(row?.value ?? null);
+  try {
+    return parseMemorizedSurahs(row?.value ?? null);
+  } catch {
+    // Keep a copy of the damaged text before it is replaced, then carry on
+    // with whatever was recoverable instead of breaking the heart screen.
+    try {
+      await database.runAsync(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        `${MEMORIZED_KEY}.damaged`,
+        row?.value ?? '',
+        new Date().toISOString(),
+      );
+    } catch {
+      // The backup is best effort only.
+    }
+    return salvageMemorizedSurahs(row?.value ?? null);
+  }
 }
 
 export async function saveMemorizedSurahs(
