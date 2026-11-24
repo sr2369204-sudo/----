@@ -49,6 +49,9 @@ type PlayerProps = {
   onCycleAyahRepeat: () => void;
   playbackRate: number;
   onCycleRate: () => void;
+  /** Minutes left on the sleep timer, or null when it is off. */
+  sleepTimerMinutes?: number | null;
+  onCycleSleepTimer?: () => void;
   onTogglePlay: () => void;
   onSeek: (seconds: number) => void;
   onNext: () => void;
@@ -79,6 +82,8 @@ export function RecitationPlayer({
   onCycleAyahRepeat,
   playbackRate,
   onCycleRate,
+  sleepTimerMinutes = null,
+  onCycleSleepTimer,
   onTogglePlay,
   onSeek,
   onNext,
@@ -336,6 +341,39 @@ export function RecitationPlayer({
               {formatRate(playbackRate)}
             </Text>
           </Pressable>
+          {onCycleSleepTimer && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                sleepTimerMinutes === null
+                  ? 'مؤقت النوم متوقف'
+                  : `إيقاف التلاوة بعد ${sleepTimerMinutes} دقيقة`
+              }
+              accessibilityHint="اضغط للتبديل بين ١٥ و٣٠ و٦٠ دقيقة أو إيقاف المؤقت"
+              hitSlop={6}
+              onPress={onCycleSleepTimer}
+              style={({ pressed }) => [
+                styles.rateButton,
+                {
+                  backgroundColor:
+                    sleepTimerMinutes === null ? colors.backgroundSelected : `${colors.primary}1A`,
+                },
+                pressed && styles.pressed,
+              ]}>
+              <View style={styles.sleepContent}>
+                <Ionicons
+                  name={sleepTimerMinutes === null ? 'moon-outline' : 'moon'}
+                  size={15}
+                  color={sleepTimerMinutes === null ? colors.textSecondary : colors.primary}
+                />
+                {sleepTimerMinutes !== null && (
+                  <Text style={[styles.rateLabel, { color: colors.primary }]}>
+                    {toArabicDigits(sleepTimerMinutes)}
+                  </Text>
+                )}
+              </View>
+            </Pressable>
+          )}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="إيقاف التلاوة"
@@ -1210,6 +1248,11 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sleepContent: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 3,
   },
   rateLabel: {
     fontSize: 13,

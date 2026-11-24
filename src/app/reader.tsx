@@ -196,6 +196,8 @@ export default function ReaderScreen() {
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
   const [ayahRepeatCount, setAyahRepeatCount] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
+  // Stops the recitation after this many minutes (null = off), for listening before sleep.
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
   // True while the reader has tucked the floating player away by tapping the
   // page, so the verse it covers can be read while the recitation keeps going.
   const [playerHidden, setPlayerHidden] = useState(false);
@@ -805,6 +807,19 @@ export default function ReaderScreen() {
     highlightTopicSection(pending.section, page);
     pendingTopicSection.current = null;
   }, [activePageNumber, highlightTopicSection, page]);
+
+  const hasRecitationQueue = recitationQueue !== null;
+  useEffect(() => {
+    if (sleepTimerMinutes === null || !hasRecitationQueue) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      recitationPlaylist.pause();
+      player.pause();
+      setSleepTimerMinutes(null);
+    }, sleepTimerMinutes * 60_000);
+    return () => clearTimeout(timer);
+  }, [sleepTimerMinutes, hasRecitationQueue, player, recitationPlaylist]);
 
   useEffect(() => {
     let active = true;
@@ -1840,6 +1855,8 @@ export default function ReaderScreen() {
           onCycleAyahRepeat={cycleAyahRepeatCount}
           playbackRate={playbackRate}
           onCycleRate={() => setPlaybackRate((rate) => nextPlaybackRate(rate))}
+          sleepTimerMinutes={sleepTimerMinutes}
+          onCycleSleepTimer={() => setSleepTimerMinutes((minutes) => nextSleepTimer(minutes))}
           onTogglePlay={() =>
             recitationStatus.playing ? recitationPlaylist.pause() : recitationPlaylist.play()
           }
@@ -2191,6 +2208,16 @@ function retryPageQuery(failureCount: number, error: unknown): boolean {
 
 function pageQueryRetryDelay(attemptIndex: number): number {
   return Math.min(300 * 2 ** attemptIndex, 1_200);
+}
+
+const SLEEP_TIMER_STEPS = [15, 30, 60];
+
+function nextSleepTimer(current: number | null): number | null {
+  if (current === null) {
+    return SLEEP_TIMER_STEPS[0];
+  }
+  const index = SLEEP_TIMER_STEPS.indexOf(current);
+  return index < 0 || index === SLEEP_TIMER_STEPS.length - 1 ? null : SLEEP_TIMER_STEPS[index + 1];
 }
 
 function parseArabicNumber(value: string): number {
