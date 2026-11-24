@@ -57,6 +57,8 @@ import { Tasmi3Panel } from '@/features/reader/components/Tasmi3Panel';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
 import {
   buildRecitationQueue,
+  getAvailableAyahRepeatCounts,
+  resolveAyahRepeatCount,
   type RecitationQueue,
   type RecitationScope,
 } from '@/features/reader/services/recitation-queue';
@@ -192,6 +194,7 @@ export default function ReaderScreen() {
   const [navbarHeight, setNavbarHeight] = useState(0);
   const [navAnimation] = useState(() => new Animated.Value(0));
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
+  const [ayahRepeatCount, setAyahRepeatCount] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
   // True while the reader has tucked the floating player away by tapping the
   // page, so the verse it covers can be read while the recitation keeps going.
@@ -226,9 +229,6 @@ export default function ReaderScreen() {
       }),
     [recitationFabPan],
   );
-  // Snapshot of the playback state read from inside the page's background-tap
-  // callback, which must keep a stable identity while the status ticks.
-  const playbackRef = useRef<{ hasPlaylist: boolean }>({ hasPlaylist: false });
   // Mirrors `navVisible` so the page's background-tap callback can read the
   // current state without depending on render state.
   const navVisibleRef = useRef(false);
@@ -502,7 +502,9 @@ export default function ReaderScreen() {
   // The ayah the reciter is on right now. It drives the frame drawn around the
   // ayah on the page as well as the automatic page turn that keeps the reader
   // in step with the recitation.
-  const activeTrack = recitationQueue?.tracks[recitationStatus.currentIndex] ?? null;
+  const activeTrack = recitationQueue?.tracks[
+    Math.floor(recitationStatus.currentIndex / ayahRepeatCount)
+  ] ?? null;
   const activeAyahId = activeTrack
     ? `ayah-${activeTrack.surahNumber}-${activeTrack.ayahNumber}`
     : null;
@@ -829,19 +831,13 @@ export default function ReaderScreen() {
   // reader changes them so the next track inherits the current setting.
   useEffect(() => {
     recitationPlaylist.loop = repeatMode;
-    player.loop = repeatMode === 'single';
+    player.loop = false;
   }, [player, recitationPlaylist, repeatMode]);
 
   useEffect(() => {
     recitationPlaylist.playbackRate = playbackRate;
     player.setPlaybackRate(playbackRate);
   }, [playbackRate, player, recitationPlaylist]);
-
-  // Kept in a ref because the page's background-tap callback has to stay stable
-  // while the playback status ticks every second.
-  useEffect(() => {
-    playbackRef.current.hasPlaylist = recitationQueue !== null;
-  }, [recitationQueue]);
 
   const onAyahPress = useCallback((
     surahNumber: number,
@@ -981,13 +977,21 @@ export default function ReaderScreen() {
   const loadRecitationQueue = useCallback((
     queue: RecitationQueue,
     resumeTrack: RecitationTrack | null,
+    requestedRepeatCount = ayahRepeatCount,
+    shouldPlay = true,
   ) => {
+    const repeatCount = resolveAyahRepeatCount(queue.tracks, requestedRepeatCount);
+    if (repeatCount !== ayahRepeatCount) {
+      setAyahRepeatCount(repeatCount);
+    }
     recitationPlaylist.pause();
     recitationPlaylist.clear();
     for (const track of queue.tracks) {
-      // The playlist bridge expects a source object; a bare URL string reaches
-      // the native side as a raw value and is rejected.
-      recitationPlaylist.add({ uri: track.url });
+      for (let repetition = 0; repetition < repeatCount; repetition += 1) {
+        // The playlist bridge expects a source object; a bare URL string reaches
+        // the native side as a raw value and is rejected.
+        recitationPlaylist.add({ uri: track.url });
+      }
     }
     recitationPlaylist.loop = repeatMode;
     recitationPlaylist.playbackRate = playbackRate;
@@ -995,18 +999,72 @@ export default function ReaderScreen() {
     // A fresh queue always brings the floating player back into view, even if
     // the reader had tucked the previous one away.
     setPlayerHidden(false);
-    const resumeIndex = resumeTrack
+    const resumeTrackIndex = resumeTrack
       ? queue.tracks.findIndex(
           (track) =>
             track.surahNumber === resumeTrack.surahNumber &&
             track.ayahNumber === resumeTrack.ayahNumber,
         )
       : -1;
-    if (resumeIndex > 0) {
-      recitationPlaylist.skipTo(resumeIndex);
+    if (resumeTrackIndex >= 0) {
+      recitationPlaylist.skipTo(resumeTrackIndex * repeatCount);
     }
-    recitationPlaylist.play();
-  }, [playbackRate, recitationPlaylist, repeatMode]);
+    if (shouldPlay) {
+      recitationPlaylist.play();
+    }
+  }, [ayahRepeatCount, playbackRate, recitationPlaylist, repeatMode]);
+
+  const cycleAyahRepeatCount = useCallback(() => {
+    if (
+      !recitationQueue ||
+      recitationQueue.tracks.some((track) => track.ayahNumber <= 0)
+    ) {
+      return;
+    }
+    const repeatOptions = getAvailableAyahRepeatCounts(recitationQueue.tracks.length);
+    if (repeatOptions.length < 2) {
+      return;
+    }
+    const currentOptionIndex = repeatOptions.indexOf(ayahRepeatCount);
+    const nextRepeatCount = repeatOptions[(currentOptionIndex + 1) % repeatOptions.length];
+    const currentTrackIndex = Math.floor(recitationStatus.currentIndex / ayahRepeatCount);
+    const currentTrack = recitationQueue.tracks[currentTrackIndex] ?? null;
+    setAyahRepeatCount(nextRepeatCount);
+    loadRecitationQueue(
+      recitationQueue,
+      currentTrack,
+      nextRepeatCount,
+      recitationStatus.playing || recitationStatus.isBuffering,
+    );
+  }, [
+    ayahRepeatCount,
+    loadRecitationQueue,
+    recitationQueue,
+    recitationStatus.currentIndex,
+    recitationStatus.isBuffering,
+    recitationStatus.playing,
+  ]);
+
+  const skipRecitationAyah = useCallback((step: -1 | 1) => {
+    if (!recitationQueue || recitationQueue.tracks.length === 0) {
+      return;
+    }
+    const currentTrackIndex = Math.floor(recitationStatus.currentIndex / ayahRepeatCount);
+    let nextTrackIndex = currentTrackIndex + step;
+    if (nextTrackIndex < 0 || nextTrackIndex >= recitationQueue.tracks.length) {
+      if (repeatMode !== 'all') {
+        return;
+      }
+      nextTrackIndex = (nextTrackIndex + recitationQueue.tracks.length) % recitationQueue.tracks.length;
+    }
+    recitationPlaylist.skipTo(nextTrackIndex * ayahRepeatCount);
+  }, [
+    ayahRepeatCount,
+    recitationPlaylist,
+    recitationQueue,
+    recitationStatus.currentIndex,
+    repeatMode,
+  ]);
 
   /**
    * Loads a scope into the recitation playlist and starts it. Shared by the
@@ -1241,7 +1299,8 @@ export default function ReaderScreen() {
     if (!recitationQueue) {
       return;
     }
-    const resumeTrack = recitationQueue.tracks[recitationStatus.currentIndex] ?? null;
+    const resumeTrack =
+      recitationQueue.tracks[Math.floor(recitationStatus.currentIndex / ayahRepeatCount)] ?? null;
     setRecitationBusy(true);
     buildRecitationQueue(nextReciterId, recitationQueue.scope)
       .then((queue) => {
@@ -1259,6 +1318,7 @@ export default function ReaderScreen() {
       });
   }, [
     database,
+    ayahRepeatCount,
     loadRecitationQueue,
     recitationQueue,
     recitationStatus.currentIndex,
@@ -1321,12 +1381,12 @@ export default function ReaderScreen() {
   // page, a tap on another ayah is never read as a dismissal and can still
   // stretch the selection into a range.
   const handleBackgroundPress = useCallback(() => {
-    if (!useReaderSelectionStore.getState().selection && playbackRef.current.hasPlaylist) {
+    if (!useReaderSelectionStore.getState().selection && recitationQueue) {
       setPlayerHidden((hidden) => !hidden);
       return;
     }
     toggleChrome();
-  }, [toggleChrome]);
+  }, [recitationQueue, toggleChrome]);
 
   const handlePageTurn = useCallback((targetPageNumber: number) => {
     // The strip only turns to a page that is mounted and painted, and it has
@@ -1775,19 +1835,21 @@ export default function ReaderScreen() {
             currentTime: recitationStatus.currentTime,
             duration: recitationStatus.duration,
           }}
+          tracks={recitationQueue.tracks}
+          ayahRepeatCount={ayahRepeatCount}
           repeatMode={repeatMode}
           onCycleRepeat={() =>
-            setRepeatMode((mode) =>
-              mode === 'none' ? 'all' : mode === 'all' ? 'single' : 'none',
-            )
+            setRepeatMode((mode) => (mode === 'none' ? 'all' : 'none'))
           }
+          onCycleAyahRepeat={cycleAyahRepeatCount}
           playbackRate={playbackRate}
           onCycleRate={() => setPlaybackRate((rate) => nextPlaybackRate(rate))}
           onTogglePlay={() =>
             recitationStatus.playing ? recitationPlaylist.pause() : recitationPlaylist.play()
           }
-          onNext={() => recitationPlaylist.next()}
-          onPrevious={() => recitationPlaylist.previous()}
+          onSeek={(seconds) => void recitationPlaylist.seekTo(seconds)}
+          onNext={() => skipRecitationAyah(1)}
+          onPrevious={() => skipRecitationAyah(-1)}
           onClose={closeRecitation}
           onOpenPicker={() => setScopeDialogOpen(true)}
           onOpenReciterPicker={() => setReciterPickerOpen(true)}

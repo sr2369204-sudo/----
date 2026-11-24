@@ -14,6 +14,12 @@ type SeekBarProps = {
   duration: number;
   /** Only the clip currently loaded in the player can be scrubbed. */
   enabled: boolean;
+  /** Playback direction for the progress fill and seek gesture. */
+  direction?: 'ltr' | 'rtl';
+  /** Optional progress and thumb color override. */
+  accentColor?: string;
+  /** Accessible name for the adjustable control. */
+  accessibilityLabel?: string;
   onSeek: (seconds: number) => void;
 };
 
@@ -22,32 +28,50 @@ type SeekBarProps = {
  * position is only committed when the finger lifts, so the audio never chases a
  * stream of seeks mid-gesture.
  */
-export function SeekBar({ position, duration, enabled, onSeek }: SeekBarProps) {
+export function SeekBar({
+  position,
+  duration,
+  enabled,
+  direction = 'rtl',
+  accentColor,
+  accessibilityLabel = 'شريط التحكم في التسجيل',
+  onSeek,
+}: SeekBarProps) {
   const colors = useTheme();
   const [trackWidth, setTrackWidth] = useState(0);
   const [scrubRatio, setScrubRatio] = useState<number | null>(null);
+  const progressColor = accentColor ?? colors.primary;
+  const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
+  const safePosition = Number.isFinite(position)
+    ? Math.min(safeDuration, Math.max(0, position))
+    : 0;
 
   const updateScrub = (locationX: number) => {
     if (!enabled || trackWidth <= 0) {
       return;
     }
-    setScrubRatio(Math.min(1, Math.max(0, locationX / trackWidth)));
+    const positionRatio = locationX / trackWidth;
+    setScrubRatio(Math.min(1, Math.max(0, direction === 'rtl' ? 1 - positionRatio : positionRatio)));
   };
 
   const commitScrub = () => {
-    if (enabled && scrubRatio !== null && duration > 0) {
-      onSeek(scrubRatio * duration);
+    if (enabled && scrubRatio !== null && safeDuration > 0) {
+      onSeek(Math.min(safeDuration, Math.max(0, scrubRatio * safeDuration)));
     }
     setScrubRatio(null);
   };
 
-  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
+  const progress = safeDuration > 0 ? safePosition / safeDuration : 0;
   const ratio = scrubRatio ?? progress;
   const thumbLeft = Math.max(
     0,
-    Math.min(trackWidth - THUMB_SIZE, ratio * trackWidth - THUMB_SIZE / 2),
+    Math.min(
+      trackWidth - THUMB_SIZE,
+      (direction === 'rtl' ? 1 - ratio : ratio) * trackWidth - THUMB_SIZE / 2,
+    ),
   );
-  const shownSeconds = scrubRatio !== null ? scrubRatio * duration : position;
+  const shownSeconds =
+    scrubRatio !== null ? scrubRatio * safeDuration : safePosition;
 
   return (
     <View style={styles.row}>
@@ -56,7 +80,8 @@ export function SeekBar({ position, duration, enabled, onSeek }: SeekBarProps) {
       </Text>
       <View
         accessibilityRole="adjustable"
-        accessibilityLabel="شريط التحكم في التسجيل"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityValue={{ min: 0, max: safeDuration, now: shownSeconds }}
         onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
         onStartShouldSetResponder={() => enabled}
         onMoveShouldSetResponder={() => enabled}
@@ -65,9 +90,16 @@ export function SeekBar({ position, duration, enabled, onSeek }: SeekBarProps) {
         onResponderRelease={commitScrub}
         onResponderTerminate={commitScrub}
         style={styles.hitArea}>
-        <View style={[styles.track, { backgroundColor: colors.backgroundSelected }]}>
+        <View
+          style={[
+            styles.track,
+            {
+              backgroundColor: colors.backgroundSelected,
+              alignItems: direction === 'rtl' ? 'flex-end' : 'flex-start',
+            },
+          ]}>
           <View
-            style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: colors.primary }]}
+            style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: progressColor }]}
           />
         </View>
         {trackWidth > 0 && (
@@ -77,8 +109,8 @@ export function SeekBar({ position, duration, enabled, onSeek }: SeekBarProps) {
               styles.thumb,
               {
                 left: thumbLeft,
-                borderColor: colors.primary,
-                backgroundColor: enabled ? colors.primary : colors.textSecondary,
+                borderColor: progressColor,
+                backgroundColor: enabled ? progressColor : colors.textSecondary,
               },
             ]}
           />
@@ -96,10 +128,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
+    width: '100%',
+    minWidth: 0,
   },
   hitArea: {
     flex: 1,
-    height: 30,
+    minWidth: 0,
+    height: 36,
     justifyContent: 'center',
   },
   track: {
@@ -113,7 +148,7 @@ const styles = StyleSheet.create({
   },
   thumb: {
     position: 'absolute',
-    top: (30 - THUMB_SIZE) / 2,
+    top: (36 - THUMB_SIZE) / 2,
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,

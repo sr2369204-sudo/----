@@ -23,6 +23,27 @@ export type RecitationQueue = {
   tracks: RecitationTrack[];
 };
 
+export const AYAH_REPEAT_COUNTS = [1, 2, 3, 5, 10] as const;
+export const MAX_REPEATED_PLAYLIST_TRACKS = 4096;
+
+export function getAvailableAyahRepeatCounts(trackCount: number): number[] {
+  return AYAH_REPEAT_COUNTS.filter(
+    (count) => count === 1 || trackCount * count <= MAX_REPEATED_PLAYLIST_TRACKS,
+  );
+}
+
+export function resolveAyahRepeatCount(
+  tracks: RecitationTrack[],
+  requestedCount: number,
+): number {
+  if (tracks.length === 0 || tracks.some((track) => track.ayahNumber <= 0)) {
+    return 1;
+  }
+  const availableCounts = getAvailableAyahRepeatCounts(tracks.length);
+  const eligibleCounts = availableCounts.filter((count) => count <= requestedCount);
+  return eligibleCounts[eligibleCounts.length - 1] ?? 1;
+}
+
 export function describeRecitationScope(scope: RecitationScope): string {
   switch (scope.type) {
     case 'ayah':
