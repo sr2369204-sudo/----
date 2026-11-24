@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { quranContentProvider, type AyahWordMeaning } from '@/features/quran/services/content-provider';
+import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
+import { ContentUnavailableError, quranContentProvider, type AyahWordMeaning } from '@/features/quran/services/content-provider';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 
@@ -34,9 +35,18 @@ export class LocalQuranCache {
     if (isSurahDirectory(cached)) {
       return cached;
     }
-    const directory = await quranContentProvider.getSurahDirectory();
-    await this.writeJson(DIRECTORY_KEY, directory);
-    return directory;
+    try {
+      const directory = await quranContentProvider.getSurahDirectory();
+      await this.writeJson(DIRECTORY_KEY, directory);
+      return directory;
+    } catch (error) {
+      // First launch with no connection: the list of surahs is fixed text, so
+      // the copy shipped inside the app is used instead of showing an error.
+      if (error instanceof ContentUnavailableError) {
+        return BUNDLED_SURAH_DIRECTORY;
+      }
+      throw error;
+    }
   }
 
   /** First Mushaf page of a surah, from the local index or the source. */

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import {
   Alert,
+  I18nManager,
   Modal,
   Platform,
   Pressable,
@@ -31,6 +32,15 @@ import {
   useReaderPreferencesStore,
   type ThemePreference,
 } from '@/features/reader/state/reader-preferences-store';
+
+// Every screen is laid out by hand (right-to-left rows, fixed arrows), so the
+// app must look the same on every phone. On a phone set to Arabic, Android
+// would also flip the layout by itself and mirror those screens a second time.
+// Asking the system not to flip takes effect the next time the app is opened.
+if (Platform.OS !== 'web' && I18nManager.isRTL) {
+  I18nManager.allowRTL(false);
+  I18nManager.forceRTL(false);
+}
 
 if (Platform.OS !== 'web') {
   SplashScreen.setOptions({ duration: 500, fade: true });
