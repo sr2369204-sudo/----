@@ -35,7 +35,13 @@ export class MushafPageCache {
       throw new RangeError('Mushaf page number must be between 1 and 604.');
     }
 
-    const cached = await this.readCachedPage(pageNumber);
+    let cached: CachedMushafPage | null = null;
+    try {
+      cached = await this.readCachedPage(pageNumber);
+    } catch {
+      // Corrupted or mismatched cached row: drop it and download the page again.
+      await this.deleteCachedPage(pageNumber);
+    }
     if (cached) {
       return cached;
     }
@@ -124,6 +130,13 @@ export class MushafPageCache {
         ? bytesToBase64(row.basmala_font_data)
         : null,
     };
+  }
+
+  private async deleteCachedPage(pageNumber: number): Promise<void> {
+    await this.database.runAsync(
+      `DELETE FROM mushaf_page_cache WHERE page_number = ? AND mushaf_id = 19`,
+      pageNumber,
+    );
   }
 
   private async downloadPageFont(pageNumber: number): Promise<Uint8Array> {
