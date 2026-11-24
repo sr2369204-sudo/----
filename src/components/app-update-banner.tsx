@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { isNativeUpdateRequired, openAndroidUpdateDownload } from '@/constants/release';
+import { openAndroidUpdateDownload, useNewerRelease } from '@/constants/release';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -16,18 +16,19 @@ export function AppUpdateBanner() {
   const colors = useTheme();
   const [dismissed, setDismissed] = useState(false);
   const [failed, setFailed] = useState(false);
+  const release = useNewerRelease();
 
   const handleDownload = useCallback(async () => {
     try {
-      await openAndroidUpdateDownload();
+      await openAndroidUpdateDownload(release?.apkUrl);
       setFailed(false);
     } catch (error) {
       console.error('تعذر فتح رابط تنزيل الإصدار الجديد.', error);
       setFailed(true);
     }
-  }, []);
+  }, [release]);
 
-  if (dismissed || !isNativeUpdateRequired()) {
+  if (dismissed || release === null) {
     return null;
   }
 
@@ -42,7 +43,7 @@ export function AppUpdateBanner() {
         <Text style={[styles.caption, { color: colors.textSecondary }]}>
           {failed
             ? 'تعذّر فتح رابط التنزيل. تحقّق من اتصالك وحاول مرة أخرى.'
-            : 'نزّل النسخة الأحدث لتفتح خريطة قلب القرآن.'}
+            : `نزّل النسخة ${release.version} وثبّتها فوق النسخة الحالية.`}
         </Text>
       </View>
 
