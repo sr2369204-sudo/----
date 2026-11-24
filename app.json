@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mushaf",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -57,7 +57,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "يحتاج التطبيق إلى الميكروفون لت      سجيل ملاحظاتك الصوتية على كلمات المصحف.",
+          "microphonePermission": "يحتاج التطبيق إلى الميكروفون لتسجيل ملاحظاتك الصوتية على كلمات المصحف.",
           "recordAudioAndroid": true,
           "enableBackgroundPlayback": false
         }

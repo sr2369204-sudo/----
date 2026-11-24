@@ -51,7 +51,20 @@ export async function downloadRecitationSurahs(
     for (const track of tracks) {
       const file = getOfflineTrackFile(reciterId, track);
       if (!file.exists) {
-        await File.downloadFileAsync(track.url, file);
+        // Download to a temporary .part file first, so an interrupted download
+        // never looks like a completed track.
+        const tempFile = new File(file.parentDirectory, `${file.name}.part`);
+        try {
+          await File.downloadFileAsync(track.url, tempFile);
+          await tempFile.move(file);
+        } catch (error) {
+          try {
+            tempFile.delete();
+          } catch {
+            // Best-effort cleanup only.
+          }
+          throw error;
+        }
       }
       done += 1;
       onProgress?.({ done, total });
