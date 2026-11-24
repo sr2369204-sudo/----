@@ -136,6 +136,17 @@ export default function BookmarksScreen() {
                     : `${toArabicNumbers(bookmarks.length)} آية محفوظة`}
                 </Text>
               </View>
+              <Link href="/my-notes" asChild>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="ملاحظاتي"
+                  style={StyleSheet.flatten([
+                    styles.iconButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                  ])}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+                </Pressable>
+              </Link>
               <Link href="/" replace asChild>
                 <Pressable
                   accessibilityRole="button"
