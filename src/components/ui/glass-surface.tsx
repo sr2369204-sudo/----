@@ -96,6 +96,9 @@ export function GlassSurface({
           shadowOpacity: palette.shadowOpacity,
           shadowRadius: 20,
           elevation: 8,
+          // The shadow follows the shell, so it needs the same rounded corners
+          // as the card or it shows as a square halo behind it.
+          borderRadius: radius,
         },
         style,
       ]}>

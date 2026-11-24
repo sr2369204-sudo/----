@@ -44,7 +44,16 @@ export function OfflineDownloadBanner() {
   const [sample, setSample] = useState<{ pages: number; bytes: number } | null>(null);
   const lastSampleRef = useRef(0);
 
-  const finished = !running && !error && total > 0 && done >= total;
+  // The "ready" message is only worth showing when this session actually did
+  // the download. A library that was already complete before launch stays
+  // silent, so the message does not greet the reader on every app open.
+  const [downloadedThisSession, setDownloadedThisSession] = useState(false);
+  if (running && !downloadedThisSession) {
+    setDownloadedThisSession(true);
+  }
+
+  const finished =
+    downloadedThisSession && !running && !error && total > 0 && done >= total;
 
   useEffect(() => {
     if (done === 0) {
