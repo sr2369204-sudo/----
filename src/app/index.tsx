@@ -225,13 +225,13 @@ export default function HomeScreen() {
             <HomeHero
               searchValue={search}
               onSearchChange={setSearch}
-              onSearchAnchorChange={setSearchAnchor}
-            />
-            <ContinueReadingCard
-              position={lastReadingPositionQuery.data ?? null}
-              surahNameByNumber={surahNames}
-              loading={lastReadingPositionQuery.isPending}
-            />
+              onSearchAnchorChange={setSearchAnchor}>
+              <ContinueReadingCard
+                position={lastReadingPositionQuery.data ?? null}
+                surahNameByNumber={surahNames}
+                loading={lastReadingPositionQuery.isPending}
+              />
+            </HomeHero>
             <View style={styles.featureCardsRow}>
               <View style={styles.featureCardColumn}>
                 <QuranHeartCard />
