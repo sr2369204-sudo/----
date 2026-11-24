@@ -16,7 +16,11 @@ test('compares dotted versions numerically, not as text', () => {
 });
 
 test('any older build is told about the newest release directly', () => {
-  const latest = { version: '1.0.9', apkUrl: 'https://example.com/a.apk' };
+  const latest = {
+    version: '1.0.9',
+    apkUrl: 'https://example.com/a.apk',
+    fallbackUrl: 'https://example.com/page',
+  };
   assert.equal(isNewerRelease('1.0.0', latest), true);
   assert.equal(isNewerRelease('1.0.8', latest), true);
   assert.equal(isNewerRelease('1.0.9', latest), false);
@@ -32,7 +36,17 @@ test('rejects a malformed or unsafe release file', () => {
   assert.deepEqual(parseLatestRelease({ version: '1.0.1', apkUrl: 'https://a.b/c' }), {
     version: '1.0.1',
     apkUrl: 'https://a.b/c',
+    fallbackUrl: 'https://a.b/c',
   });
+  assert.deepEqual(
+    parseLatestRelease({ version: '1.0.1', apkUrl: 'https://a.b/c', fallbackUrl: 'https://m.f/p' }),
+    { version: '1.0.1', apkUrl: 'https://a.b/c', fallbackUrl: 'https://m.f/p' },
+  );
+  assert.equal(
+    parseLatestRelease({ version: '1.0.1', apkUrl: 'https://a.b/c', fallbackUrl: 'http://m.f/p' })
+      .fallbackUrl,
+    'https://a.b/c',
+  );
 });
 
 test('the committed latest-release.json is valid and not ahead of app.json', () => {
@@ -40,4 +54,15 @@ test('the committed latest-release.json is valid and not ahead of app.json', () 
   assert.ok(file, 'latest-release.json must have a version and an https apkUrl');
   const app = JSON.parse(readFileSync('app.json', 'utf8')).expo.version;
   assert.ok(compareVersions(file.version, app) <= 0, 'release file version is ahead of app.json');
+});
+
+test('the committed release file uses a direct GitHub Releases link', () => {
+  const file = parseLatestRelease(JSON.parse(readFileSync('latest-release.json', 'utf8')));
+  assert.match(file.apkUrl, /^https:\/\/github\.com\/.+\/releases\/latest\/download\/mushaf\.apk$/);
+});
+
+test('the workflow patch attaches the built APK to a release', () => {
+  const patch = readFileSync('docs/release-workflow.patch', 'utf8');
+  assert.match(patch, /gh release (create|upload)/);
+  assert.match(patch, /contents: write/);
 });

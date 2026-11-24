@@ -1,35 +1,35 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { openAndroidUpdateDownload, useNewerRelease } from '@/constants/release';
+import { useApkInstall, useNewerRelease } from '@/constants/release';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Announces the native build that carries the Quran Heart. The Heart needs
- * `react-native-svg`, an over-the-air update can never add native code, and a
- * binary without it is left with no way in — so the download is offered here,
- * inside the app, instead of asking the reader to find the file themselves.
+ * Announces a newer APK (from latest-release.json) and installs it from inside
+ * the app: downloads the file, then opens Android's installer. An over-the-air
+ * update can never add native code, so a new binary is the only way to get it.
  */
 export function AppUpdateBanner() {
   const colors = useTheme();
   const [dismissed, setDismissed] = useState(false);
-  const [failed, setFailed] = useState(false);
   const release = useNewerRelease();
-
-  const handleDownload = useCallback(async () => {
-    try {
-      await openAndroidUpdateDownload(release?.apkUrl);
-      setFailed(false);
-    } catch (error) {
-      console.error('تعذر فتح رابط تنزيل الإصدار الجديد.', error);
-      setFailed(true);
-    }
-  }, [release]);
+  const { state, start } = useApkInstall(release);
 
   if (dismissed || release === null) {
     return null;
+  }
+
+  const downloading = state.status === 'downloading';
+  let caption = `نزّل النسخة ${release.version} وثبّتها فوق النسخة الحالية.`;
+  if (downloading) {
+    caption =
+      state.progress === null
+        ? 'جاري التنزيل...'
+        : `جاري التنزيل ${Math.round(state.progress * 100)}٪`;
+  } else if (state.status === 'opened-page') {
+    caption = 'تعذّر التنزيل داخل التطبيق، فتحنا لك صفحة التنزيل في المتصفح.';
   }
 
   return (
@@ -41,20 +41,19 @@ export function AppUpdateBanner() {
       <View style={styles.textColumn}>
         <Text style={[styles.title, { color: colors.text }]}>يوجد إصدار جديد من التطبيق</Text>
         <Text style={[styles.caption, { color: colors.textSecondary }]}>
-          {failed
-            ? 'تعذّر فتح رابط التنزيل. تحقّق من اتصالك وحاول مرة أخرى.'
-            : `نزّل النسخة ${release.version} وثبّتها فوق النسخة الحالية.`}
+          {caption}
         </Text>
       </View>
 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="تنزيل الإصدار الجديد"
-        onPress={() => void handleDownload()}
+        disabled={downloading}
+        onPress={() => void start()}
         style={({ pressed }) => [
           styles.action,
           { backgroundColor: colors.primary, borderColor: colors.primary },
-          pressed && styles.pressed,
+          (pressed || downloading) && styles.pressed,
         ]}>
         <Ionicons name="download-outline" size={16} color={colors.onPrimary} />
         <Text style={[styles.actionText, { color: colors.onPrimary }]}>تنزيل</Text>

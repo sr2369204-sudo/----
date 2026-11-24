@@ -8,7 +8,10 @@
 
 export type LatestRelease = {
   version: string;
+  /** Direct link to the APK file itself (GitHub Releases), downloaded inside the app. */
   apkUrl: string;
+  /** Download page opened in the browser if the direct download fails (MediaFire). */
+  fallbackUrl: string;
 };
 
 /** Where the app looks for the newest APK. Raw file of the main branch. */
@@ -40,19 +43,22 @@ export function compareVersions(a: string, b: string): number | null {
   return 0;
 }
 
+function isHttpsUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^https:\/\/[^\s]+$/.test(value.trim());
+}
+
 /** Accepts the downloaded JSON only when it has a real version and an https link. */
 export function parseLatestRelease(value: unknown): LatestRelease | null {
   if (typeof value !== 'object' || value === null) {
     return null;
   }
-  const { version, apkUrl } = value as Record<string, unknown>;
-  if (parseVersion(version) === null || typeof apkUrl !== 'string') {
+  const { version, apkUrl, fallbackUrl } = value as Record<string, unknown>;
+  if (parseVersion(version) === null || !isHttpsUrl(apkUrl)) {
     return null;
   }
-  if (!/^https:\/\/[^\s]+$/.test(apkUrl.trim())) {
-    return null;
-  }
-  return { version: (version as string).trim(), apkUrl: apkUrl.trim() };
+  // The fallback is optional in the file; without it the direct link doubles as the fallback.
+  const fallback = isHttpsUrl(fallbackUrl) ? fallbackUrl.trim() : apkUrl.trim();
+  return { version: (version as string).trim(), apkUrl: apkUrl.trim(), fallbackUrl: fallback };
 }
 
 /** True only when the newest APK is strictly newer than the installed build. */

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import * as Updates from 'expo-updates';
 import { Linking, Platform } from 'react-native';
 
@@ -9,6 +9,7 @@ import {
   type LatestRelease,
   parseLatestRelease,
 } from '@/features/release/latest-release';
+import { downloadAndInstallApk } from '@/features/release/apk-installer';
 
 /**
  * The first native build that contains `react-native-svg`, which the Quran
@@ -27,6 +28,7 @@ export const HEART_MIN_NATIVE_VERSION = '1.0.1';
 const FALLBACK_RELEASE: LatestRelease = {
   version: HEART_MIN_NATIVE_VERSION,
   apkUrl: 'https://www.mediafire.com/file/ueg0wlpbsg47ou1/mushaf.apk/file',
+  fallbackUrl: 'https://www.mediafire.com/file/ueg0wlpbsg47ou1/mushaf.apk/file',
 };
 
 /** Installed native build version, or null when updates are off (web, Expo Go, dev client). */
@@ -86,7 +88,39 @@ export function useNewerRelease(): LatestRelease | null {
   return release;
 }
 
-/** Hands the APK link to the browser, which passes the file to the system installer. */
-export function openAndroidUpdateDownload(apkUrl: string = FALLBACK_RELEASE.apkUrl): Promise<void> {
-  return Linking.openURL(apkUrl);
+export type ApkInstallState =
+  | { status: 'idle' }
+  | { status: 'downloading'; progress: number | null }
+  | { status: 'opened-page' };
+
+/**
+ * Downloads the newest APK inside the app and opens Android's installer. If the
+ * direct download or the hand-off fails for any reason (no connection, link
+ * moved, installer blocked), opens the download page in the browser instead so
+ * the reader is never stuck. The old MediaFire-only behaviour is the fallback.
+ */
+export function useApkInstall(release: LatestRelease | null) {
+  const [state, setState] = useState<ApkInstallState>({ status: 'idle' });
+
+  const start = useCallback(async () => {
+    const target = release ?? FALLBACK_RELEASE;
+    setState({ status: 'downloading', progress: null });
+    try {
+      await downloadAndInstallApk(target.apkUrl, (progress) =>
+        setState({ status: 'downloading', progress }),
+      );
+      setState({ status: 'idle' });
+    } catch (error) {
+      console.error('تعذر التنزيل المباشر، سيتم فتح صفحة التنزيل.', error);
+      try {
+        await Linking.openURL(target.fallbackUrl);
+        setState({ status: 'opened-page' });
+      } catch (openError) {
+        console.error('تعذر فتح صفحة التنزيل.', openError);
+        setState({ status: 'idle' });
+      }
+    }
+  }, [release]);
+
+  return { state, start };
 }
