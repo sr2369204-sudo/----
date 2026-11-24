@@ -441,6 +441,10 @@ export default function SettingsScreen() {
             إصدار التطبيق {appVersion}
           </Text>
         )}
+        <Text style={[styles.version, { color: colors.textSecondary }]}>
+          زخرفة رأس السورة مأخوذة من مصحف المدينة النبوية (الطبعة العادية) الصادر عن مجمع الملك فهد
+          لطباعة المصحف الشريف، ومرسومة بالمتجهات عبر مشروع quran-ws/quran-assets.
+        </Text>
       </ScrollView>
 
       <SurahDownloadPicker
