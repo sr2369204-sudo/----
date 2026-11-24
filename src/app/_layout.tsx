@@ -128,7 +128,7 @@ function AppLayout() {
         // discard the other; a saved reciter id is valid as long as it is a
         // non-zero integer, since full-surah reciters use negative ids.
         setPreferences(
-          savedTheme !== undefined && isThemePreference(savedTheme) ? savedTheme : 'light',
+          savedTheme !== undefined && isThemePreference(savedTheme) ? savedTheme : 'system',
           Number.isInteger(parsedReciter) && parsedReciter !== 0 ? parsedReciter : DEFAULT_RECITER_ID,
         );
         setPreferenceError(null);

@@ -111,9 +111,9 @@ export default function SettingsScreen() {
       const values = new Map(rows.map((row) => [row.key, row.value]));
       const savedShape = values.get('reader.toolbarShape') ?? DEFAULT_READER_TOOLBAR_SHAPE;
       return {
-        toolbarSize: Math.min(56, Math.max(32, Number(values.get('reader.toolbarSize') ?? DISPLAY_DEFAULT_TOOLBAR_SIZE))),
+        toolbarSize: Math.min(56, Math.max(32, Number(values.get('reader.toolbarSize') ?? DISPLAY_DEFAULT_TOOLBAR_SIZE) || DISPLAY_DEFAULT_TOOLBAR_SIZE)),
         toolbarShape: isReaderToolbarShape(savedShape) ? savedShape : DEFAULT_READER_TOOLBAR_SHAPE,
-        markerScale: Math.min(1.8, Math.max(0.8, Number(values.get('reader.markerScale') ?? DISPLAY_DEFAULT_MARKER_SCALE))),
+        markerScale: Math.min(1.8, Math.max(0.8, Number(values.get('reader.markerScale') ?? DISPLAY_DEFAULT_MARKER_SCALE) || DISPLAY_DEFAULT_MARKER_SCALE)),
       };
     },
     staleTime: Infinity,

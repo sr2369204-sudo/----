@@ -11,6 +11,7 @@ import { SqliteAnnotationRepository } from '@/features/annotations/repositories/
 import type { SavedWord } from '@/features/annotations/types';
 import { quranContentProvider } from '@/features/quran/services/content-provider';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmDelete } from '@/components/confirm-delete';
 
 export default function SavedWordsScreen() {
   const colors = useTheme();
@@ -151,7 +152,9 @@ export default function SavedWordsScreen() {
               accessibilityRole="button"
               accessibilityLabel="حذف الكلمة"
               disabled={busyId !== null}
-              onPress={() => void removeWord(item)}
+              onPress={() =>
+                confirmDelete('حذف الكلمة؟', 'سيتم حذف هذه الكلمة من المحفوظات.', () => void removeWord(item))
+              }
               style={[styles.deleteButton, { backgroundColor: colors.backgroundSelected }]}>
               {busyId === item.id ? (
                 <ActivityIndicator size="small" color={colors.text} />

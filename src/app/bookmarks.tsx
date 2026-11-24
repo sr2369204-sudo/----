@@ -11,6 +11,7 @@ import { SqliteAnnotationRepository } from '@/features/annotations/repositories/
 import type { Bookmark } from '@/features/annotations/types';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmDelete } from '@/components/confirm-delete';
 
 export default function BookmarksScreen() {
   const colors = useTheme();
@@ -102,7 +103,9 @@ export default function BookmarksScreen() {
             accessibilityRole="button"
             accessibilityLabel={`حذف ${label} من الإشارات المرجعية`}
             disabled={busyId !== null}
-            onPress={() => void removeBookmark(item)}
+            onPress={() =>
+              confirmDelete('حذف العلامة؟', 'سيتم حذف هذه العلامة نهائياً.', () => void removeBookmark(item))
+            }
             style={[styles.deleteButton, { backgroundColor: colors.backgroundSelected }]}>
             {busyId === item.id ? (
               <ActivityIndicator size="small" color={colors.text} />

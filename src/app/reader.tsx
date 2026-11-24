@@ -316,8 +316,9 @@ export default function ReaderScreen() {
         return 1;
       }
       const savedPage = Number(saved.value);
+      // A damaged saved position must never block reading: start at page 1.
       if (!Number.isInteger(savedPage) || savedPage < 1 || savedPage > 604) {
-        throw new Error('موضع القراءة المحفوظ غير صالح.');
+        return 1;
       }
       return savedPage;
     },
@@ -335,25 +336,20 @@ export default function ReaderScreen() {
       );
       const preferences = new Map(rows.map((row) => [row.key, row.value]));
       const savedTajweed = preferences.get('reader.showTajweed');
-      const savedToolbarSize = Number(preferences.get('reader.toolbarSize') ?? 44);
+      const rawToolbarSize = Number(preferences.get('reader.toolbarSize') ?? 44);
       const savedToolbarShape = preferences.get('reader.toolbarShape') ?? DEFAULT_READER_TOOLBAR_SHAPE;
-      const savedMarkerScale = Number(preferences.get('reader.markerScale') ?? 1.1);
-      if (savedTajweed !== undefined && savedTajweed !== 'true' && savedTajweed !== 'false') {
-        throw new Error('إعداد ألوان التجويد المحفوظ غير صالح.');
-      }
-      if (!Number.isInteger(savedToolbarSize) || savedToolbarSize < 32 || savedToolbarSize > 56) {
-        throw new Error('حجم أدوات التحديد المحفوظ غير صالح.');
-      }
-      // A shape stored by an older build may no longer exist, so an unknown
-      // value falls back to the shipped shape instead of breaking the reader.
+      const rawMarkerScale = Number(preferences.get('reader.markerScale') ?? 1.1);
+      // Any saved value that is damaged or out of range quietly falls back to
+      // its default instead of putting an error on the reader.
+      const savedToolbarSize =
+        Number.isInteger(rawToolbarSize) && rawToolbarSize >= 32 && rawToolbarSize <= 56 ? rawToolbarSize : 44;
+      const savedMarkerScale =
+        Number.isFinite(rawMarkerScale) && rawMarkerScale >= 0.8 && rawMarkerScale <= 1.8 ? rawMarkerScale : 1.1;
       const toolbarShape = isReaderToolbarShape(savedToolbarShape)
         ? savedToolbarShape
         : DEFAULT_READER_TOOLBAR_SHAPE;
-      if (!Number.isFinite(savedMarkerScale) || savedMarkerScale < 0.8 || savedMarkerScale > 1.8) {
-        throw new Error('حجم علامات الآيات والأرباع المحفوظ غير صالح.');
-      }
       return {
-        showTajweed: savedTajweed === undefined ? true : savedTajweed === 'true',
+        showTajweed: savedTajweed === 'false' ? false : true,
         toolbarSize: savedToolbarSize,
         toolbarShape,
         markerScale: savedMarkerScale,

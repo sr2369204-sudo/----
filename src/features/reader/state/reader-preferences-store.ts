@@ -38,7 +38,7 @@ type ReaderPreferencesState = {
 export const DEFAULT_RECITER_ID = 7;
 
 export const useReaderPreferencesStore = create<ReaderPreferencesState>((set) => ({
-  themePreference: 'light',
+  themePreference: 'system',
   reciterId: DEFAULT_RECITER_ID,
   error: null,
   setPreferences: (themePreference, reciterId) => set({ themePreference, reciterId }),
