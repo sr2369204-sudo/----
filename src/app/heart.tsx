@@ -19,6 +19,9 @@ import {
 import { computeHeartProgress } from '@/features/memorization/services/memorization-progress';
 import { useHeartAppearanceStore } from '@/features/memorization/state/heart-appearance-store';
 import { useMemorizationStore } from '@/features/memorization/state/memorization-store';
+import { ReviewSheet } from '@/features/memorization/components/review-sheet';
+import { dueSurahs, toDateKey } from '@/features/memorization/services/review-schedule';
+import { useReviewStore } from '@/features/memorization/state/review-store';
 import { formatAyahCount, toArabicNumbers } from '@/features/home/utils/format';
 import { useIsDarkTheme, useTheme } from '@/hooks/use-theme';
 
@@ -43,6 +46,17 @@ export default function QuranHeartScreen() {
 
   /** The appearance failure wins: it silently reverts the reader's colours. */
   const error = colorError ?? memorizationError;
+
+  const reviewDates = useReviewStore((state) => state.dates);
+  const syncReview = useReviewStore((state) => state.sync);
+  const markReviewed = useReviewStore((state) => state.markReviewed);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const due = useMemo(() => dueSurahs(reviewDates, toDateKey(new Date())), [reviewDates]);
+  useEffect(() => {
+    if (loaded) {
+      void syncReview(database, memorized);
+    }
+  }, [database, loaded, memorized, syncReview]);
 
   const [focusedSurah, setFocusedSurah] = useState<number | null>(null);
   const [showLabels, setShowLabels] = useState(true);
@@ -349,6 +363,18 @@ export default function QuranHeartScreen() {
           </View>
         </GlassSurface>
 
+        {due.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setReviewOpen(true)}
+            style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
+            <Ionicons name="time-outline" size={16} color={colors.primary} />
+            <Text style={[styles.noticeText, { color: colors.text }]}>
+              {`${toArabicNumbers(due.length)} سورة تحتاج مراجعة، اضغط لعرضها`}
+            </Text>
+          </Pressable>
+        )}
+
         {error && (
           <View style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="alert-circle-outline" size={16} color={colors.primary} />
@@ -474,6 +500,13 @@ export default function QuranHeartScreen() {
         )}
       </View>
 
+      <ReviewSheet
+        visible={reviewOpen}
+        colors={colors}
+        due={due}
+        onReviewed={(surahNumber) => void markReviewed(database, surahNumber)}
+        onClose={() => setReviewOpen(false)}
+      />
       <HeartAppearanceSheet
         visible={appearanceOpen}
         palette={palette}
