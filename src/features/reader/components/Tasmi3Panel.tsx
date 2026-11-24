@@ -12,7 +12,7 @@ import {
 } from 'expo-audio';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -21,6 +21,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,7 +63,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
     queryKey: ['recordings', 'recent'],
     queryFn: () => repository.listRecentRecordings(RECENT_RECORDINGS_LIMIT),
   });
-  const recordings = recordingsQuery.data ?? [];
+  const recordings = useMemo(() => recordingsQuery.data ?? [], [recordingsQuery.data]);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -70,6 +71,13 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
   const [expanded, setExpanded] = useState(true);
   const [pan] = useState(() => new Animated.ValueXY());
   const panOffset = useRef({ x: 0, y: 0 });
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const [measuredSize, setMeasuredSize] = useState({ width: 58, height: 58 });
+  const currentRecording = useMemo(
+    () => recordings.find((recording) => recording.id === playingId) ?? null,
+    [recordings, playingId],
+  );
+  const isPlayingCurrent = !!currentRecording && playerStatus.playing;
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -86,15 +94,54 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
           useNativeDriver: false,
         }),
         onPanResponderRelease: (_, gesture) => {
-          panOffset.current = {
-            x: panOffset.current.x + gesture.dx,
-            y: panOffset.current.y + gesture.dy,
-          };
+          const rawX = panOffset.current.x + gesture.dx;
+          const rawY = panOffset.current.y + gesture.dy;
+          const { maxX, minX, maxY, minY } = computeBounds(
+            screenWidth,
+            screenHeight,
+            measuredSize.width,
+            measuredSize.height,
+            insets.bottom,
+          );
+          const clampedX = Math.min(Math.max(rawX, minX), maxX);
+          const clampedY = Math.min(Math.max(rawY, minY), maxY);
+          panOffset.current = { x: clampedX, y: clampedY };
           pan.flattenOffset();
+          Animated.spring(pan, {
+            toValue: { x: clampedX, y: clampedY },
+            useNativeDriver: false,
+            friction: 14,
+          }).start();
         },
       }),
-    [pan, expanded],
+    [pan, expanded, screenWidth, screenHeight, measuredSize, insets.bottom],
   );
+
+  // Keep the floating control inside the screen whenever its size changes (for
+  // example when the playback bar replaces the mic button) so it never spills
+  // past an edge.
+  useEffect(() => {
+    const { maxX, minX, maxY, minY } = computeBounds(
+      screenWidth,
+      screenHeight,
+      measuredSize.width,
+      measuredSize.height,
+      insets.bottom,
+    );
+    const rawX = panOffset.current.x;
+    const rawY = panOffset.current.y;
+    const clampedX = Math.min(Math.max(rawX, minX), maxX);
+    const clampedY = Math.min(Math.max(rawY, minY), maxY);
+    if (clampedX !== rawX || clampedY !== rawY) {
+      panOffset.current = { x: clampedX, y: clampedY };
+      pan.flattenOffset();
+      Animated.spring(pan, {
+        toValue: { x: clampedX, y: clampedY },
+        useNativeDriver: false,
+        friction: 14,
+      }).start();
+    }
+  }, [screenWidth, screenHeight, measuredSize, insets.bottom, pan]);
 
   async function startRecording(): Promise<void> {
     setError(null);
@@ -163,12 +210,23 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
           void player.seekTo(0);
         }
         player.play();
+        // Listening to the take lets the learner compare with the page, so the
+        // verses are revealed whenever playback starts.
+        onReveal();
       }
       return;
     }
     player.replace({ uri: recording.fileUri });
     player.play();
     setPlayingId(recording.id);
+    onReveal();
+  }
+
+  function seekBy(deltaSeconds: number): void {
+    if (!currentRecording) return;
+    const duration = playerStatus.duration > 0 ? playerStatus.duration : currentRecording.durationMs / 1000;
+    const target = Math.max(0, Math.min(playerStatus.currentTime + deltaSeconds, duration));
+    void player.seekTo(target);
   }
 
   function toggleTasmi3Button(): void {
@@ -216,6 +274,12 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
     <Animated.View
       pointerEvents="box-none"
       {...panResponder.panHandlers}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        if (width > 0 && height > 0) {
+          setMeasuredSize({ width, height });
+        }
+      }}
       style={[
         styles.root,
         { bottom: insets.bottom + 24, transform: pan.getTranslateTransform() },
@@ -360,26 +424,78 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
           {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         </View>
       )}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={expanded ? 'تصغير أدوات التسميع' : 'فتح أدوات التسميع'}
-        onPress={toggleTasmi3Button}
-        style={({ pressed }) => [
-          styles.floatingButton,
-          expanded && styles.floatingButtonCompact,
-          { backgroundColor: colors.primary, borderColor: colors.accent },
-          pressed && styles.pressed,
-        ]}>
-        <Ionicons
-          name={recorderState.isRecording ? 'stop' : expanded ? 'chevron-down' : 'mic'}
-          size={22}
-          color={colors.onPrimary}
-        />
-        {!expanded && !recorderState.isRecording && (
-          <Text style={[styles.floatingLabel, { color: colors.onPrimary }]}>تسميع</Text>
-        )}
-        {recorderState.isRecording && <View style={styles.recordingDot} />}
-      </Pressable>
+      {!expanded && currentRecording ? (
+        <View
+          style={[
+            styles.collapsedBar,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="رجوع 5 ثوانٍ"
+            hitSlop={6}
+            onPress={() => seekBy(-5)}
+            style={({ pressed }) => [styles.seekButton, pressed && styles.pressed]}>
+            <Ionicons name="play-back" size={18} color={colors.text} />
+            <Text style={[styles.seekBadge, { color: colors.textSecondary }]}>5</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isPlayingCurrent ? 'إيقاف التسجيل مؤقتًا' : 'تشغيل التسجيل'}
+            hitSlop={6}
+            onPress={() => togglePlayback(currentRecording)}
+            style={({ pressed }) => [
+              styles.collapsedPlay,
+              { backgroundColor: colors.primary },
+              pressed && styles.pressed,
+            ]}>
+            <Ionicons
+              name={isPlayingCurrent ? 'pause' : 'play'}
+              size={20}
+              color={colors.onPrimary}
+            />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="تقديم 5 ثوانٍ"
+            hitSlop={6}
+            onPress={() => seekBy(5)}
+            style={({ pressed }) => [styles.seekButton, pressed && styles.pressed]}>
+            <Ionicons name="play-forward" size={18} color={colors.text} />
+            <Text style={[styles.seekBadge, { color: colors.textSecondary }]}>5</Text>
+          </Pressable>
+          <View style={[styles.collapsedDivider, { backgroundColor: colors.border }]} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="فتح أدوات التسميع"
+            hitSlop={6}
+            onPress={toggleTasmi3Button}
+            style={({ pressed }) => [styles.expandButton, pressed && styles.pressed]}>
+            <Ionicons name="chevron-up" size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? 'تصغير أدوات التسميع' : 'فتح أدوات التسميع'}
+          onPress={toggleTasmi3Button}
+          style={({ pressed }) => [
+            styles.floatingButton,
+            expanded && styles.floatingButtonCompact,
+            { backgroundColor: colors.primary, borderColor: colors.accent },
+            pressed && styles.pressed,
+          ]}>
+          <Ionicons
+            name={recorderState.isRecording ? 'stop' : expanded ? 'chevron-down' : 'mic'}
+            size={22}
+            color={colors.onPrimary}
+          />
+          {!expanded && !recorderState.isRecording && (
+            <Text style={[styles.floatingLabel, { color: colors.onPrimary }]}>تسميع</Text>
+          )}
+          {recorderState.isRecording && <View style={styles.recordingDot} />}
+        </Pressable>
+      )}
     </Animated.View>
   );
 }
@@ -394,6 +510,28 @@ function describeScope(scope: RecitationScope): string {
   if (scope.type === 'juz') return `الجزء ${scope.juzNumber}`;
   if (scope.type === 'ayah') return `الآية ${scope.surahNumber}:${scope.ayahNumber}`;
   return `الآيات ${scope.surahNumber}:${scope.fromAyah}–${scope.toAyah}`;
+}
+
+/**
+ * Translates the floating control's measured size into translate limits so it
+ * can never be dragged beyond the screen edges. The control is anchored at
+ * `right: 18` and `bottom: insets.bottom + 24`, so positive translations move
+ * it left/up and negative ones move it right/down.
+ */
+function computeBounds(
+  screenWidth: number,
+  screenHeight: number,
+  elementWidth: number,
+  elementHeight: number,
+  bottomInset: number,
+): { maxX: number; minX: number; maxY: number; minY: number } {
+  const rightMargin = 18;
+  const bottomMargin = bottomInset + 24;
+  const maxX = rightMargin;
+  const minX = -(screenWidth - rightMargin - elementWidth);
+  const maxY = bottomMargin;
+  const minY = -(screenHeight - bottomMargin - elementHeight);
+  return { maxX, minX, maxY, minY };
 }
 
 const styles = StyleSheet.create({
@@ -427,4 +565,10 @@ const styles = StyleSheet.create({
   floatingButtonCompact: { width: 58, paddingHorizontal: 0 },
   floatingLabel: { fontSize: 15, fontWeight: '800' },
   recordingDot: { position: 'absolute', top: 8, right: 8, width: 9, height: 9, borderRadius: 5, backgroundColor: '#FFCDD2' },
+  collapsedBar: { flexDirection: 'row-reverse', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 6, borderRadius: 999, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 9 },
+  seekButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  seekBadge: { position: 'absolute', bottom: 4, fontSize: 9, fontWeight: '800' },
+  collapsedPlay: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  collapsedDivider: { width: 1, height: 26, marginHorizontal: 2 },
+  expandButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });
