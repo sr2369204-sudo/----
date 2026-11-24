@@ -1,0 +1,46 @@
+diff --git a/.github/workflows/main.yml b/.github/workflows/main.yml
+index 34b91ac..150d8c8 100644
+--- a/.github/workflows/main.yml
++++ b/.github/workflows/main.yml
+@@ -12,6 +12,8 @@ jobs:
+     name: Build Android APK
+     if: github.event_name == 'workflow_dispatch'
+     runs-on: ubuntu-latest
++    permissions:
++      contents: write
+ 
+     steps:
+       # 1. Checkout repository
+@@ -70,6 +72,32 @@ jobs:
+           if-no-files-found: error
+           retention-days: 14
+ 
++      # 8. Attach the APK to a GitHub Release. The link
++      #    https://github.com/<owner>/<repo>/releases/latest/download/mushaf.apk
++      #    always points at the newest one, so the app can download it directly.
++      - name: Publish APK to GitHub Releases
++        env:
++          GH_TOKEN: ${{ github.token }}
++        run: |
++          VERSION=$(node -p "require('./app.json').expo.version")
++          TAG="v$VERSION"
++          if gh release view "$TAG" >/dev/null 2>&1; then
++            gh release upload "$TAG" ./mushaf.apk --clobber
++          else
++            gh release create "$TAG" ./mushaf.apk --title "Mushaf $VERSION" --notes "Mushaf $VERSION" --latest
++          fi
++
++      # 9. Tell installed apps a new APK exists (only when run from main).
++      - name: Update latest-release.json
++        if: github.ref_name == 'main'
++        run: |
++          node -e "const fs=require('fs');const f='latest-release.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));j.version=require('./app.json').expo.version;fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
++          git config user.name "github-actions[bot]"
++          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
++          git add latest-release.json
++          git diff --cached --quiet || git commit -m "Release file: point to the new APK [skip ci]"
++          git push origin HEAD:main
++
+   publish-update:
+     name: Publish Android OTA update
+     if: github.event_name == 'push'
