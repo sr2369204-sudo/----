@@ -11,6 +11,8 @@ export type AyahSearchResult = {
   surahNumber: number;
   ayahNumber: number;
   text: string;
+  /** `tafsir` when the words were found in the tafsir text; `text` is then a tafsir excerpt. */
+  matchedIn?: 'ayah' | 'tafsir';
 };
 
 export type QuranAyah = {
