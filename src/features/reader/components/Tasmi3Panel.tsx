@@ -10,6 +10,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
+import { PLAYBACK_AUDIO_MODE } from '@/features/reader/services/audio-mode';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -159,7 +160,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       onHide();
       setExpanded(true);
     } catch (recordingError) {
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+      await setAudioModeAsync(PLAYBACK_AUDIO_MODE).catch(() => undefined);
       setError(recordingError instanceof Error ? recordingError.message : 'تعذر بدء التسجيل.');
     }
   }
@@ -171,7 +172,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       const durationMs = recorderState.durationMillis;
       await recorder.stop();
       const uri = recorder.uri;
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      await setAudioModeAsync(PLAYBACK_AUDIO_MODE);
       if (!uri) {
         throw new Error('تعذر إنشاء ملف التسجيل.');
       }
@@ -259,7 +260,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
   async function exitTasmi3(): Promise<void> {
     if (recorderState.isRecording) {
       await recorder.stop().catch(() => undefined);
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+      await setAudioModeAsync(PLAYBACK_AUDIO_MODE).catch(() => undefined);
     }
     player.pause();
     setPlayingId(null);

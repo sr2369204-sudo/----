@@ -1,6 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
+import {
+  HAPTICS_SETTING_KEY,
+  parseHapticsSetting,
+  setHapticsEnabled,
+} from '@/features/haptics/haptics';
 import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -124,13 +129,14 @@ function AppLayout() {
     let active = true;
     database
       .getAllAsync<{ key: string; value: string }>(
-        "SELECT key, value FROM app_settings WHERE key IN ('theme', 'reciterId')",
+        "SELECT key, value FROM app_settings WHERE key IN ('theme', 'reciterId', 'haptics.enabled')",
       )
       .then((rows) => {
         if (!active) {
           return;
         }
         const settings = new Map(rows.map((row) => [row.key, row.value]));
+        setHapticsEnabled(parseHapticsSetting(settings.get(HAPTICS_SETTING_KEY)));
         const savedTheme = settings.get('theme');
         const savedReciterValue = settings.get('reciterId');
         const parsedReciter =

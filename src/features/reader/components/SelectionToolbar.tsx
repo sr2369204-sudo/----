@@ -10,6 +10,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
+import { PLAYBACK_AUDIO_MODE } from '@/features/reader/services/audio-mode';
 import { Directory, File, Paths } from 'expo-file-system';
 import {
   ActivityIndicator,
@@ -407,7 +408,7 @@ function Toolbar({
       await recorder.prepareToRecordAsync();
       recorder.record();
     } catch (recordError) {
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {
+      await setAudioModeAsync(PLAYBACK_AUDIO_MODE).catch(() => {
         /* the session keeps working; only the recording failed */
       });
       setError(
@@ -428,7 +429,7 @@ function Toolbar({
       const recordedUri = recorder.uri;
       // Recording routes audio to the earpiece on iOS, so the session has to be
       // handed back to plain playback as soon as the microphone is released.
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      await setAudioModeAsync(PLAYBACK_AUDIO_MODE);
       if (!recordedUri) {
         setError('تعذر إنشاء ملف التسجيل.');
         return;
