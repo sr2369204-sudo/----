@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { quranContentProvider } from '@/features/quran/services/content-provider';
+import { quranContentProvider, type AyahWordMeaning } from '@/features/quran/services/content-provider';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 
@@ -284,6 +284,38 @@ export class LocalQuranCache {
       }
     }
     return null;
+  }
+
+  /**
+   * Tafsir of one ayah. Once read it is kept on the phone, so it opens with no
+   * connection the next time. Only the reader's own source is called when it
+   * has not been stored yet.
+   */
+  async getAyahTafsir(surahNumber: number, ayahNumber: number): Promise<string> {
+    const key = `tafsir:${surahNumber}:${ayahNumber}`;
+    const stored = await this.readJson<string>(key);
+    if (typeof stored === 'string' && stored.length > 0) {
+      return stored;
+    }
+    const text = await quranContentProvider.getAyahTafsir(surahNumber, ayahNumber);
+    if (text.trim().length > 0) {
+      await this.writeJson(key, text).catch(() => undefined);
+    }
+    return text;
+  }
+
+  /** Meanings of the words of one ayah, stored after the first successful read. */
+  async getAyahWordMeanings(surahNumber: number, ayahNumber: number): Promise<AyahWordMeaning[]> {
+    const key = `word-meanings:${surahNumber}:${ayahNumber}`;
+    const stored = await this.readJson<AyahWordMeaning[]>(key);
+    if (Array.isArray(stored) && stored.length > 0) {
+      return stored;
+    }
+    const meanings = await quranContentProvider.getAyahWordMeanings(surahNumber, ayahNumber);
+    if (meanings.length > 0) {
+      await this.writeJson(key, meanings).catch(() => undefined);
+    }
+    return meanings;
   }
 
   private async readJson<T>(key: string): Promise<T | null> {
