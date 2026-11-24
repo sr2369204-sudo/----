@@ -2125,6 +2125,7 @@ function NavigationDialog({
   onChoose: (mode: NavigationMode, value: number) => void;
   onDirectoryRetry: () => void;
 }) {
+  const sheet = GOTO_SHEET;
   const modes: { key: NavigationMode; label: string }[] = [
     { key: 'page', label: 'صفحة' },
     { key: 'surah', label: 'سورة' },
@@ -2139,27 +2140,27 @@ function NavigationDialog({
           style={styles.navigationBackdrop}
           onPress={onClose}
         />
-        <View style={[styles.navigationDialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.navigationDialog, { backgroundColor: sheet.panel, borderColor: sheet.gold }]}>
           <View style={styles.navigationHeader}>
             <View style={styles.navigationTitleRow}>
               <View style={styles.navigationTitleGroup}>
-                <View style={[styles.navigationTitleIcon, { backgroundColor: `${colors.primary}1A` }]}>
-                  <Ionicons name="navigate-outline" size={15} color={colors.primary} />
+                <View style={[styles.navigationTitleIcon, { backgroundColor: `${sheet.gold}26` }]}>
+                  <Ionicons name="navigate-outline" size={15} color={sheet.gold} />
                 </View>
-                <Text style={[styles.navigationTitle, { color: colors.text }]}>انتقال إلى</Text>
+                <Text style={[styles.navigationTitle, { color: sheet.cream }]}>انتقال إلى</Text>
               </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="إغلاق التنقل"
                 onPress={onClose}
-                style={[styles.navigationClose, { backgroundColor: colors.backgroundSelected }]}>
-                <Ionicons name="close" size={17} color={colors.text} />
+                style={[styles.navigationClose, { backgroundColor: sheet.panelLight }]}>
+                <Ionicons name="close" size={17} color={sheet.cream} />
               </Pressable>
             </View>
             <View style={styles.navigationOrnament}>
-              <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
-              <View style={[styles.ornamentDiamond, { backgroundColor: colors.accent }]} />
-              <View style={[styles.ornamentLine, { backgroundColor: colors.border }]} />
+              <View style={[styles.ornamentLine, { backgroundColor: sheet.gold }]} />
+              <View style={[styles.ornamentDiamond, { backgroundColor: sheet.gold }]} />
+              <View style={[styles.ornamentLine, { backgroundColor: sheet.gold }]} />
             </View>
           </View>
           <View style={styles.navigationModes}>
@@ -2172,11 +2173,11 @@ function NavigationDialog({
                 style={[
                   styles.navigationMode,
                   {
-                    backgroundColor: mode === option.key ? colors.backgroundSelected : colors.background,
-                    borderColor: mode === option.key ? colors.primary : colors.border,
+                    backgroundColor: mode === option.key ? sheet.gold : 'transparent',
+                    borderColor: sheet.gold,
                   },
                 ]}>
-                <Text style={[styles.navigationModeLabel, { color: mode === option.key ? colors.primary : colors.text }]}>
+                <Text style={[styles.navigationModeLabel, { color: mode === option.key ? sheet.panel : sheet.cream }]}>
                   {option.label}
                 </Text>
               </Pressable>
@@ -2190,15 +2191,15 @@ function NavigationDialog({
                 value={value}
                 onChangeText={onValueChange}
                 placeholder="رقم الصفحة (١–٦٠٤)"
-                placeholderTextColor={colors.textSecondary}
-                style={[styles.pageInput, { color: colors.text, borderColor: colors.border }]}
+                placeholderTextColor={`${sheet.cream}80`}
+                style={[styles.pageInput, { color: sheet.cream, borderColor: sheet.gold, backgroundColor: sheet.panelLight }]}
               />
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
                 onPress={onSubmit}
-                style={[styles.goButton, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.goButtonText, { color: colors.background }]}>
+                style={[styles.goButton, { backgroundColor: sheet.gold }]}>
+                <Text style={[styles.goButtonText, { color: sheet.panel }]}>
                   {busy ? '…' : 'اذهب'}
                 </Text>
               </Pressable>
@@ -2211,8 +2212,8 @@ function NavigationDialog({
                   accessibilityRole="button"
                   disabled={busy}
                   onPress={() => onChoose('juz', juz)}
-                  style={[styles.destinationItem, { backgroundColor: colors.backgroundSelected }]}>
-                  <Text style={[styles.destinationLabel, { color: colors.text }]}>الجزء {toArabicNumbers(juz)}</Text>
+                  style={[styles.destinationItem, { backgroundColor: sheet.panelLight, borderColor: sheet.gold }]}>
+                  <Text style={[styles.destinationLabel, { color: sheet.gold }]}>الجزء {toArabicNumbers(juz)}</Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -2226,22 +2227,27 @@ function NavigationDialog({
                   onPress={() => onChoose('surah', surah.surahNumber)}
                   style={({ pressed }) => [
                     styles.surahItem,
-                    { borderBottomColor: colors.border },
+                    { borderColor: sheet.gold, backgroundColor: sheet.panelLight },
                     pressed && styles.surahItemPressed,
                   ]}>
-                  <View style={[styles.surahNumberBadge, { backgroundColor: colors.backgroundSelected }]}>
-                    <Text style={[styles.surahNumber, { color: colors.primary }]}>
+                  <View style={[styles.surahNumberBadge, { backgroundColor: sheet.gold }]}>
+                    <Text style={[styles.surahNumber, { color: sheet.panel }]}>
                       {toArabicNumbers(surah.surahNumber)}
                     </Text>
                   </View>
-                  <Text style={[styles.surahName, { color: colors.text }]}>{surah.nameArabic}</Text>
-                  <Ionicons name="chevron-back" size={15} color={colors.border} />
+                  <View style={styles.surahTextBlock}>
+                    <Text style={[styles.surahName, { color: sheet.gold }]}>{surah.nameArabic}</Text>
+                    <Text style={[styles.surahMeta, { color: `${sheet.cream}B3` }]}>
+                      {surah.revelationPlace === 'makkah' ? 'مكية' : 'مدنية'} · {toArabicNumbers(surah.ayahCount)} {surah.ayahCount >= 3 && surah.ayahCount <= 10 ? 'آيات' : 'آية'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={15} color={sheet.gold} />
                 </Pressable>
               ))}
             </ScrollView>
           ) : (
             <Pressable accessibilityRole="button" onPress={onDirectoryRetry}>
-              <Text style={[styles.directoryMessage, { color: colors.primary }]}>
+              <Text style={[styles.directoryMessage, { color: sheet.gold }]}>
                 تعذر تحميل السور. اضغط لإعادة المحاولة.
               </Text>
             </Pressable>
@@ -2618,6 +2624,7 @@ const styles = StyleSheet.create({
   destinationItem: {
     width: '31%',
     paddingVertical: Spacing.two,
+    borderWidth: 1.5,
     borderRadius: 10,
     alignItems: 'center',
   },
@@ -2629,12 +2636,22 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.three,
   },
   surahItem: {
-    minHeight: 48,
+    minHeight: 58,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.three,
-    paddingHorizontal: Spacing.one,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.three,
+    marginBottom: 8,
+    borderWidth: 1.5,
+    borderRadius: 12,
+  },
+  surahTextBlock: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 1,
+  },
+  surahMeta: {
+    fontSize: 11,
   },
   surahItemPressed: {
     opacity: 0.6,
@@ -2651,10 +2668,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   surahName: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    textAlign: 'right',
+    fontSize: 17,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   directoryMessage: {
     paddingVertical: Spacing.three,
@@ -2662,6 +2678,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+const GOTO_SHEET = {
+  panel: '#0F3B2E',
+  panelLight: '#16503E',
+  gold: '#D4AF5A',
+  cream: '#F4EBD3',
+};
 
 function toArabicDigits(value: number | string): string {
   return String(value).replace(/[0-9]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'[Number(digit)]);
