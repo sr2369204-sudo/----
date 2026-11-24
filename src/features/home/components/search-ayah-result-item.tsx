@@ -58,6 +58,11 @@ export const SearchAyahResultItem = memo(function SearchAyahResultItem({
           <Text style={[styles.surahName, { color: onDark ? DARK_TEXT : colors.text }]}>
             سورة {surahName}
           </Text>
+          {result.matchedIn === 'tafsir' && (
+            <Text style={[styles.tafsirTag, { color: onDark ? DARK_ACCENT : colors.primary }]}>
+              من التفسير
+            </Text>
+          )}
         </View>
 
         <Text
@@ -114,6 +119,10 @@ const styles = StyleSheet.create({
   surahName: {
     fontSize: TypeScale.heading,
     fontWeight: '800',
+  },
+  tafsirTag: {
+    fontSize: TypeScale.caption,
+    fontWeight: '700',
   },
   text: {
     fontSize: TypeScale.caption,

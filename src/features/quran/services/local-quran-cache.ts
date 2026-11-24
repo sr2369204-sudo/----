@@ -2,6 +2,12 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
 import { ContentUnavailableError, quranContentProvider, type AyahWordMeaning } from '@/features/quran/services/content-provider';
+import {
+  getBundledAyahText,
+  getBundledTafsir,
+  getBundledWordMeanings,
+  searchBundled,
+} from '@/features/offline-data';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 
@@ -119,6 +125,14 @@ export class LocalQuranCache {
     if (trimmed.length === 0) {
       throw new RangeError('بحث فارغ.');
     }
+    // The text and tafsir are bundled with the app, so search never waits for
+    // the network or for pages to be downloaded.
+    return searchBundled(trimmed, limit);
+  }
+
+  /** Previous search that used the stored pages and the network. Kept as a fallback. */
+  async searchAyahsFromStoredPages(query: string, limit: number): Promise<AyahSearchResult[]> {
+    const trimmed = query.trim();
     const index = await this.loadStoredAyahIndex();
     if (index.pageCount === 0) {
       return quranContentProvider.searchAyahs(trimmed, limit);
@@ -165,6 +179,10 @@ export class LocalQuranCache {
 
   /** Text of one ayah taken from the stored pages, or null while unsaved. */
   async getStoredAyah(surahNumber: number, ayahNumber: number): Promise<string | null> {
+    const bundled = getBundledAyahText(surahNumber, ayahNumber);
+    if (bundled !== null) {
+      return bundled;
+    }
     const index = await this.loadStoredAyahIndex();
     const entry = index.entries.find(
       (item) => item.surahNumber === surahNumber && item.ayahNumber === ayahNumber,
@@ -302,6 +320,10 @@ export class LocalQuranCache {
    * has not been stored yet.
    */
   async getAyahTafsir(surahNumber: number, ayahNumber: number): Promise<string> {
+    const bundled = getBundledTafsir(surahNumber, ayahNumber);
+    if (bundled !== null) {
+      return bundled;
+    }
     const key = `tafsir:${surahNumber}:${ayahNumber}`;
     const stored = await this.readJson<string>(key);
     if (typeof stored === 'string' && stored.length > 0) {
@@ -316,6 +338,10 @@ export class LocalQuranCache {
 
   /** Meanings of the words of one ayah, stored after the first successful read. */
   async getAyahWordMeanings(surahNumber: number, ayahNumber: number): Promise<AyahWordMeaning[]> {
+    const bundled = getBundledWordMeanings(surahNumber, ayahNumber);
+    if (bundled !== null) {
+      return bundled;
+    }
     const key = `word-meanings:${surahNumber}:${ayahNumber}`;
     const stored = await this.readJson<AyahWordMeaning[]>(key);
     if (Array.isArray(stored) && stored.length > 0) {

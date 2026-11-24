@@ -20,7 +20,6 @@ import { SqliteAnnotationRepository } from '@/features/annotations/repositories/
 import { ContinueReadingCard } from '@/features/home/components/continue-reading-card';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { RecordingsCard } from '@/features/home/components/recordings-card';
-import { useOfflineDownloadStore } from '@/features/reader/state/offline-download-store';
 import { OfflineDownloadBanner } from '@/features/home/components/offline-download-banner';
 import { ReadingStreakCard } from '@/features/home/components/reading-streak-card';
 import { loadReadingHistory } from '@/features/reader/services/reading-history';
@@ -38,7 +37,7 @@ import {
   HOME_SEARCH_RESULTS_LIMIT,
   resolveAyahSearchReference,
 } from '@/features/home/utils/home-search';
-import { quranContentProvider } from '@/features/quran/services/content-provider';
+import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import {
   loadDailyReadingPlan,
@@ -47,6 +46,7 @@ import {
 } from '@/features/reader/services/reading-progress';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types';
+import { warmOfflineData, getBundledAyahText, searchBundled } from '@/features/offline-data';
 import { useIsDarkTheme, useTheme } from '@/hooks/use-theme';
 import { useAmbientLoop } from '@/hooks/use-ambient-loop';
 
@@ -58,67 +58,52 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
-  const libraryComplete = useOfflineDownloadStore((state) => state.complete);
   const [search, setSearch] = useState('');
-  const [submittedSearch, setSubmittedSearch] = useState('');
   const [searchAnchor, setSearchAnchor] = useState<SearchAnchor | null>(null);
   const [revelationFilter, setRevelationFilter] = useState<RevelationFilter>('all');
   const [dailyPlanSaveError, setDailyPlanSaveError] = useState<string | null>(null);
   const [dailyPlanUpdating, setDailyPlanUpdating] = useState(false);
 
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
+  const submittedSearch = search.trim();
+
+  // Load the bundled data while the home screen settles, so the first letter
+  // typed is answered at once.
   useEffect(() => {
-    const timer = setTimeout(() => setSubmittedSearch(search.trim()), 350);
+    const timer = setTimeout(warmOfflineData, 800);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, []);
 
   const surahDirectory = useQuery({
     queryKey: ['quran', 'surah-directory'],
     queryFn: () => quranCache.loadSurahDirectory(),
   });
 
-  const ayahSearch = useQuery({
-    queryKey: ['quran', 'home-search', submittedSearch],
-    enabled: submittedSearch.length > 0,
-    queryFn: async (): Promise<AyahSearchResult[]> => {
-      const directory = await quranCache.loadSurahDirectory();
-      const reference = resolveAyahSearchReference(
-        submittedSearch,
-        directory.surahs,
-        normalizeSurahSearch,
-      );
-      if (reference) {
-        const storedText = await quranCache.getStoredAyah(
-          reference.surahNumber,
-          reference.ayahNumber,
-        );
-        if (storedText !== null) {
-          return [{
-            surahNumber: reference.surahNumber,
-            ayahNumber: reference.ayahNumber,
-            text: storedText,
-          }];
-        }
-        const surah = await quranContentProvider.getSurah(reference.surahNumber);
-        const ayah = surah.ayahs.find((item) => item.ayahNumber === reference.ayahNumber);
-        return ayah
-          ? [{
-              surahNumber: reference.surahNumber,
-              ayahNumber: reference.ayahNumber,
-              text: ayah.words.map((word) => word.textUthmani).join(' '),
-            }]
-          : [];
-      }
-
-      const normalized = normalizeSurahSearch(submittedSearch);
-      if (/^\d+$/.test(normalized) && directory.surahs.some(
-        (surah) => surah.surahNumber === Number(normalized),
-      )) {
-        return [];
-      }
-      return quranCache.searchAyahs(submittedSearch, HOME_SEARCH_RESULTS_LIMIT);
-    },
-  });
+  // Text and tafsir are bundled, so the results are computed on the spot for
+  // every typed letter, with no waiting and no connection.
+  const ayahResults = useMemo((): AyahSearchResult[] => {
+    if (submittedSearch.length === 0) {
+      return [];
+    }
+    const reference = resolveAyahSearchReference(
+      submittedSearch,
+      surahDirectory.data?.surahs ?? BUNDLED_SURAH_DIRECTORY.surahs,
+      normalizeSurahSearch,
+    );
+    if (reference) {
+      const text = getBundledAyahText(reference.surahNumber, reference.ayahNumber);
+      return text === null ? [] : [{ ...reference, text }];
+    }
+    const normalized = normalizeSurahSearch(submittedSearch);
+    if (
+      /^\d+$/.test(normalized) &&
+      Number(normalized) >= 1 &&
+      Number(normalized) <= 114
+    ) {
+      return [];
+    }
+    return searchBundled(submittedSearch, HOME_SEARCH_RESULTS_LIMIT);
+  }, [submittedSearch, surahDirectory.data]);
 
   const savedWords = useQuery({
     queryKey: ['annotations', 'saved-words'],
@@ -225,13 +210,13 @@ export default function HomeScreen() {
             <HomeHero
               searchValue={search}
               onSearchChange={setSearch}
-              onSearchAnchorChange={setSearchAnchor}
-            />
-            <ContinueReadingCard
-              position={lastReadingPositionQuery.data ?? null}
-              surahNameByNumber={surahNames}
-              loading={lastReadingPositionQuery.isPending}
-            />
+              onSearchAnchorChange={setSearchAnchor}>
+              <ContinueReadingCard
+                position={lastReadingPositionQuery.data ?? null}
+                surahNameByNumber={surahNames}
+                loading={lastReadingPositionQuery.isPending}
+              />
+            </HomeHero>
             <View style={styles.featureCardsRow}>
               <View style={styles.featureCardColumn}>
                 <QuranHeartCard />
@@ -312,17 +297,11 @@ export default function HomeScreen() {
           anchor={searchAnchor}
           surahResults={searchMatchedSurahs}
           surahNameByNumber={surahNames}
-          ayahResults={
-            search.trim() === submittedSearch && !ayahSearch.isPending && !ayahSearch.error
-              ? ayahSearch.data ?? []
-              : []
-          }
-          searchLoading={
-            search.trim() !== submittedSearch || ayahSearch.isPending
-          }
-          searchError={Boolean(ayahSearch.error && search.trim() === submittedSearch)}
-          libraryIncomplete={!libraryComplete}
-          onRetrySearch={() => void ayahSearch.refetch()}
+          ayahResults={search.trim() === submittedSearch ? ayahResults : []}
+          searchLoading={false}
+          searchError={false}
+          libraryIncomplete={false}
+          onRetrySearch={() => undefined}
         />
       )}
       <View

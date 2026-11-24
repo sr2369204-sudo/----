@@ -1724,7 +1724,7 @@ function SearchPanel({
     if (next === submitted) {
       return;
     }
-    const timer = setTimeout(() => setSubmitted(next), 400);
+    const timer = setTimeout(() => setSubmitted(next), 0);
     return () => clearTimeout(timer);
   }, [query, submitted]);
 

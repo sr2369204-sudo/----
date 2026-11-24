@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Link } from 'expo-router';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, type ReactNode } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -22,7 +22,9 @@ const GRAIN_SOURCE = require('../../../../assets/images/glass-grain.png');
 const HERO_IMAGE = require('../../../../assets/images/quran-hero.png');
 
 /** Visual height of the hero band, on top of which the status-bar inset is added. */
-const HERO_HEIGHT = 210;
+const HERO_HEIGHT = 232;
+/** How far the search bar hangs below the header's lower edge. */
+const SEARCH_OVERHANG = 24;
 
 /** Light foreground colours that sit on the dark glass search bar. */
 const SEARCH_TEXT_COLOR = '#FFF9EA';
@@ -33,6 +35,8 @@ type HomeHeroProps = {
   searchValue: string;
   onSearchChange: (value: string) => void;
   onSearchAnchorChange: (anchor: SearchAnchor) => void;
+  /** Shown inside the header under the brand row, e.g. the continue-reading card. */
+  children?: ReactNode;
 };
 
 /**
@@ -44,6 +48,7 @@ export function HomeHero({
   searchValue,
   onSearchChange,
   onSearchAnchorChange,
+  children,
 }: HomeHeroProps) {
   const insets = useSafeAreaInsets();
   const searchContainerRef = useRef<ViewInstance>(null);
@@ -138,6 +143,8 @@ export function HomeHero({
           </Link>
         </View>
 
+        {children}
+
         <View style={styles.searchEntry}>
           <View
             ref={searchContainerRef}
@@ -169,6 +176,7 @@ export function HomeHero({
 const styles = StyleSheet.create({
   shell: {
     marginHorizontal: -Spacing.three,
+    marginBottom: SEARCH_OVERHANG,
     zIndex: 1000,
     elevation: 1000,
   },
@@ -181,7 +189,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(216,181,109,0.5)',
   },
   imageScrim: {
-    backgroundColor: 'rgba(4,26,20,0.34)',
+    backgroundColor: 'rgba(4,26,20,0.5)',
   },
   grain: {
     opacity: 0.22,
@@ -192,8 +200,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.five,
+    paddingBottom: Spacing.five + Spacing.two,
     justifyContent: 'space-between',
+    gap: Spacing.three,
     zIndex: 1,
   },
   topRow: {
@@ -253,7 +262,10 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.96 }],
   },
   searchEntry: {
-    width: '100%',
+    position: 'absolute',
+    start: Spacing.three,
+    end: Spacing.three,
+    bottom: -SEARCH_OVERHANG,
   },
   searchBar: {
     height: 48,
