@@ -11,16 +11,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  Switch,
   TextInput,
   View,
 } from 'react-native';
-import {
-  HAPTICS_SETTING_KEY,
-  isHapticsEnabled,
-  setHapticsEnabled,
-  tapHaptic,
-} from '@/features/haptics/haptics';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -119,20 +112,6 @@ export default function SettingsScreen() {
     queryFn: () => quranCache.loadSurahDirectory(),
     staleTime: Infinity,
   });
-
-  const [hapticsOn, setHapticsOn] = useState(isHapticsEnabled());
-  async function changeHaptics(next: boolean): Promise<void> {
-    setHapticsOn(next);
-    setHapticsEnabled(next);
-    if (next) {
-      tapHaptic();
-    }
-    try {
-      await writeSetting(HAPTICS_SETTING_KEY, next ? 'on' : 'off');
-    } catch {
-      setPreferenceError('تعذر حفظ إعداد الاهتزاز.');
-    }
-  }
 
   const readerDisplayQuery = useQuery({
     queryKey: ['settings', 'display-preferences'],
@@ -296,20 +275,6 @@ export default function SettingsScreen() {
                 </Pressable>
               );
             })}
-          </View>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>الاهتزاز</Text>
-          <Text style={[styles.body, { color: colors.textSecondary }]}>اهتزاز خفيف عند الضغط على التشغيل والتالي والسابق، وعند اختيار آية، وعند حفظ علامة.</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={[styles.body, { color: colors.text }]}>تفعيل الاهتزاز</Text>
-            <Switch
-              accessibilityLabel="تفعيل الاهتزاز"
-              value={hapticsOn}
-              onValueChange={(value) => void changeHaptics(value)}
-              trackColor={{ true: colors.primary }}
-            />
           </View>
         </View>
 

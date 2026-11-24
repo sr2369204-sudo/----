@@ -52,7 +52,7 @@
         {
           "microphonePermission": "يحتاج التطبيق إلى الميكروفون لتسجيل ملاحظاتك الصوتية على كلمات المصحف.",
           "recordAudioAndroid": true,
-          "enableBackgroundPlayback": true
+          "enableBackgroundPlayback": false
         }
       ]
     ],

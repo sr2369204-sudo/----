@@ -64,8 +64,6 @@ import {
   type RecitationQueue,
   type RecitationScope,
 } from '@/features/reader/services/recitation-queue';
-import { selectionHaptic, successHaptic, tapHaptic } from '@/features/haptics/haptics';
-import { PLAYBACK_AUDIO_MODE } from '@/features/reader/services/audio-mode';
 import { TajweedGuideDialog } from '@/features/reader/components/TajweedGuideDialog';
 import {
   loadDailyReadingPlan,
@@ -842,7 +840,7 @@ export default function ReaderScreen() {
 
   useEffect(() => {
     let active = true;
-    setAudioModeAsync(PLAYBACK_AUDIO_MODE).catch((error: unknown) => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch((error: unknown) => {
       if (active) {
         setAudioError(
           error instanceof Error ? `تعذر تهيئة الصوت: ${error.message}` : 'تعذر تهيئة الصوت.',
@@ -854,38 +852,8 @@ export default function ReaderScreen() {
       audioRequest.current += 1;
       player.pause();
       recitationPlaylist.pause();
-      try {
-        recitationPlaylist.clearLockScreenControls();
-      } catch {
-        /* the controls were never shown */
-      }
     };
   }, [player, recitationPlaylist]);
-
-  // The lock screen and the notification show which ayah is being recited and
-  // let the listener pause, resume and skip without opening the app.
-  const lockScreenSurahName = activeTrack
-    ? directoryQuery.data?.surahs.find((surah) => surah.surahNumber === activeTrack.surahNumber)
-        ?.nameArabic ?? null
-    : null;
-  const lockScreenQueueLabel = recitationQueue?.label ?? null;
-  const lockScreenAyahNumber = activeTrack?.ayahNumber ?? null;
-  useEffect(() => {
-    if (lockScreenQueueLabel === null || lockScreenAyahNumber === null) {
-      return;
-    }
-    try {
-      recitationPlaylist.setActiveForLockScreen(true, {
-        title: lockScreenSurahName
-          ? `سورة ${lockScreenSurahName} · الآية ${toArabicNumbers(lockScreenAyahNumber)}`
-          : `الآية ${toArabicNumbers(lockScreenAyahNumber)}`,
-        artist: lockScreenQueueLabel,
-        albumTitle: 'المصحف',
-      });
-    } catch {
-      /* lock screen controls are optional; playback goes on without them */
-    }
-  }, [lockScreenAyahNumber, lockScreenQueueLabel, lockScreenSurahName, recitationPlaylist]);
 
   // Repeat and speed are properties of the native players, applied whenever the
   // reader changes them so the next track inherits the current setting.
@@ -966,7 +934,6 @@ export default function ReaderScreen() {
       }
     }
 
-    selectionHaptic();
     selectAyah(surahNumber, ayah, 'compact');
     showNavbar();
   }, [page, player, recitationQueue, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar, toggleChrome]);
@@ -1253,12 +1220,7 @@ export default function ReaderScreen() {
       ? repository.deleteBookmark(surahNumber, ayahNumber)
       : repository.createBookmark(surahNumber, ayahNumber);
     action
-      .then(() => {
-        if (!exists) {
-          successHaptic();
-        }
-        setBookmarkRevision((revision) => revision + 1);
-      })
+      .then(() => setBookmarkRevision((revision) => revision + 1))
       .catch((error: unknown) => {
         setInteractionError(
           error instanceof Error
@@ -1417,11 +1379,6 @@ export default function ReaderScreen() {
   const closeRecitation = useCallback(() => {
     recitationPlaylist.pause();
     recitationPlaylist.clear();
-    try {
-      recitationPlaylist.clearLockScreenControls();
-    } catch {
-      /* the controls were never shown */
-    }
     setRecitationQueue(null);
     setRecitationError(null);
   }, [recitationPlaylist]);
@@ -1917,23 +1874,12 @@ export default function ReaderScreen() {
           onCycleRate={() => setPlaybackRate((rate) => nextPlaybackRate(rate))}
           sleepTimerMinutes={sleepTimerMinutes}
           onCycleSleepTimer={() => setSleepTimerMinutes((minutes) => nextSleepTimer(minutes))}
-          onTogglePlay={() => {
-            tapHaptic();
-            if (recitationStatus.playing) {
-              recitationPlaylist.pause();
-            } else {
-              recitationPlaylist.play();
-            }
-          }}
+          onTogglePlay={() =>
+            recitationStatus.playing ? recitationPlaylist.pause() : recitationPlaylist.play()
+          }
           onSeek={(seconds) => void recitationPlaylist.seekTo(seconds)}
-          onNext={() => {
-            tapHaptic();
-            skipRecitationAyah(1);
-          }}
-          onPrevious={() => {
-            tapHaptic();
-            skipRecitationAyah(-1);
-          }}
+          onNext={() => skipRecitationAyah(1)}
+          onPrevious={() => skipRecitationAyah(-1)}
           onClose={closeRecitation}
           onOpenPicker={() => setScopeDialogOpen(true)}
           onOpenReciterPicker={() => setReciterPickerOpen(true)}
@@ -2689,12 +2635,12 @@ const GOTO_SHEETS = {
     onGold: '#0F3B2E',
   },
   light: {
-    panel: '#F7EFD9',
-    panelLight: '#FFFBEF',
+    panel: '#FFFFFF',
+    panelLight: '#F7F6F2',
     gold: '#B8923A',
     cream: '#17463A',
     name: '#17463A',
-    onGold: '#FFFBEF',
+    onGold: '#FFFFFF',
   },
 };
 
