@@ -443,7 +443,7 @@ export default function SettingsScreen() {
         )}
         <Text style={[styles.version, { color: colors.textSecondary }]}>
           زخرفة رأس السورة مأخوذة من مصحف المدينة النبوية (الطبعة العادية) الصادر عن مجمع الملك فهد
-          لطباعة المصحف الشريف، ومرسومة بالمتجهات عبر مشروع quran-ws/quran-assets.
+          لطباعة المصحف الشريف، ومرسومة بالمتجهات عبر مشروع quran-ws/quran-assets. أسماء السور بالخط المصحفي من مكتبة QUL (ترخيص CC BY 4.0).
         </Text>
       </ScrollView>
 

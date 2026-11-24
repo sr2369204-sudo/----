@@ -2,6 +2,7 @@ import { createElement, memo, useCallback, useEffect, useMemo, useRef } from 're
 import { Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
+import { SURAH_NAME_ART } from '@/features/reader/assets/surah-name-art';
 import { SURAH_HEADER_ART_URI } from '@/features/reader/assets/surah-header-art';
 import type { Highlight } from '@/features/annotations/types';
 import type { MushafPage } from '@/features/quran/types';
@@ -474,7 +475,13 @@ function createMushafHtml(
   const sourceLineCount = Math.max(...page.lines.map((line) => line.lineNumber), 15);
   const rowOffset =
     page.pageNumber <= 2 ? getMushafPageCenteringOffset(page, sourceLineCount) : 0;
-  const linesHtml = renderMushafLinesHtml(page, rowOffset);
+  const nameArtSurahs = new Set(
+    (page.surahs ?? []).map((item) => item.surahNumber).filter((number) => SURAH_NAME_ART[number]),
+  );
+  const nameArtSymbols = [...nameArtSurahs]
+    .map((number) => `<symbol id="sn-${number}" viewBox="${SURAH_NAME_ART[number][0]}">${SURAH_NAME_ART[number][1]}</symbol>`)
+    .join('');
+  const linesHtml = renderMushafLinesHtml(page, rowOffset, nameArtSurahs);
   const baseFontSize = Math.min(Math.round(fontSize * 1.5), 120);
 
   const surahName = page.surahs && page.surahs.length > 0 ? page.surahs[0].nameArabic : '';
@@ -686,6 +693,11 @@ body {
   white-space: nowrap;
   padding-bottom: 0.4cqi;
 }
+.st-glyph {
+  width: 100%;
+  height: 86%;
+  fill: #1c1a10;
+}
 .st-med {
   position: absolute;
   top: 50%;
@@ -884,6 +896,7 @@ body.tasmi3-hidden-page .st-name {
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">${nameArtSymbols}</svg>
 <main class="page" aria-label="صفحة المصحف">
   <header class="page-header">
     <span class="header-label" id="header-surah-label">${surahHeaderLabel}</span>
