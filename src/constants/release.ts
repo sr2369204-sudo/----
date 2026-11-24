@@ -27,8 +27,8 @@ export const HEART_MIN_NATIVE_VERSION = '1.0.1';
  */
 const FALLBACK_RELEASE: LatestRelease = {
   version: HEART_MIN_NATIVE_VERSION,
-  apkUrl: 'https://www.mediafire.com/file/ueg0wlpbsg47ou1/mushaf.apk/file',
-  fallbackUrl: 'https://www.mediafire.com/file/ueg0wlpbsg47ou1/mushaf.apk/file',
+  apkUrl: 'https://www.mediafire.com/file/cipklohdd8u4xf1/mushaf.apk/file',
+  fallbackUrl: 'https://www.mediafire.com/file/cipklohdd8u4xf1/mushaf.apk/file',
 };
 
 /** Installed native build version, or null when updates are off (web, Expo Go, dev client). */
