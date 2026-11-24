@@ -140,7 +140,8 @@ export function RecitationPlayer({
         ]}
         accessibilityRole="toolbar"
         accessibilityLabel="مشغل التلاوة">
-        <View style={styles.reciterBox}>
+        <View style={styles.topRow}>
+        <View style={[styles.reciterBox, { backgroundColor: colors.backgroundSelected }]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="القارئ السابق"
@@ -149,7 +150,6 @@ export function RecitationPlayer({
             onPress={() => cycleReciter(-1)}
             style={({ pressed }) => [
               styles.reciterArrow,
-              { backgroundColor: colors.backgroundSelected },
               !canCycleReciter && styles.disabled,
               pressed && styles.pressed,
             ]}>
@@ -181,7 +181,6 @@ export function RecitationPlayer({
             onPress={() => cycleReciter(1)}
             style={({ pressed }) => [
               styles.reciterArrow,
-              { backgroundColor: colors.backgroundSelected },
               !canCycleReciter && styles.disabled,
               pressed && styles.pressed,
             ]}>
@@ -189,23 +188,6 @@ export function RecitationPlayer({
           </Pressable>
         </View>
 
-        <View style={styles.playerHeader}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تغيير نطاق التلاوة"
-            onPress={onOpenPicker}
-            style={({ pressed }) => [styles.playerInfo, pressed && styles.pressed]}>
-            <Text style={[styles.playerTitle, { color: colors.text }]} numberOfLines={1}>
-              {label}
-            </Text>
-            <Text
-              style={[styles.playerSubtitle, { color: colors.textSecondary }]}
-              numberOfLines={1}>
-              {status.isBuffering
-                ? 'جارٍ تجهيز التلاوة…'
-                : `${trackLabel} · ${rangeLabel}`}
-            </Text>
-          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`تكرار كل آية ${formatAyahRepeatCount(ayahRepeatCount)}`}
@@ -238,7 +220,22 @@ export function RecitationPlayer({
             <Ionicons name="repeat-outline" size={16} color={colors.accent} />
           </Pressable>
         </View>
-
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="تغيير نطاق التلاوة"
+            onPress={onOpenPicker}
+            style={({ pressed }) => [styles.playerInfo, pressed && styles.pressed]}>
+            <Text style={[styles.playerTitle, { color: colors.text }]} numberOfLines={1}>
+              {label}
+            </Text>
+            <Text
+              style={[styles.playerSubtitle, { color: colors.textSecondary }]}
+              numberOfLines={1}>
+              {status.isBuffering
+                ? 'جارٍ تجهيز التلاوة…'
+                : `${trackLabel} · ${rangeLabel}`}
+            </Text>
+          </Pressable>
         <SeekBar
           position={status.currentTime}
           duration={status.duration}
@@ -250,26 +247,39 @@ export function RecitationPlayer({
         />
 
         <View style={styles.playerControls}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={status.playing ? 'إيقاف التلاوة مؤقتًا' : 'متابعة التلاوة'}
-            onPress={onTogglePlay}
-            style={({ pressed }) => [
-              styles.playButton,
-              { backgroundColor: colors.primary },
-              pressed && styles.pressed,
-            ]}>
-            {status.isBuffering ? (
-              <ActivityIndicator size="small" color={colors.background} />
-            ) : (
-              <Ionicons
-                name={status.playing ? 'pause' : 'play'}
-                size={20}
-                color={colors.background}
-              />
-            )}
-          </Pressable>
-
+          {onCycleSleepTimer && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                sleepTimerMinutes === null
+                  ? 'مؤقت النوم متوقف'
+                  : `إيقاف التلاوة بعد ${sleepTimerMinutes} دقيقة`
+              }
+              accessibilityHint="اضغط للتبديل بين ١٥ و٣٠ و٦٠ دقيقة أو إيقاف المؤقت"
+              hitSlop={6}
+              onPress={onCycleSleepTimer}
+              style={({ pressed }) => [
+                styles.rateButton,
+                {
+                  backgroundColor:
+                    sleepTimerMinutes === null ? colors.backgroundSelected : `${colors.primary}1A`,
+                },
+                pressed && styles.pressed,
+              ]}>
+              <View style={styles.sleepContent}>
+                <Ionicons
+                  name={sleepTimerMinutes === null ? 'moon-outline' : 'moon'}
+                  size={15}
+                  color={sleepTimerMinutes === null ? colors.textSecondary : colors.primary}
+                />
+                {sleepTimerMinutes !== null && (
+                  <Text style={[styles.rateLabel, { color: colors.primary }]}>
+                    {toArabicDigits(sleepTimerMinutes)}
+                  </Text>
+                )}
+              </View>
+            </Pressable>
+          )}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="الآية السابقة"
@@ -284,6 +294,26 @@ export function RecitationPlayer({
             ]}>
             <Ionicons name="play-skip-back" size={17} color={colors.text} />
           </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={status.playing ? 'إيقاف التلاوة مؤقتًا' : 'متابعة التلاوة'}
+            onPress={onTogglePlay}
+            style={({ pressed }) => [
+              styles.playButton,
+              { backgroundColor: colors.primary },
+              pressed && styles.pressed,
+            ]}>
+            {status.isBuffering ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Ionicons
+                name={status.playing ? 'pause' : 'play'}
+                size={24}
+                color={colors.background}
+              />
+            )}
+          </Pressable>
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="الآية التالية"
@@ -341,39 +371,6 @@ export function RecitationPlayer({
               {formatRate(playbackRate)}
             </Text>
           </Pressable>
-          {onCycleSleepTimer && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                sleepTimerMinutes === null
-                  ? 'مؤقت النوم متوقف'
-                  : `إيقاف التلاوة بعد ${sleepTimerMinutes} دقيقة`
-              }
-              accessibilityHint="اضغط للتبديل بين ١٥ و٣٠ و٦٠ دقيقة أو إيقاف المؤقت"
-              hitSlop={6}
-              onPress={onCycleSleepTimer}
-              style={({ pressed }) => [
-                styles.rateButton,
-                {
-                  backgroundColor:
-                    sleepTimerMinutes === null ? colors.backgroundSelected : `${colors.primary}1A`,
-                },
-                pressed && styles.pressed,
-              ]}>
-              <View style={styles.sleepContent}>
-                <Ionicons
-                  name={sleepTimerMinutes === null ? 'moon-outline' : 'moon'}
-                  size={15}
-                  color={sleepTimerMinutes === null ? colors.textSecondary : colors.primary}
-                />
-                {sleepTimerMinutes !== null && (
-                  <Text style={[styles.rateLabel, { color: colors.primary }]}>
-                    {toArabicDigits(sleepTimerMinutes)}
-                  </Text>
-                )}
-              </View>
-            </Pressable>
-          )}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="إيقاف التلاوة"
@@ -1145,15 +1142,24 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     zIndex: 95,
   },
-  reciterBox: {
+  topRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 6,
-    minHeight: 30,
+    gap: 8,
+  },
+  reciterBox: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 2,
+    minHeight: 38,
+    borderRadius: 19,
+    paddingHorizontal: 3,
   },
   reciterArrow: {
-    width: 32,
+    width: 28,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
@@ -1177,16 +1183,18 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignSelf: 'stretch',
     minWidth: 0,
-    gap: 4,
-    padding: 10,
-    borderRadius: 20,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderRadius: 28,
     borderWidth: 1,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
   playerHeader: {
     flexDirection: 'row-reverse',
@@ -1196,9 +1204,9 @@ const styles = StyleSheet.create({
     minHeight: 34,
   },
   playButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -1209,8 +1217,7 @@ const styles = StyleSheet.create({
   },
   playerInfo: {
     minWidth: 0,
-    maxWidth: '68%',
-    flexShrink: 1,
+    alignSelf: 'stretch',
     alignItems: 'flex-end',
     gap: 2,
   },
@@ -1230,7 +1237,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
     minWidth: 0,
-    gap: 2,
+    gap: 0,
   },
   iconButton: {
     width: 38,
@@ -1259,12 +1266,12 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   ayahRepeatButton: {
-    minHeight: 32,
+    minHeight: 38,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 5,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 19,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
