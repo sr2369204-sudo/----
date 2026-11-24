@@ -88,7 +88,7 @@ import {
 } from '@/features/surah-topics/services/surah-topics';
 import { SurahTopicsSheet } from '@/features/surah-topics/components/SurahTopicsSheet';
 import type { TopicSection } from '@/features/surah-topics/types';
-import { useIsNightTheme, useTheme } from '@/hooks/use-theme';
+import { useIsNightTheme, useTheme, useThemeName } from '@/hooks/use-theme';
 
 type NavigationMode = 'page' | 'surah' | 'juz';
 type BookmarkedAyah = { surahNumber: number; ayahNumber: number };
@@ -2125,7 +2125,7 @@ function NavigationDialog({
   onChoose: (mode: NavigationMode, value: number) => void;
   onDirectoryRetry: () => void;
 }) {
-  const sheet = GOTO_SHEET;
+  const sheet = GOTO_SHEETS[useThemeName()];
   const modes: { key: NavigationMode; label: string }[] = [
     { key: 'page', label: 'صفحة' },
     { key: 'surah', label: 'سورة' },
@@ -2177,7 +2177,7 @@ function NavigationDialog({
                     borderColor: sheet.gold,
                   },
                 ]}>
-                <Text style={[styles.navigationModeLabel, { color: mode === option.key ? sheet.panel : sheet.cream }]}>
+                <Text style={[styles.navigationModeLabel, { color: mode === option.key ? sheet.onGold : sheet.cream }]}>
                   {option.label}
                 </Text>
               </Pressable>
@@ -2199,7 +2199,7 @@ function NavigationDialog({
                 disabled={busy}
                 onPress={onSubmit}
                 style={[styles.goButton, { backgroundColor: sheet.gold }]}>
-                <Text style={[styles.goButtonText, { color: sheet.panel }]}>
+                <Text style={[styles.goButtonText, { color: sheet.onGold }]}>
                   {busy ? '…' : 'اذهب'}
                 </Text>
               </Pressable>
@@ -2213,7 +2213,7 @@ function NavigationDialog({
                   disabled={busy}
                   onPress={() => onChoose('juz', juz)}
                   style={[styles.destinationItem, { backgroundColor: sheet.panelLight, borderColor: sheet.gold }]}>
-                  <Text style={[styles.destinationLabel, { color: sheet.gold }]}>الجزء {toArabicNumbers(juz)}</Text>
+                  <Text style={[styles.destinationLabel, { color: sheet.name }]}>الجزء {toArabicNumbers(juz)}</Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -2231,12 +2231,12 @@ function NavigationDialog({
                     pressed && styles.surahItemPressed,
                   ]}>
                   <View style={[styles.surahNumberBadge, { backgroundColor: sheet.gold }]}>
-                    <Text style={[styles.surahNumber, { color: sheet.panel }]}>
+                    <Text style={[styles.surahNumber, { color: sheet.onGold }]}>
                       {toArabicNumbers(surah.surahNumber)}
                     </Text>
                   </View>
                   <View style={styles.surahTextBlock}>
-                    <Text style={[styles.surahName, { color: sheet.gold }]}>{surah.nameArabic}</Text>
+                    <Text style={[styles.surahName, { color: sheet.name }]}>{surah.nameArabic}</Text>
                     <Text style={[styles.surahMeta, { color: `${sheet.cream}B3` }]}>
                       {surah.revelationPlace === 'makkah' ? 'مكية' : 'مدنية'} · {toArabicNumbers(surah.ayahCount)} {surah.ayahCount >= 3 && surah.ayahCount <= 10 ? 'آيات' : 'آية'}
                     </Text>
@@ -2247,7 +2247,7 @@ function NavigationDialog({
             </ScrollView>
           ) : (
             <Pressable accessibilityRole="button" onPress={onDirectoryRetry}>
-              <Text style={[styles.directoryMessage, { color: sheet.gold }]}>
+              <Text style={[styles.directoryMessage, { color: sheet.name }]}>
                 تعذر تحميل السور. اضغط لإعادة المحاولة.
               </Text>
             </Pressable>
@@ -2679,11 +2679,23 @@ const styles = StyleSheet.create({
   },
 });
 
-const GOTO_SHEET = {
-  panel: '#0F3B2E',
-  panelLight: '#16503E',
-  gold: '#D4AF5A',
-  cream: '#F4EBD3',
+const GOTO_SHEETS = {
+  dark: {
+    panel: '#0F3B2E',
+    panelLight: '#16503E',
+    gold: '#D4AF5A',
+    cream: '#F4EBD3',
+    name: '#D4AF5A',
+    onGold: '#0F3B2E',
+  },
+  light: {
+    panel: '#F7EFD9',
+    panelLight: '#FFFBEF',
+    gold: '#B8923A',
+    cream: '#17463A',
+    name: '#17463A',
+    onGold: '#FFFBEF',
+  },
 };
 
 function toArabicDigits(value: number | string): string {
