@@ -1,8 +1,12 @@
 export type ReciterPortraitImageKey =
   | 'abdul-basit'
+  | 'abu-bakr-shatri'
   | 'bandar-baleela'
   | 'husary'
+  | 'hani-rifai'
+  | 'ibrahim-al-dosari'
   | 'islam-sobhi'
+  | 'khalifa-tunaiji'
   | 'maher-muaiqly'
   | 'minshawi'
   | 'mishary-rashid'
@@ -36,6 +40,18 @@ const portraits: Record<number, ReciterPortrait> = {
     credit: "Prime Minister's Office",
     license: 'GODL-India',
   },
+  4: {
+    imageKey: 'abu-bakr-shatri',
+    sourceUrl: 'https://www.assabile.com/abu-bakr-al-shatri-34/abu-bakr-al-shatri.htm',
+    credit: 'Assabile',
+    license: 'Unverified; permission required',
+  },
+  5: {
+    imageKey: 'hani-rifai',
+    sourceUrl: 'https://www.assabile.com/hani-ar-rifai-86/hani-ar-rifai.htm',
+    credit: 'Assabile',
+    license: 'Unverified; permission required',
+  },
   7: {
     imageKey: 'mishary-rashid',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B8%D1%88%D0%B0%D1%80%D0%B8_%D0%A0%D0%B0%D1%88%D0%B8%D0%B4.jpg',
@@ -65,6 +81,12 @@ const portraits: Record<number, ReciterPortrait> = {
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Hussary.jpg',
     credit: 'Zubairkhan1',
     license: 'Public domain',
+  },
+  161: {
+    imageKey: 'khalifa-tunaiji',
+    sourceUrl: 'https://alteneiji.net/ar/gallery/',
+    credit: 'Khalifa Al Teneiji official website',
+    license: 'Unverified; permission required',
   },
   97: {
     imageKey: 'yasser-al-dosari',
@@ -96,8 +118,28 @@ const portraits: Record<number, ReciterPortrait> = {
     credit: 'Moaz600',
     license: 'CC BY-SA 4.0',
   },
+  173: {
+    imageKey: 'mishary-rashid',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B8%D1%88%D0%B0%D1%80%D0%B8_%D0%A0%D0%B0%D1%88%D0%B8%D0%B4.jpg',
+    credit: 'quranic.ru',
+    license: 'Copyrighted free use',
+  },
+  178: {
+    imageKey: 'ibrahim-al-dosari',
+    sourceUrl: 'https://www.nourelquran.com/international/reader.php?id=151&lang=ar',
+    credit: 'Noor Al-Quran',
+    license: 'Unverified; permission required',
+  },
+};
+
+const reciterPortraitAliases: Record<number, number> = {
+  [-92]: 97,
+  [-102]: 102,
+  [-178]: 178,
+  [-217]: 217,
+  [-253]: 253,
 };
 
 export function getReciterPortrait(reciterId: number): ReciterPortrait | undefined {
-  return portraits[reciterId];
+  return portraits[reciterId] ?? portraits[reciterPortraitAliases[reciterId]];
 }

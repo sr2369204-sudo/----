@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { Image, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 
 import {
   getReciterPortrait,
@@ -9,9 +9,13 @@ import {
 
 const portraitImages: Record<ReciterPortraitImageKey, ImageSourcePropType> = {
   'abdul-basit': require('../../../../assets/images/reciters/abdul-basit.jpg'),
+  'abu-bakr-shatri': require('../../../../assets/images/reciters/abu-bakr-shatri.webp'),
   'bandar-baleela': require('../../../../assets/images/reciters/bandar-baleela.jpg'),
+  'hani-rifai': require('../../../../assets/images/reciters/hani-rifai.webp'),
   husary: require('../../../../assets/images/reciters/husary.jpg'),
+  'ibrahim-al-dosari': require('../../../../assets/images/reciters/ibrahim-al-dosari.webp'),
   'islam-sobhi': require('../../../../assets/images/reciters/islam-sobhi.jpg'),
+  'khalifa-tunaiji': require('../../../../assets/images/reciters/khalifa-tunaiji.jpg'),
   'maher-muaiqly': require('../../../../assets/images/reciters/maher-muaiqly.png'),
   minshawi: require('../../../../assets/images/reciters/minshawi.jpg'),
   'mishary-rashid': require('../../../../assets/images/reciters/mishary-rashid.jpg'),
@@ -22,6 +26,7 @@ const portraitImages: Record<ReciterPortraitImageKey, ImageSourcePropType> = {
 
 type Props = {
   reciterId: number;
+  name: string;
   size: number;
   backgroundColor: string;
   iconColor: string;
@@ -29,12 +34,20 @@ type Props = {
 
 export function ReciterAvatar({
   reciterId,
+  name,
   size,
   backgroundColor,
   iconColor,
 }: Props) {
   const portrait = getReciterPortrait(reciterId);
   const [failedImageKey, setFailedImageKey] = useState<ReciterPortraitImageKey | null>(null);
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0])
+    .join('');
 
   return (
     <View
@@ -44,12 +57,16 @@ export function ReciterAvatar({
       ]}>
       {portrait && failedImageKey !== portrait.imageKey ? (
         <Image
-          accessibilityLabel="صورة القارئ"
+          accessibilityLabel={`صورة ${name}`}
           source={portraitImages[portrait.imageKey]}
           style={styles.image}
           resizeMode="cover"
           onError={() => setFailedImageKey(portrait.imageKey)}
         />
+      ) : initials ? (
+        <Text style={[styles.initials, { color: iconColor, fontSize: Math.max(11, size * 0.34) }]}>
+          {initials}
+        </Text>
       ) : (
         <Ionicons name="person" size={Math.round(size * 0.48)} color={iconColor} />
       )}
@@ -66,5 +83,9 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  initials: {
+    fontWeight: '900',
+    textAlign: 'center',
   },
 });

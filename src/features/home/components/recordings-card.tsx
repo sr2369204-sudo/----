@@ -3,7 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
-import { Radius, Spacing, TypeScale } from '@/constants/theme';
+import { Radius, TypeScale } from '@/constants/theme';
 import { formatRecordingCount } from '@/features/annotations/utils/recordings-format';
 
 type RecordingsCardProps = {
@@ -24,32 +24,37 @@ export function RecordingsCard({ count, loading = false }: RecordingsCardProps) 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`تسجيلاتي، ${summary}`}
-        style={({ pressed }) => pressed && styles.pressed}>
-        <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.content}>
+        style={({ pressed }) => [styles.press, pressed && styles.pressed]}>
+        <GlassSurface variant="emerald" radius={Radius.lg} contentStyle={styles.content}>
           <View pointerEvents="none" style={styles.ornament} />
-          <View pointerEvents="none" style={styles.glow} />
 
-          <View style={styles.row}>
+          <View style={styles.header}>
             <View style={styles.iconWrap}>
-              <Ionicons name={hasRecordings ? 'mic' : 'mic-outline'} size={24} color="#F3D28C" />
+              <Ionicons name={hasRecordings ? 'mic' : 'mic-outline'} size={17} color="#F3D28C" />
             </View>
+            <Text style={styles.eyebrow} numberOfLines={1}>التسجيلات</Text>
+            <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.75)" />
+          </View>
 
+          <View style={styles.detailRow}>
             <View style={styles.copy}>
-              <Text style={styles.eyebrow}>تسجيلاتي</Text>
-              <Text style={styles.title} numberOfLines={1}>
-                {summary}
-              </Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {hasRecordings ? 'استمع إلى تسجيلاتك الخاصة' : 'لا توجد تسجيلات بعد'}
+              <Text style={styles.title} numberOfLines={1}>{summary}</Text>
+              <Text style={styles.subtitle} numberOfLines={2}>
+                {loading
+                  ? 'جارٍ تحميل تسجيلاتك'
+                  : hasRecordings
+                    ? 'جاهزة للاستماع'
+                    : 'ابدأ بأول تسجيل لك'}
               </Text>
             </View>
 
-            {hasRecordings && (
-              <View style={styles.cta}>
-                <Ionicons name="play" size={16} color="#0B382D" />
-                <Text style={styles.ctaText}>استمع</Text>
-              </View>
-            )}
+            <View style={styles.playBadge}>
+              <Ionicons
+                name={hasRecordings ? 'play' : 'mic-outline'}
+                size={16}
+                color="#0B382D"
+              />
+            </View>
           </View>
         </GlassSurface>
       </Pressable>
@@ -58,82 +63,83 @@ export function RecordingsCard({ count, loading = false }: RecordingsCardProps) 
 }
 
 const styles = StyleSheet.create({
+  press: {
+    width: '100%',
+  },
   content: {
-    padding: Spacing.three,
+    minHeight: 132,
+    flex: 1,
+    justifyContent: 'space-between',
+    gap: 10,
+    padding: 12,
     overflow: 'hidden',
   },
   pressed: {
     transform: [{ scale: 0.985 }],
   },
-  ornament: {
+ornament: {
     position: 'absolute',
-    top: -46,
-    left: -30,
-    width: 128,
-    height: 128,
+    top: -36,
+    left: -28,
+    width: 84,
+    height: 84,
     borderWidth: 1,
     borderColor: 'rgba(216,181,109,0.16)',
-    borderRadius: 34,
+    borderRadius: 28,
     transform: [{ rotate: '45deg' }],
   },
-  glow: {
-    position: 'absolute',
-    top: -70,
-    right: -40,
-    width: 190,
-    height: 190,
-    borderRadius: Radius.pill,
-    backgroundColor: 'rgba(46,140,104,0.24)',
-  },
-  row: {
+  header: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: Spacing.three,
+    gap: 7,
   },
   iconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(216,181,109,0.14)',
+    backgroundColor: 'rgba(216,181,109,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(216,181,109,0.4)',
+    borderColor: 'rgba(216,181,109,0.3)',
+  },
+  eyebrow: {
+    flex: 1,
+    fontSize: TypeScale.label,
+    fontWeight: '800',
+    color: '#E8C77F',
+    textAlign: 'right',
+  },
+  detailRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   copy: {
     flex: 1,
-    gap: 1,
+    minWidth: 0,
     alignItems: 'flex-end',
-  },
-  eyebrow: {
-    fontSize: TypeScale.micro,
-    fontWeight: '800',
-    color: '#E8C77F',
-    letterSpacing: 0.4,
+    gap: 3,
   },
   title: {
-    fontSize: TypeScale.display,
+    fontSize: TypeScale.heading,
     fontWeight: '900',
     color: '#FFF9EA',
     textAlign: 'right',
   },
   subtitle: {
-    fontSize: TypeScale.caption,
-    color: 'rgba(239,248,243,0.7)',
+    fontSize: TypeScale.micro - 1,
+    lineHeight: 15,
+    color: 'rgba(239,248,243,0.76)',
     textAlign: 'right',
   },
-  cta: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+  playBadge: {
+    width: 42,
+    height: 42,
     borderRadius: Radius.pill,
     backgroundColor: '#E8C77F',
-  },
-  ctaText: {
-    fontSize: TypeScale.label,
-    fontWeight: '900',
-    color: '#0B382D',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

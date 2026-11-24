@@ -222,12 +222,18 @@ export default function HomeScreen() {
               surahNameByNumber={surahNames}
               loading={lastReadingPositionQuery.isPending}
             />
-            <QuranHeartCard />
+            <View style={styles.featureCardsRow}>
+              <View style={styles.featureCardColumn}>
+                <QuranHeartCard />
+              </View>
+              <View style={styles.featureCardColumn}>
+                <RecordingsCard
+                  count={recordings.data?.length ?? 0}
+                  loading={recordings.isPending}
+                />
+              </View>
+            </View>
             <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
-            <RecordingsCard
-              count={recordings.data?.length ?? 0}
-              loading={recordings.isPending}
-            />
             <DailyReadingPlan
               plan={dailyPlanQuery.data ?? null}
               surahNameByNumber={surahNames}
@@ -444,6 +450,15 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
     zIndex: 1000,
     elevation: 1000,
+  },
+  featureCardsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'stretch',
+    gap: Spacing.two,
+  },
+  featureCardColumn: {
+    flex: 1,
+    minWidth: 0,
   },
   sectionHeader: {
     gap: Spacing.three,

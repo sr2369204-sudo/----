@@ -357,6 +357,7 @@ export default function SettingsScreen() {
                       ]}>
                       <ReciterAvatar
                         reciterId={reciter.id}
+                        name={ArabicReciterNames[Math.abs(reciter.id)] ?? reciter.name}
                         size={44}
                         backgroundColor={colors.backgroundSelected}
                         iconColor={colors.textSecondary}

@@ -158,6 +158,7 @@ export function RecitationPlayer({
             style={({ pressed }) => [styles.reciterName, pressed && styles.pressed]}>
             <ReciterAvatar
               reciterId={currentReciter?.id ?? reciterId}
+              name={currentReciter ? getArabicReciterName(currentReciter) : 'قارئ القرآن'}
               size={24}
               backgroundColor={colors.backgroundSelected}
               iconColor={colors.primary}
@@ -436,6 +437,7 @@ export function ReciterPickerDialog({
                   ]}>
                   <ReciterAvatar
                     reciterId={reciter.id}
+                    name={getArabicReciterName(reciter)}
                     size={44}
                     backgroundColor={selected ? colors.primary : colors.backgroundSelected}
                     iconColor={selected ? colors.onPrimary : colors.textSecondary}
@@ -668,6 +670,7 @@ export function RecitationScopeDialog({
                       ]}>
                       <ReciterAvatar
                         reciterId={reciter.id}
+                        name={getArabicReciterName(reciter)}
                         size={48}
                         backgroundColor={selected ? colors.primary : colors.backgroundSelected}
                         iconColor={selected ? colors.onPrimary : colors.textSecondary}

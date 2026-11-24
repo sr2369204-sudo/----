@@ -99,7 +99,7 @@ function mockFetch(t, handler) {
   globalThis.fetch = handler;
 }
 
-test('uses verified source portraits and leaves unknown reciters without a photo', () => {
+test('maps reciter IDs to source portraits and leaves unknown reciters without a photo', () => {
   const husaryPortrait = getReciterPortrait(6);
   const saudPortrait = getReciterPortrait(10);
 
@@ -110,7 +110,17 @@ test('uses verified source portraits and leaves unknown reciters without a photo
   assert.ok(saudPortrait);
   assert.equal(saudPortrait.license, 'CC0');
   assert.equal(getReciterPortrait(7)?.imageKey, 'mishary-rashid');
-  assert.equal(getReciterPortrait(4), undefined);
+  assert.equal(getReciterPortrait(173)?.imageKey, 'mishary-rashid');
+  assert.equal(getReciterPortrait(-92)?.imageKey, 'yasser-al-dosari');
+  assert.equal(getReciterPortrait(-102)?.imageKey, 'maher-muaiqly');
+  assert.equal(getReciterPortrait(4)?.imageKey, 'abu-bakr-shatri');
+  assert.equal(getReciterPortrait(5)?.imageKey, 'hani-rifai');
+  assert.equal(getReciterPortrait(161)?.imageKey, 'khalifa-tunaiji');
+  assert.equal(getReciterPortrait(-178)?.imageKey, 'ibrahim-al-dosari');
+  assert.equal(getReciterPortrait(-217)?.imageKey, 'bandar-baleela');
+  assert.equal(getReciterPortrait(-253)?.imageKey, 'islam-sobhi');
+  assert.equal(getReciterPortrait(4)?.license, 'Unverified; permission required');
+  assert.equal(getReciterPortrait(99999), undefined);
 });
 
 test('loads and validates the complete Arabic surah directory without app credentials', async (t) => {
