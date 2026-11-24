@@ -2,6 +2,8 @@
    `playbackRate` on AudioPlayer/AudioPlaylist only as mutable properties. */
 import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { toDateKey } from '@/features/memorization/services/review-schedule';
+import { recordPageRead } from '@/features/reader/services/reading-history';
 import {
   useAudioPlayer,
   useAudioPlaylist,
@@ -646,6 +648,21 @@ export default function ReaderScreen() {
         );
       });
   }, [database, queryClient]);
+
+  // A page counts as read once it has stayed open for a few seconds, so
+  // flipping quickly through pages does not fill the khatma bar.
+  const shownPageNumber = page && page.pageNumber === activePageNumber ? page.pageNumber : null;
+  useEffect(() => {
+    if (shownPageNumber === null) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      recordPageRead(database, shownPageNumber, toDateKey(new Date()))
+        .then((history) => queryClient.setQueryData(['reading', 'history'], history))
+        .catch((error: unknown) => console.error('تعذر تسجيل الصفحة المقروءة.', error));
+    }, 8_000);
+    return () => clearTimeout(timer);
+  }, [database, queryClient, shownPageNumber]);
 
   const toggleDailyReading = useCallback(async (references: AyahReference[]) => {
     const plan = await toggleDailyAyahCompletion(database, references);
