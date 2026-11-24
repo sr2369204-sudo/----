@@ -12,6 +12,8 @@ type OfflineDownloadState = {
   done: number;
   total: number;
   error: string | null;
+  /** True once every one of the 604 pages is stored on the device. */
+  complete: boolean;
   /** Bumped whenever the stored pages change, to refresh the status query. */
   revision: number;
   start: (database: SQLiteDatabase, target: OfflineDownloadTarget) => Promise<void>;
@@ -31,6 +33,7 @@ export const useOfflineDownloadStore = create<OfflineDownloadState>((set, get) =
   done: 0,
   total: 0,
   error: null,
+  complete: false,
   revision: 0,
 
   start: async (database, target) => {
@@ -48,6 +51,9 @@ export const useOfflineDownloadStore = create<OfflineDownloadState>((set, get) =
     try {
       if (target === 'all') {
         await library.downloadAll(options);
+        if (!get().cancelling) {
+          set({ complete: await library.isComplete() });
+        }
       } else {
         await library.downloadSurahs(target, options);
       }
@@ -74,6 +80,6 @@ export const useOfflineDownloadStore = create<OfflineDownloadState>((set, get) =
     if (get().running || get().total > 0) {
       return;
     }
-    set({ done: pages, total: pages, error: null });
+    set({ done: pages, total: pages, error: null, complete: true });
   },
 }));

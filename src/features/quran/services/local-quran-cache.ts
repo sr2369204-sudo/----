@@ -113,6 +113,16 @@ export class LocalQuranCache {
     if (index.pageCount === 0) {
       return quranContentProvider.searchAyahs(trimmed, limit);
     }
+    if (index.pageCount < 604) {
+      // Only part of the Mushaf is stored, so searching the saved pages alone
+      // could say "not found" for an ayah that exists. Ask the source first and
+      // use the saved pages only when there is no connection.
+      try {
+        return await quranContentProvider.searchAyahs(trimmed, limit);
+      } catch {
+        // Offline: fall through to the partial local search below.
+      }
+    }
 
     const normalizedQuery = normalizeSurahSearch(trimmed);
     if (normalizedQuery.length === 0) {

@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import {
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -144,10 +145,11 @@ function AppLayout() {
     };
   }, [database, setPreferenceError, setPreferences]);
 
-  // Reading should work with no connection from the very first session, so the
-  // whole Mushaf is stored in the background once the app is ready — no screen
-  // ever asks the reader to download a page. Pages already stored are skipped,
-  // which makes this pass cheap on every later launch.
+  // Storing the whole Mushaf takes tens of megabytes, so the first time the
+  // reader is asked once (Wi-Fi is the better choice). "Yes" resumes the
+  // download on every launch until it is complete, "never" stops asking, and
+  // "later" simply asks again on the next launch. Pages already stored are
+  // skipped, which makes the resumed pass cheap.
   useEffect(() => {
     if (!introFinished) {
       return;
@@ -161,15 +163,26 @@ function AppLayout() {
           return;
         }
         const store = useOfflineDownloadStore.getState();
-        if (!complete) {
-          void store.start(database, 'all');
+        if (complete) {
+          // Everything is already on the device, so the banner only has to say so
+          // and report how much room the library takes.
+          const pages = await library.getCachedPageCount();
+          if (active) {
+            store.markReady(pages);
+          }
           return;
         }
-        // Everything is already on the device, so the banner only has to say so
-        // and report how much room the library takes.
-        const pages = await library.getCachedPageCount();
-        if (active) {
-          store.markReady(pages);
+        const row = await database.getFirstAsync<{ value: string }>(
+          "SELECT value FROM app_settings WHERE key = 'offline.autoDownload'",
+        );
+        if (!active) {
+          return;
+        }
+        const choice = row?.value;
+        if (choice === 'yes' || Platform.OS === 'web') {
+          void store.start(database, 'all');
+        } else if (choice !== 'never') {
+          askToDownloadLibrary(database);
         }
       })
       .catch((error: unknown) => {
@@ -223,6 +236,39 @@ function AppLayout() {
         />
       </IntroAnimationContext.Provider>
     </ThemeProvider>
+  );
+}
+
+async function rememberDownloadChoice(database: SQLiteDatabase, choice: 'yes' | 'never'): Promise<void> {
+  try {
+    await database.runAsync(
+      `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      'offline.autoDownload',
+      choice,
+      new Date().toISOString(),
+    );
+  } catch (error) {
+    console.error('تعذر حفظ اختيار تحميل المصحف.', error);
+  }
+}
+
+function askToDownloadLibrary(database: SQLiteDatabase): void {
+  Alert.alert(
+    'تحميل المصحف للقراءة بدون إنترنت؟',
+    'تحميل المصحف كله يحتاج نحو ٥٠ إلى ١٠٠ ميجابايت من الإنترنت (تقدير تقريبي). الأفضل أن يكون الاتصال عبر الواي فاي.',
+    [
+      {
+        text: 'حمّل الآن',
+        onPress: () => {
+          void rememberDownloadChoice(database, 'yes');
+          void useOfflineDownloadStore.getState().start(database, 'all');
+        },
+      },
+      { text: 'لاحقاً', style: 'cancel' },
+      { text: 'لا تسألني', onPress: () => void rememberDownloadChoice(database, 'never') },
+    ],
+    { cancelable: true },
   );
 }
 
