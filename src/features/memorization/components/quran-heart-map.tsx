@@ -218,7 +218,7 @@ export function QuranHeartMap({
 
       <GestureDetector gesture={gesture}>
         <View style={styles.viewport}>
-          <Animated.View style={animatedStyle}>
+          <Animated.View style={[styles.canvas, animatedStyle]}>
             {drawWidth > 0 && (
               <Svg
                 width={drawWidth}
@@ -330,6 +330,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  /**
+   * The heart is a drawing, not text flow. Left/right must stay physical even
+   * when the phone language is Arabic, otherwise the absolutely positioned
+   * names are mirrored away from their cells.
+   */
+  canvas: {
+    direction: 'ltr',
   },
   hint: {
     position: 'absolute',
