@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -38,7 +39,7 @@ import { quranContentProvider } from '@/features/quran/services/content-provider
 import type { AyahWordMeaning } from '@/features/quran/services/content-provider';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
-import type { AyahSearchResult } from '@/features/quran/types';
+import type { AyahSearchResult, QuranAyah } from '@/features/quran/types';
 import {
   useReaderSelectionStore,
   type ReaderSelection,
@@ -240,11 +241,15 @@ function Toolbar({
   const rangeAyahs = selection.type === 'range' ? selection.ayahs : null;
   const startAyah = selection.type === 'range' ? selection.startAyah : selection.ayah.ayahNumber;
   const endAyah = selection.type === 'range' ? selection.endAyah : selection.ayah.ayahNumber;
+  const [tafsirAyahNumber, setTafsirAyahNumber] = useState(startAyah);
 
   const reference =
     startAyah === endAyah
       ? `${surahName} · الآية ${toArabicNumbers(startAyah)}`
       : `${surahName} · الآيات ${toArabicNumbers(startAyah)}–${toArabicNumbers(endAyah)}`;
+  const panelReference = panel === 'tafsir'
+    ? `${surahName} · الآية ${toArabicNumbers(tafsirAyahNumber)}`
+    : reference;
   const searchQuery = selection.type === 'word'
     ? selection.word.textUthmani
     : selection.type === 'ayah'
@@ -605,6 +610,7 @@ function Toolbar({
         onPress: () => {
           setError(null);
           setMessage(null);
+          setTafsirAyahNumber(startAyah);
           setPanel('tafsir');
         },
       },
@@ -693,7 +699,7 @@ function Toolbar({
       : panel === 'meaning'
         ? 'معنى الكلمة'
         : panel === 'tafsir'
-          ? `تفسير الآية ${toArabicNumbers(startAyah)}`
+          ? `تفسير الآية ${toArabicNumbers(tafsirAyahNumber)}`
           : panel === 'highlight'
             ? 'تمييز النص'
             : 'نتائج البحث';
@@ -804,7 +810,7 @@ function Toolbar({
                   {panelTitle}
                 </Text>
                 <Text style={[styles.headerRef, { color: palette.textSecondary }]} numberOfLines={1}>
-                  {reference}
+                  {panelReference}
                 </Text>
               </View>
               <Pressable
@@ -819,8 +825,8 @@ function Toolbar({
             {panel === 'meaning' && isWord && (
               <MeaningPanel
                 surahNumber={selection.surahNumber}
-                ayahNumber={selection.ayah.ayahNumber}
-                wordText={selection.word.textUthmani}
+                ayah={selection.ayah}
+                selectedWordId={selection.word.id}
                 palette={palette}
               />
             )}
@@ -889,10 +895,13 @@ function Toolbar({
               </ScrollView>
             )}
 
-            {panel === 'tafsir' && (
+            {panel === 'tafsir' && selection.type !== 'range' && (
               <TafsirPanel
                 surahNumber={selection.surahNumber}
-                ayahNumber={startAyah}
+                surahName={surahName}
+                ayahNumber={tafsirAyahNumber}
+                initialAyah={selection.ayah}
+                onAyahChange={setTafsirAyahNumber}
                 palette={palette}
               />
             )}
@@ -1268,18 +1277,49 @@ function clampWithin(value: number, low: number, high: number, fallback: number)
 
 function TafsirPanel({
   surahNumber,
+  surahName,
   ayahNumber,
+  initialAyah,
+  onAyahChange,
   palette,
 }: {
   surahNumber: number;
+  surahName: string;
   ayahNumber: number;
+  initialAyah: QuranAyah;
+  onAyahChange: (ayahNumber: number) => void;
   palette: ReturnType<typeof useTheme>;
 }) {
   const [reloadKey, setReloadKey] = useState(0);
+  const [ayahContent, setAyahContent] = useState(initialAyah);
+  const [ayahCount, setAyahCount] = useState<number | null>(null);
+  const [navigating, setNavigating] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const requestKey = `${surahNumber}:${ayahNumber}:${reloadKey}`;
   const [state, setState] = useState<{ key: string; text: string | null; error: string | null } | null>(
     null,
   );
+
+  useEffect(() => {
+    let active = true;
+    quranContentProvider
+      .getSurahDirectory()
+      .then((directory) => {
+        if (active) {
+          setAyahCount(
+            directory.surahs.find((surah) => surah.surahNumber === surahNumber)?.ayahCount ?? null,
+          );
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAyahCount(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [surahNumber]);
 
   useEffect(() => {
     let active = true;
@@ -1304,47 +1344,143 @@ function TafsirPanel({
     };
   }, [ayahNumber, requestKey, surahNumber]);
 
-  if (!state || state.key !== requestKey) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={palette.primary} />
-        <Text style={[styles.hintText, { color: palette.textSecondary }]}>جارٍ تحميل التفسير…</Text>
-      </View>
-    );
+  const ayahText = ayahContent.ayahNumber === ayahNumber
+    ? ayahContent.words.map((word) => word.textUthmani).join(' ')
+    : '';
+  const loading = !state || state.key !== requestKey;
+
+  async function navigateAyah(nextAyahNumber: number): Promise<void> {
+    if (
+      navigating ||
+      nextAyahNumber < 1 ||
+      (ayahCount !== null && nextAyahNumber > ayahCount)
+    ) {
+      return;
+    }
+    setNavigating(true);
+    setCopyStatus(null);
+    try {
+      const pageNumber = await quranContentProvider.getPageNumberForAyah(
+        surahNumber,
+        nextAyahNumber,
+      );
+      const page = await quranContentProvider.getMushafPage(pageNumber);
+      const nextAyah = page.ayahs.find(
+        (item) => item.surahNumber === surahNumber && item.ayahNumber === nextAyahNumber,
+      );
+      if (!nextAyah) {
+        throw new Error('لم يتم العثور على نص الآية.');
+      }
+      setAyahContent(nextAyah);
+      onAyahChange(nextAyahNumber);
+    } catch {
+      setCopyStatus('تعذر تحميل الآية المطلوبة');
+    } finally {
+      setNavigating(false);
+    }
   }
-  if (state.error) {
-    return (
-      <View style={styles.centered}>
-        <Text accessibilityRole="alert" style={styles.errorText}>{state.error}</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setReloadKey((key) => key + 1)}
-          style={[styles.primaryButton, { backgroundColor: palette.primary }]}>
-          <Text style={[styles.primaryButtonText, { color: palette.background }]}>إعادة المحاولة</Text>
-        </Pressable>
-      </View>
-    );
+
+  async function copyTafsir(): Promise<void> {
+    if (!state?.text || loading) {
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(state.text);
+      setCopyStatus('تم نسخ التفسير');
+    } catch {
+      setCopyStatus('تعذر النسخ');
+    }
   }
+
   return (
     <ScrollView contentContainerStyle={styles.dialogBody}>
-      <Text style={[styles.bodyText, { color: palette.text, lineHeight: 28 }]}>{state.text}</Text>
+      {ayahText.length > 0 && (
+        <View
+          style={[
+            styles.ayahContextCard,
+            { backgroundColor: palette.backgroundSelected, borderColor: palette.border },
+          ]}>
+          <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
+            {surahName} · الآية {toArabicNumbers(ayahNumber)}
+          </Text>
+          <Text style={[styles.ayahText, styles.panelAyahText, { color: palette.text }]}>
+            {ayahText}
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.panelActionsRow}>
+        <PanelActionButton
+          label="السابق"
+          icon="chevron-forward"
+          disabled={navigating || ayahNumber <= 1}
+          palette={palette}
+          onPress={() => void navigateAyah(ayahNumber - 1)}
+        />
+        <PanelActionButton
+          label="التالي"
+          icon="chevron-back"
+          disabled={navigating || ayahCount === null || ayahNumber >= ayahCount}
+          palette={palette}
+          onPress={() => void navigateAyah(ayahNumber + 1)}
+        />
+        <PanelActionButton
+          label="نسخ التفسير"
+          icon="copy-outline"
+          disabled={loading || !state?.text}
+          palette={palette}
+          onPress={() => void copyTafsir()}
+        />
+      </View>
+
+      {copyStatus && (
+        <Text style={[styles.copyStatus, { color: palette.primary }]}>{copyStatus}</Text>
+      )}
+
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={palette.primary} />
+          <Text style={[styles.hintText, { color: palette.textSecondary }]}>جارٍ تحميل التفسير…</Text>
+        </View>
+      ) : state?.error ? (
+        <View style={styles.centered}>
+          <Text accessibilityRole="alert" style={styles.errorText}>{state.error}</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setCopyStatus(null);
+              setReloadKey((key) => key + 1);
+            }}
+            style={[styles.primaryButton, { backgroundColor: palette.primary }]}>
+            <Text style={[styles.primaryButtonText, { color: palette.background }]}>إعادة المحاولة</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Text style={[styles.bodyText, { color: palette.text, lineHeight: 28 }]}>{state?.text}</Text>
+      )}
     </ScrollView>
   );
 }
 
 function MeaningPanel({
   surahNumber,
-  ayahNumber,
-  wordText,
+  ayah,
+  selectedWordId,
   palette,
 }: {
   surahNumber: number;
-  ayahNumber: number;
-  wordText: string;
+  ayah: QuranAyah;
+  selectedWordId: string;
   palette: ReturnType<typeof useTheme>;
 }) {
+  const initialWordIndex = Math.max(
+    0,
+    ayah.words.findIndex((word) => word.id === selectedWordId),
+  );
+  const [wordIndex, setWordIndex] = useState(initialWordIndex);
   const [reloadKey, setReloadKey] = useState(0);
-  const requestKey = `${surahNumber}:${ayahNumber}:${reloadKey}`;
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const requestKey = `${surahNumber}:${ayah.ayahNumber}:${reloadKey}`;
   const [state, setState] = useState<{
     key: string;
     meanings: AyahWordMeaning[];
@@ -1354,7 +1490,7 @@ function MeaningPanel({
   useEffect(() => {
     let active = true;
     quranContentProvider
-      .getAyahWordMeanings(surahNumber, ayahNumber)
+      .getAyahWordMeanings(surahNumber, ayah.ayahNumber)
       .then((meanings) => {
         if (active) {
           setState({ key: requestKey, meanings, error: null });
@@ -1372,19 +1508,82 @@ function MeaningPanel({
     return () => {
       active = false;
     };
-  }, [ayahNumber, requestKey, surahNumber]);
+  }, [ayah.ayahNumber, requestKey, surahNumber]);
 
   const loading = !state || state.key !== requestKey;
+  const currentWordIndex = Math.min(wordIndex, Math.max(0, ayah.words.length - 1));
+  const currentWord = ayah.words[currentWordIndex];
+  const wordText = currentWord?.textUthmani ?? '';
   const own = normalizeWord(wordText);
   const matched = state?.meanings.find((item) => normalizeWord(item.word) === own) ?? null;
   const others = (state?.meanings ?? []).filter((item) => item !== matched);
+  const ayahText = ayah.words.map((word) => word.textUthmani).join(' ');
+
+  async function copyMeaning(): Promise<void> {
+    if (!matched?.meaning || loading) {
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(`${wordText}\n${matched.meaning}`);
+      setCopyStatus('تم نسخ المعنى');
+    } catch {
+      setCopyStatus('تعذر النسخ');
+    }
+  }
 
   return (
     <View style={styles.panelColumn}>
-      <View style={[styles.wordCard, { backgroundColor: palette.background, borderColor: palette.border }]}>
-        <Text style={[styles.wordCardText, { color: palette.text }]}>{wordText}</Text>
-      </View>
       <ScrollView style={styles.panelScroll} contentContainerStyle={styles.dialogBody}>
+        <View
+          style={[
+            styles.ayahContextCard,
+            { backgroundColor: palette.backgroundSelected, borderColor: palette.border },
+          ]}>
+          <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
+            نص الآية · {toArabicNumbers(ayah.ayahNumber)}
+          </Text>
+          <Text style={[styles.ayahText, styles.panelAyahText, { color: palette.text }]}>
+            {ayahText}
+          </Text>
+        </View>
+
+        <View style={[styles.wordCard, { backgroundColor: palette.background, borderColor: palette.border }]}>
+          <Text style={[styles.wordCardText, { color: palette.text }]}>{wordText}</Text>
+        </View>
+
+        <View style={styles.panelActionsRow}>
+          <PanelActionButton
+            label="الكلمة السابقة"
+            icon="chevron-forward"
+            disabled={currentWordIndex <= 0}
+            palette={palette}
+            onPress={() => {
+              setWordIndex((index) => Math.max(0, index - 1));
+              setCopyStatus(null);
+            }}
+          />
+          <PanelActionButton
+            label="الكلمة التالية"
+            icon="chevron-back"
+            disabled={currentWordIndex >= ayah.words.length - 1}
+            palette={palette}
+            onPress={() => {
+              setWordIndex((index) => Math.min(ayah.words.length - 1, index + 1));
+              setCopyStatus(null);
+            }}
+          />
+          <PanelActionButton
+            label="نسخ المعنى"
+            icon="copy-outline"
+            disabled={loading || !matched?.meaning}
+            palette={palette}
+            onPress={() => void copyMeaning()}
+          />
+        </View>
+        {copyStatus && (
+          <Text style={[styles.copyStatus, { color: palette.primary }]}>{copyStatus}</Text>
+        )}
+
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator color={palette.primary} />
@@ -1448,6 +1647,38 @@ function MeaningPanel({
         )}
       </ScrollView>
     </View>
+  );
+}
+
+function PanelActionButton({
+  label,
+  icon,
+  disabled,
+  palette,
+  onPress,
+}: {
+  label: string;
+  icon: IconName;
+  disabled: boolean;
+  palette: ReturnType<typeof useTheme>;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.panelActionButton,
+        { backgroundColor: palette.background, borderColor: palette.border },
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
+      ]}>
+      <Ionicons name={icon} size={15} color={palette.primary} />
+      <Text style={[styles.panelActionText, { color: palette.text }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -1752,6 +1983,37 @@ const styles = StyleSheet.create({
   panelColumn: {
     gap: Spacing.two,
     flexShrink: 1,
+  },
+  panelActionsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  panelActionButton: {
+    flex: 1,
+    minHeight: 38,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  panelActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  copyStatus: {
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  panelAyahText: {
+    fontSize: 19,
+    lineHeight: 34,
+    fontWeight: '600',
   },
   panelScroll: {
     flexShrink: 1,
