@@ -6,7 +6,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
-import { isNativeUpdateRequired, openAndroidUpdateDownload } from '@/constants/release';
+import { isNativeUpdateRequired, openAndroidUpdateDownload, useNewerRelease } from '@/constants/release';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { HeartAppearanceSheet } from '@/features/memorization/components/heart-appearance-sheet';
 import { HeartSelectionSheet } from '@/features/memorization/components/heart-selection-sheet';
@@ -75,6 +75,7 @@ export default function QuranHeartScreen() {
    * contain; rendering it there throws and takes the whole app down.
    */
   const nativeUpdateRequired = isNativeUpdateRequired();
+  const newerRelease = useNewerRelease();
 
   useEffect(() => {
     void load(database);
@@ -187,13 +188,13 @@ export default function QuranHeartScreen() {
 
   const handleDownloadUpdate = useCallback(async () => {
     try {
-      await openAndroidUpdateDownload();
+      await openAndroidUpdateDownload(newerRelease?.apkUrl);
       setUpdateDownloadFailed(false);
     } catch (error) {
       console.error('تعذر فتح رابط تنزيل الإصدار الجديد.', error);
       setUpdateDownloadFailed(true);
     }
-  }, []);
+  }, [newerRelease]);
 
   return (
     <SafeAreaView style={StyleSheet.flatten([styles.safeArea, { backgroundColor: colors.background }])}>
