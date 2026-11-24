@@ -2,6 +2,8 @@ import { createElement, memo, useCallback, useEffect, useMemo, useRef } from 're
 import { Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
+import { SURAH_NAME_ART } from '@/features/reader/assets/surah-name-art';
+import { SURAH_HEADER_ART_URI } from '@/features/reader/assets/surah-header-art';
 import type { Highlight } from '@/features/annotations/types';
 import type { MushafPage } from '@/features/quran/types';
 import {
@@ -473,7 +475,13 @@ function createMushafHtml(
   const sourceLineCount = Math.max(...page.lines.map((line) => line.lineNumber), 15);
   const rowOffset =
     page.pageNumber <= 2 ? getMushafPageCenteringOffset(page, sourceLineCount) : 0;
-  const linesHtml = renderMushafLinesHtml(page, rowOffset);
+  const nameArtSurahs = new Set(
+    (page.surahs ?? []).map((item) => item.surahNumber).filter((number) => SURAH_NAME_ART[number]),
+  );
+  const nameArtSymbols = [...nameArtSurahs]
+    .map((number) => `<symbol id="sn-${number}" viewBox="${SURAH_NAME_ART[number][0]}">${SURAH_NAME_ART[number][1]}</symbol>`)
+    .join('');
+  const linesHtml = renderMushafLinesHtml(page, rowOffset, nameArtSurahs);
   const baseFontSize = Math.min(Math.round(fontSize * 1.5), 120);
 
   const surahName = page.surahs && page.surahs.length > 0 ? page.surahs[0].nameArabic : '';
@@ -661,83 +669,57 @@ body {
   display: block;
   width: 100%;
   position: relative;
-  min-height: 40px;
+  aspect-ratio: 8.7267 / 1;
+  container-type: inline-size;
 }
-.surah-info-circle {
+.st-art {
+  position: absolute;
+  inset: 0;
+  background: url("${SURAH_HEADER_ART_URI}") center / 100% 100% no-repeat;
+}
+.st-name {
+  position: absolute;
+  left: 27.5%;
+  width: 45%;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Noto Naskh Arabic", serif;
+  font-weight: 700;
+  font-size: 6.6cqi;
+  color: #1c1a10;
+  white-space: nowrap;
+  padding-bottom: 0.4cqi;
+}
+.st-glyph {
+  width: 100%;
+  height: 86%;
+  fill: #1c1a10;
+}
+.st-med {
+  position: absolute;
+  top: 50%;
+  width: 8.4cqi;
+  height: 8.4cqi;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #1f8a45;
+  box-shadow: 0 0 0 0.45cqi #fbf8ee, 0 0 0 0.65cqi #2a2a1e, 0 0 0 1cqi #c8a45c;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px 4px;
-  border: 1px solid rgba(224, 188, 112, 0.72);
-  background: linear-gradient(145deg, #12384a, #0b5144);
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  box-shadow: 0 2px 6px rgba(5, 24, 31, 0.2);
+  color: #fff;
+  font-family: "Noto Naskh Arabic", serif;
+  line-height: 1;
   z-index: 2;
 }
-.surah-info-circle.start {
-  right: 4px;
-}
-.surah-info-circle.end {
-  left: 4px;
-}
-.surah-info-circle::before {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  border-radius: 7px 3px;
-  border: 1px solid rgba(244, 221, 169, 0.2);
-}
-.info-label {
-  font-size: 7px;
-  color: #e4c47f;
-  margin-bottom: -1px;
-  font-weight: 600;
-}
-.info-value {
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff4dc;
-  font-family: "Noto Naskh Arabic", serif;
-}
-.surah-title-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-width: 0;
-  min-height: 40px;
-  padding: 6px 46px;
-  border-radius: 13px 5px;
-  border: 1px solid rgba(224, 188, 112, 0.78);
-  background: linear-gradient(112deg, #102d42 0%, #104b48 58%, #0b5a46 100%);
-  box-shadow: 0 3px 9px rgba(7, 31, 38, 0.2);
-  clip-path: polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%);
-  z-index: 1;
-}
-.surah-title-box::before {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border: 1px solid rgba(244, 221, 169, 0.23);
-  border-radius: 9px 3px;
-  clip-path: polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%);
-  pointer-events: none;
-}
-.surah-title-text {
-  position: relative;
-  font-size: min(20px, 6cqi);
-  font-weight: 700;
-  color: #fff8e9;
-  font-family: "Noto Naskh Arabic", serif;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
-  white-space: nowrap;
-}
+.st-start { left: 21%; }
+.st-end { left: 79%; }
+.st-label { font-size: 2.3cqi; font-weight: 600; margin-bottom: 0.3cqi; }
+.st-value { font-size: 3.2cqi; font-weight: 700; }
 .opening-basmala {
   color: ${isDark ? '#f2ead8' : '#263a30'};
   font-family: "QcfTajweedPage";
@@ -802,7 +784,7 @@ body {
 body.tasmi3-hidden-page .word,
 body.tasmi3-hidden-page .ayah-marker,
 body.tasmi3-hidden-page .basmala-word,
-body.tasmi3-hidden-page .surah-title-text {
+body.tasmi3-hidden-page .st-name {
   filter: blur(9px);
   user-select: none;
 }
@@ -914,6 +896,7 @@ body.tasmi3-hidden-page .surah-title-text {
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">${nameArtSymbols}</svg>
 <main class="page" aria-label="صفحة المصحف">
   <header class="page-header">
     <span class="header-label" id="header-surah-label">${surahHeaderLabel}</span>

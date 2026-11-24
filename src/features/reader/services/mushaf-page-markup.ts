@@ -10,7 +10,11 @@ import type { MushafPage } from '../../quran/types';
  * the printed Mushaf assigns to it, in source order, which is what keeps the
  * margins and the per-line width identical to the printed page.
  */
-export function renderMushafLinesHtml(page: MushafPage, rowOffset = 0): string {
+export function renderMushafLinesHtml(
+  page: MushafPage,
+  rowOffset = 0,
+  nameArtSurahs: ReadonlySet<number> = new Set(),
+): string {
   const sourceLineNumbers = new Set(page.lines.map((line) => line.lineNumber));
   const surahTitles: Record<number, string> = {};
   const basmalas: Record<number, string> = {};
@@ -38,16 +42,19 @@ export function renderMushafLinesHtml(page: MushafPage, rowOffset = 0): string {
       surahTitles[titleRow] = `
         <div class="surah-title" style="grid-row: ${titleRow + rowOffset};" aria-label="سورة ${escapeHtml(surahName)}">
           <div class="surah-title-container">
-            <div class="surah-info-circle start">
-              <span class="info-label">آياتها</span>
-              <span class="info-value">${toArabicNumberString(surah?.ayahCount ?? 0)}</span>
+            <div class="st-art"></div>
+            <div class="st-med st-start">
+              <span class="st-label">آياتها</span>
+              <span class="st-value">${toArabicNumberString(surah?.ayahCount ?? 0)}</span>
             </div>
-            <div class="surah-title-box">
-              <span class="surah-title-text">سورة ${escapeHtml(surahName)}</span>
-            </div>
-            <div class="surah-info-circle end">
-              <span class="info-label">ترتيبها</span>
-              <span class="info-value">${toArabicNumberString(surah?.surahNumber ?? 0)}</span>
+            <span class="st-name">${
+              nameArtSurahs.has(ayah.surahNumber)
+                ? `<svg class="st-glyph" role="img" aria-hidden="true"><use href="#sn-${ayah.surahNumber}"></use></svg>`
+                : `سورة ${escapeHtml(surahName)}`
+            }</span>
+            <div class="st-med st-end">
+              <span class="st-label">ترتيبها</span>
+              <span class="st-value">${toArabicNumberString(surah?.surahNumber ?? 0)}</span>
             </div>
           </div>
         </div>`;
