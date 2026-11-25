@@ -37,6 +37,7 @@ import {
   View,
   FlatList,
 } from 'react-native';
+import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
@@ -1180,13 +1181,23 @@ export default function ReaderScreen() {
    * duration picker and by playing a selected run of ayahs straight from the
    * word/ayah tools.
    */
+  // Verse keys of a page from the copy stored on the device, so "play from here"
+  // never needs the network just to learn which ayahs are on the page.
+  const pageVerseKeys = useCallback(
+    async (pageNumber: number): Promise<string[]> => {
+      const cached = await new MushafPageCache(database).getPage(pageNumber);
+      return cached.page.ayahs.map((ayah) => `${ayah.surahNumber}:${ayah.ayahNumber}`);
+    },
+    [database],
+  );
+
   const runRecitation = useCallback(async (scope: RecitationScope) => {
     audioRequest.current += 1;
     player.pause();
-    const queue = await buildRecitationQueue(reciterId, scope);
+    const queue = await buildRecitationQueue(reciterId, scope, { pageVerseKeys });
     queue.tracks = resolveOfflineTracks(reciterId, queue.tracks);
     loadRecitationQueue(queue, null);
-  }, [loadRecitationQueue, player, reciterId]);
+  }, [loadRecitationQueue, pageVerseKeys, player, reciterId]);
 
   const startTasmi3 = useCallback((requestedScope: RecitationScope) => {
     const selectedScope =
@@ -1409,7 +1420,7 @@ export default function ReaderScreen() {
     const resumeTrack =
       recitationQueue.tracks[Math.floor(recitationStatus.currentIndex / ayahRepeatCount)] ?? null;
     setRecitationBusy(true);
-    buildRecitationQueue(nextReciterId, recitationQueue.scope)
+    buildRecitationQueue(nextReciterId, recitationQueue.scope, { pageVerseKeys })
       .then((queue) => {
         queue.tracks = resolveOfflineTracks(nextReciterId, queue.tracks);
         loadRecitationQueue(queue, resumeTrack);
@@ -1425,6 +1436,7 @@ export default function ReaderScreen() {
       });
   }, [
     database,
+    pageVerseKeys,
     ayahRepeatCount,
     loadRecitationQueue,
     recitationQueue,
@@ -1629,8 +1641,8 @@ export default function ReaderScreen() {
       setPlayMenuOpen(false);
       const surahNumber = playMenuSurahNumber;
       const lastAyah =
-        directoryQuery.data?.surahs.find((surah) => surah.surahNumber === surahNumber)?.ayahCount ??
-        playMenuAyahNumber;
+        (directoryQuery.data ?? BUNDLED_SURAH_DIRECTORY).surahs.find((surah) => surah.surahNumber === surahNumber)
+          ?.ayahCount ?? playMenuAyahNumber;
       if (choice === 'from-surah-start') {
         void startRecitation({ type: 'surah', surahNumber });
         return;

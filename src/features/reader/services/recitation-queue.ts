@@ -145,9 +145,19 @@ export async function resolveVerseKeyTracks(
   });
 }
 
+export type RecitationQueueOptions = {
+  /**
+   * Verse keys of a Mushaf page read from the pages stored on the device. When
+   * given, a page range is resolved from it first, so playing the page on screen
+   * needs no connection once its recitation is downloaded.
+   */
+  pageVerseKeys?: (pageNumber: number) => Promise<string[]>;
+};
+
 export async function buildRecitationQueue(
   reciterId: number,
   scope: RecitationScope,
+  options: RecitationQueueOptions = {},
 ): Promise<RecitationQueue> {
   const label = describeRecitationScope(scope);
 
@@ -213,7 +223,19 @@ export async function buildRecitationQueue(
 
   const pages = pageSequence(scope.fromPage, scope.toPage);
   const verseKeyLists = await Promise.all(
-    pages.map((pageNumber) => quranContentProvider.getVerseKeysForPage(pageNumber)),
+    pages.map(async (pageNumber) => {
+      if (options.pageVerseKeys) {
+        try {
+          const stored = await options.pageVerseKeys(pageNumber);
+          if (stored.length > 0) {
+            return stored;
+          }
+        } catch {
+          // Fall through to the online lookup below.
+        }
+      }
+      return quranContentProvider.getVerseKeysForPage(pageNumber);
+    }),
   );
   return {
     scope,
