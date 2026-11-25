@@ -13,6 +13,7 @@ import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDelete } from '@/components/confirm-delete';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 export default function BookmarksScreen() {
   const colors = useTheme();
   const database = useSQLiteContext();
@@ -52,9 +53,7 @@ export default function BookmarksScreen() {
       router.push({ pathname: '/reader', params: { pageNumber: String(page) } });
     } catch (openError) {
       setError(
-        openError instanceof Error
-          ? `تعذر فتح موضع الآية: ${openError.message}`
-          : 'تعذر فتح موضع الآية.',
+        friendlyError(openError, 'تعذر فتح موضع الآية.'),
       );
     } finally {
       setBusyId(null);
@@ -72,9 +71,7 @@ export default function BookmarksScreen() {
       await queryClient.invalidateQueries({ queryKey: ['annotations', 'bookmarks'] });
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error
-          ? `تعذر حذف العلامة: ${deleteError.message}`
-          : 'تعذر حذف العلامة المرجعية.',
+        friendlyError(deleteError, 'تعذر حذف العلامة المرجعية.'),
       );
     } finally {
       setBusyId(null);

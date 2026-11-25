@@ -26,6 +26,7 @@ import {
 } from '@/features/annotations/utils/recordings-format';
 import { useTheme } from '@/hooks/use-theme';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 /**
  * Every take the reader has kept for themselves, recorded from the «التسميع»
  * panel. Each row plays back and can be scrubbed with the seek bar.
@@ -91,7 +92,7 @@ export default function RecordingsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['recordings'] });
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? `تعذر حذف التسجيل: ${deleteError.message}` : 'تعذر حذف التسجيل.',
+        friendlyError(deleteError, 'تعذر حذف التسجيل.'),
       );
     } finally {
       setBusy(false);
@@ -126,9 +127,7 @@ export default function RecordingsScreen() {
         {recordingsQuery.error && (
           <View style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
-              {recordingsQuery.error instanceof Error
-                ? `تعذر تحميل التسجيلات: ${recordingsQuery.error.message}`
-                : 'تعذر تحميل التسجيلات.'}
+              {friendlyError(recordingsQuery.error, 'تعذر تحميل التسجيلات.')}
             </Text>
             <Pressable accessibilityRole="button" onPress={() => void recordingsQuery.refetch()}>
               <Text style={[styles.retryText, { color: colors.primary }]}>إعادة المحاولة</Text>

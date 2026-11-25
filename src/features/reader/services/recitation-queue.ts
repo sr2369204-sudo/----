@@ -4,6 +4,8 @@ import {
   quranContentProvider,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
+import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
+import { getOfflineTrackFile } from '@/features/reader/services/recitation-offline';
 
 /**
  * A user-chosen playback range. Ranges are resolved into an ordered list of
@@ -63,6 +65,35 @@ export function describeRecitationScope(scope: RecitationScope): string {
   }
 }
 
+/**
+ * Tracks read straight from the downloaded files, with no network call. Returns
+ * null unless every wanted ayah (or, for whole-surah reciters, the surah file)
+ * is stored, so a partly downloaded surah still goes through the online path.
+ */
+function offlineTracksFor(
+  reciterId: number,
+  wanted: { surahNumber: number; ayahNumber: number }[],
+): RecitationTrack[] | null {
+  try {
+    const tracks: RecitationTrack[] = [];
+    for (const item of wanted) {
+      const ayahNumber = isFullSurahReciter(reciterId) ? 0 : item.ayahNumber;
+      const probe = { surahNumber: item.surahNumber, ayahNumber, url: '' };
+      const file = getOfflineTrackFile(reciterId, probe);
+      if (!file.exists) {
+        return null;
+      }
+      if (isFullSurahReciter(reciterId) && tracks.some((track) => track.surahNumber === item.surahNumber)) {
+        continue;
+      }
+      tracks.push({ surahNumber: item.surahNumber, ayahNumber, url: file.uri });
+    }
+    return tracks;
+  } catch {
+    return null;
+  }
+}
+
 /** Resolves an ordered ayah key list into playable recordings for one reciter. */
 export async function resolveVerseKeyTracks(
   reciterId: number,
@@ -80,6 +111,11 @@ export async function resolveVerseKeyTracks(
   }
   if (wanted.length === 0) {
     throw new ContentUnavailableError('invalid-data', 'لا توجد آيات في النطاق المحدد.');
+  }
+
+  const stored = offlineTracksFor(reciterId, wanted);
+  if (stored) {
+    return stored;
   }
 
   const chapters = [...new Set(wanted.map((item) => item.surahNumber))];
@@ -116,6 +152,17 @@ export async function buildRecitationQueue(
   const label = describeRecitationScope(scope);
 
   if (scope.type === 'ayah') {
+    // A downloaded surah plays with no connection: no lookup is needed.
+    const stored = offlineTracksFor(reciterId, [
+      { surahNumber: scope.surahNumber, ayahNumber: scope.ayahNumber },
+    ]);
+    if (stored) {
+      return {
+        scope,
+        label,
+        tracks: stored.map((track) => ({ ...track, ayahNumber: scope.ayahNumber })),
+      };
+    }
     const url = await quranContentProvider.getAyahAudioUrl(
       reciterId,
       scope.surahNumber,
@@ -131,6 +178,19 @@ export async function buildRecitationQueue(
   }
 
   if (scope.type === 'surah') {
+    const surah = BUNDLED_SURAH_DIRECTORY.surahs.find((entry) => entry.surahNumber === scope.surahNumber);
+    const stored = surah
+      ? offlineTracksFor(
+          reciterId,
+          Array.from({ length: isFullSurahReciter(reciterId) ? 1 : surah.ayahCount }, (_, index) => ({
+            surahNumber: scope.surahNumber,
+            ayahNumber: index + 1,
+          })),
+        )
+      : null;
+    if (stored) {
+      return { scope, label, tracks: stored };
+    }
     return {
       scope,
       label,

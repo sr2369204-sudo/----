@@ -7,6 +7,7 @@ import {
   quranContentProvider,
 } from '@/features/quran/services/content-provider';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 const QCF_TAJWEED_FONT_URL =
   'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p';
 const BASMALA_FONT_PAGE_NUMBER = 1;
@@ -164,9 +165,7 @@ export class MushafPageCache {
       }
       throw new ContentUnavailableError(
         'network',
-        error instanceof Error
-          ? `تعذر الاتصال بمصدر خط المصحف: ${error.message}`
-          : 'تعذر الاتصال بمصدر خط المصحف.',
+        friendlyError(error, 'تعذر الاتصال بمصدر خط المصحف.'),
       );
     } finally {
       clearTimeout(timeout);

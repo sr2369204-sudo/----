@@ -14,6 +14,7 @@ import {
   type HighlightElementMap,
 } from '@/features/reader/services/mushaf-page-markup';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 export type PageTurnDirection = 'next' | 'previous';
 
 /** Position of a tapped element inside the WebView viewport (CSS pixels). */
@@ -389,9 +390,7 @@ export const MushafPageViewer = memo(function MushafPageViewer({
         handleMessage(message);
       } catch (error) {
         onInteractionError(
-          error instanceof Error
-            ? `تعذر قراءة التحديد: ${error.message}`
-            : 'تعذر قراءة التحديد.',
+          friendlyError(error, 'تعذر قراءة التحديد.'),
         );
       }
     },

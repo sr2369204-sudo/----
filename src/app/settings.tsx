@@ -48,7 +48,9 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { BackupCard } from '@/features/settings/components/backup-card';
 import { OfflineMushafCard } from '@/features/settings/components/offline-mushaf-card';
+import { WordAudioCard } from '@/features/settings/components/word-audio-card';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 const themeOptions: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'تلقائي' },
   { value: 'light', label: 'فاتح' },
@@ -158,7 +160,7 @@ export default function SettingsScreen() {
       );
     } catch (error) {
       setPreferenceError(
-        error instanceof Error ? `تعذر حفظ الإعداد: ${error.message}` : 'تعذر حفظ الإعداد على الجهاز.',
+        friendlyError(error, 'تعذر حفظ الإعداد على الجهاز.'),
       );
     } finally {
       setSaving(false);
@@ -176,7 +178,7 @@ export default function SettingsScreen() {
       await readerDisplayQuery.refetch();
     } catch (error) {
       setPreferenceError(
-        error instanceof Error ? `تعذر إعادة الضبط: ${error.message}` : 'تعذر إعادة الضبط.',
+        friendlyError(error, 'تعذر إعادة الضبط.'),
       );
     } finally {
       setSaving(false);
@@ -196,7 +198,7 @@ export default function SettingsScreen() {
       });
     } catch (error) {
       setPreferenceError(
-        error instanceof Error ? `تعذر تحميل التلاوة: ${error.message}` : 'تعذر تحميل التلاوة.',
+        friendlyError(error, 'تعذر تحميل التلاوة.'),
       );
     } finally {
       if (directoryQuery.data?.surahs) {
@@ -220,7 +222,7 @@ export default function SettingsScreen() {
           setRecitationStatuses({});
           setRecitationRevision((value) => value + 1);
         } catch (error) {
-          setPreferenceError(error instanceof Error ? error.message : 'تعذر حذف التلاوات المحمّلة.');
+          setPreferenceError(friendlyError(error, 'تعذر حذف التلاوات المحمّلة.'));
         }
       },
     );
@@ -340,6 +342,8 @@ export default function SettingsScreen() {
         </View>
 
         <OfflineMushafCard />
+
+        <WordAudioCard />
 
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.sectionHeader}>

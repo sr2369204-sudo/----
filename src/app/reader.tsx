@@ -50,6 +50,7 @@ import {
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
 import { resolveOfflineTracks } from '@/features/reader/services/recitation-offline';
+import { getOfflineWordUri } from '@/features/reader/services/word-audio-offline';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
 import type { ElementRect, TopicBand } from '@/features/reader/components/MushafPageViewer';
@@ -96,6 +97,7 @@ import { SurahTopicsSheet } from '@/features/surah-topics/components/SurahTopics
 import type { TopicSection } from '@/features/surah-topics/types';
 import { useIsNightTheme, useTheme, useThemeName } from '@/hooks/use-theme';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 type NavigationMode = 'page' | 'surah' | 'juz';
 type BookmarkedAyah = { surahNumber: number; ayahNumber: number };
 const PAGE_QUERY_RETRY_COUNT = 2;
@@ -393,7 +395,7 @@ export default function ReaderScreen() {
   const displayPreferencesError =
     displaySaveError ??
     (displayPreferencesQuery.error instanceof Error
-      ? `تعذر تحميل إعدادات القراءة: ${displayPreferencesQuery.error.message}`
+      ? friendlyError(displayPreferencesQuery.error, 'تعذر تحميل إعدادات القراءة.')
       : displayPreferencesQuery.error
         ? 'تعذر تحميل إعدادات القراءة المحفوظة.'
         : null);
@@ -412,7 +414,7 @@ export default function ReaderScreen() {
       .catch((error: unknown) => {
         if (active) {
           setDisplaySaveError(
-            error instanceof Error ? `تعذر حفظ إعداد القراءة: ${error.message}` : 'تعذر حفظ إعداد القراءة.',
+            friendlyError(error, 'تعذر حفظ إعداد القراءة.'),
           );
         }
       });
@@ -652,9 +654,7 @@ export default function ReaderScreen() {
       .then(() => queryClient.setQueryData(['reading', 'last-position'], position))
       .catch((error: unknown) => {
         setNavigationError(
-          error instanceof Error
-            ? `تعذر حفظ موضع القراءة: ${error.message}`
-            : 'تعذر حفظ موضع القراءة.',
+          friendlyError(error, 'تعذر حفظ موضع القراءة.'),
         );
       });
   }, [database, queryClient]);
@@ -727,7 +727,7 @@ export default function ReaderScreen() {
     }
     saveSetting(database, 'reader.lastPage', String(page.pageNumber)).catch((error: unknown) => {
       setNavigationError(
-        error instanceof Error ? `تعذر حفظ موضع القراءة: ${error.message}` : 'تعذر حفظ موضع القراءة.',
+        friendlyError(error, 'تعذر حفظ موضع القراءة.'),
       );
     });
     const firstAyah = page.ayahs[0];
@@ -781,9 +781,7 @@ export default function ReaderScreen() {
       .catch((error: unknown) => {
         if (active) {
           setHighlightError(
-            error instanceof Error
-              ? `تعذر تحميل التمييزات المحفوظة: ${error.message}`
-              : 'تعذر تحميل التمييزات المحفوظة من الجهاز.',
+            friendlyError(error, 'تعذر تحميل التمييزات المحفوظة من الجهاز.'),
           );
         }
       });
@@ -895,7 +893,7 @@ export default function ReaderScreen() {
     setAudioModeAsync({ playsInSilentMode: true }).catch((error: unknown) => {
       if (active) {
         setAudioError(
-          error instanceof Error ? `تعذر تهيئة الصوت: ${error.message}` : 'تعذر تهيئة الصوت.',
+          friendlyError(error, 'تعذر تهيئة الصوت.'),
         );
       }
     });
@@ -1225,11 +1223,17 @@ export default function ReaderScreen() {
     if (currentSelection.type === 'word') {
       // Rebuilt from the word's position: the `audio_url` carried by the API
       // drifts one word ahead after every pause mark.
-      audioUrl = quranContentProvider.getWordAudioUrlForPosition(
-        currentSelection.surahNumber,
-        currentSelection.ayah.ayahNumber,
-        currentSelection.word.position,
-      );
+      audioUrl =
+        getOfflineWordUri(
+          currentSelection.surahNumber,
+          currentSelection.ayah.ayahNumber,
+          currentSelection.word.position,
+        ) ??
+        quranContentProvider.getWordAudioUrlForPosition(
+          currentSelection.surahNumber,
+          currentSelection.ayah.ayahNumber,
+          currentSelection.word.position,
+        );
     } else {
       // This branch is now only for words or other types if added; ayah is handled above.
       audioUrl = null;
@@ -1275,9 +1279,7 @@ export default function ReaderScreen() {
       .then(() => setBookmarkRevision((revision) => revision + 1))
       .catch((error: unknown) => {
         setInteractionError(
-          error instanceof Error
-            ? `تعذر تحديث العلامة المرجعية: ${error.message}`
-            : 'تعذر تحديث العلامة المرجعية.',
+          friendlyError(error, 'تعذر تحديث العلامة المرجعية.'),
         );
       });
   }, [bookmarks, database]);
@@ -1288,9 +1290,7 @@ export default function ReaderScreen() {
       .then((destination) => navigateToPage(destination))
       .catch((error: unknown) => {
         setInteractionError(
-          error instanceof Error
-            ? `تعذر الانتقال إلى الآية: ${error.message}`
-            : 'تعذر الانتقال إلى الآية.',
+          friendlyError(error, 'تعذر الانتقال إلى الآية.'),
         );
       });
   }, [navigateToPage, quranCache]);
@@ -1324,9 +1324,7 @@ export default function ReaderScreen() {
         })
         .catch((error: unknown) => {
           setInteractionError(
-            error instanceof Error
-              ? `تعذر الانتقال إلى المقطع: ${error.message}`
-              : 'تعذر الانتقال إلى المقطع.',
+            friendlyError(error, 'تعذر الانتقال إلى المقطع.'),
           );
         });
     },
@@ -1358,9 +1356,7 @@ export default function ReaderScreen() {
       })
       .catch((error: unknown) => {
         setInteractionError(
-          error instanceof Error
-            ? `تعذر تحديث الكلمات المحفوظة: ${error.message}`
-            : 'تعذر تحديث الكلمات المحفوظة.',
+          friendlyError(error, 'تعذر تحديث الكلمات المحفوظة.'),
         );
       });
   }, [database, queryClient, savedWords]);
@@ -1370,7 +1366,7 @@ export default function ReaderScreen() {
     preferences.setPreferences(preferences.themePreference, nextReciterId);
     saveSetting(database, 'reciterId', String(nextReciterId)).catch((error: unknown) => {
       setRecitationError(
-        error instanceof Error ? `تعذر حفظ القارئ المختار: ${error.message}` : 'تعذر حفظ القارئ المختار.',
+        friendlyError(error, 'تعذر حفظ القارئ المختار.'),
       );
     });
     // A recitation that is already running is rebuilt with the new reciter and
@@ -1390,7 +1386,7 @@ export default function ReaderScreen() {
       })
       .catch((error: unknown) => {
         setRecitationError(
-          error instanceof Error ? `تعذر تغيير القارئ: ${error.message}` : 'تعذر تغيير القارئ.',
+          friendlyError(error, 'تعذر تغيير القارئ.'),
         );
       })
       .finally(() => {
@@ -1421,7 +1417,7 @@ export default function ReaderScreen() {
       setScopeDialogOpen(false);
     } catch (error) {
       setRecitationError(
-        error instanceof Error ? `تعذر تشغيل التلاوة: ${error.message}` : 'تعذر تشغيل التلاوة.',
+        friendlyError(error, 'تعذر تشغيل التلاوة.'),
       );
     } finally {
       setRecitationBusy(false);
@@ -1657,7 +1653,7 @@ export default function ReaderScreen() {
       setNavigationValue('');
     } catch (error) {
       setNavigationError(
-        error instanceof Error ? error.message : 'تعذر الانتقال إلى الموضع المطلوب.',
+        friendlyError(error, 'تعذر الانتقال إلى الموضع المطلوب.'),
       );
     } finally {
       setNavigationBusy(false);
@@ -2310,7 +2306,7 @@ function formatContentError(error: unknown): string {
     }
     return 'خدمة Quran.com غير متاحة مؤقتًا. حاول مرة أخرى لاحقًا.';
   }
-  return error instanceof Error ? error.message : 'تعذر فتح صفحة المصحف.';
+  return friendlyError(error, 'تعذر فتح صفحة المصحف.');
 }
 
 function toArabicNumbers(value: number): string {

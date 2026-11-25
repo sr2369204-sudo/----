@@ -23,6 +23,7 @@ import {
 } from '@/features/reader/services/recitation-queue';
 import { useTheme } from '@/hooks/use-theme';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 type Palette = ReturnType<typeof useTheme>;
 
 export type RecitationPlayerStatus = {
@@ -630,7 +631,7 @@ export function RecitationScopeDialog({
       onConfirm(getSelectedScope());
     } catch (validationError) {
       setLocalError(
-        validationError instanceof Error ? validationError.message : 'تحقق من القيم المدخلة.',
+        friendlyError(validationError, 'تحقق من القيم المدخلة.'),
       );
     }
   }
@@ -885,9 +886,7 @@ export function RecitationScopeDialog({
                   onTasmi3(getSelectedScope());
                 } catch (validationError) {
                   setLocalError(
-                    validationError instanceof Error
-                      ? validationError.message
-                      : 'تحقق من القيم المدخلة.',
+                    friendlyError(validationError, 'تحقق من القيم المدخلة.'),
                   );
                 }
               }}

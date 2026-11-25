@@ -207,3 +207,25 @@ export function searchBundled(query: string, limit: number): BundledSearchResult
   }
   return results;
 }
+
+/** Number of words in one ayah, counted from the bundled Quran text. */
+export function getAyahWordCount(surahNumber: number, ayahNumber: number): number {
+  const data = load();
+  const start = data.surahStart[surahNumber - 1];
+  if (start === undefined) {
+    return 0;
+  }
+  const text = data.ayahs[start + ayahNumber - 1];
+  return text ? text.split(/\s+/).filter((part) => part.length > 0).length : 0;
+}
+
+/** Ayah count of one surah, from the bundled Quran text. */
+export function getSurahAyahCount(surahNumber: number): number {
+  const data = load();
+  const start = data.surahStart[surahNumber - 1];
+  const next = data.surahStart[surahNumber];
+  if (start === undefined) {
+    return 0;
+  }
+  return (next ?? data.ayahs.length) - start;
+}

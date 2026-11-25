@@ -8,6 +8,7 @@ import {
   saveHeartColorOverrides,
 } from '@/features/memorization/services/heart-appearance';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 type HeartAppearanceState = {
   /** Colours the reader changed; empty means “follow the theme”. */
   overrides: HeartColorOverrides;
@@ -37,7 +38,7 @@ export const useHeartAppearanceStore = create<HeartAppearanceState>((set, get) =
     } catch (error) {
       set({
         loaded: true,
-        error: error instanceof Error ? error.message : 'تعذر تحميل ألوان القلب.',
+        error: friendlyError(error, 'تعذر تحميل ألوان القلب.'),
       });
     }
   },
@@ -52,7 +53,7 @@ export const useHeartAppearanceStore = create<HeartAppearanceState>((set, get) =
     } catch (error) {
       set({
         overrides: previous,
-        error: error instanceof Error ? error.message : 'تعذر حفظ لون القلب.',
+        error: friendlyError(error, 'تعذر حفظ لون القلب.'),
       });
     }
   },
@@ -65,7 +66,7 @@ export const useHeartAppearanceStore = create<HeartAppearanceState>((set, get) =
     } catch (error) {
       set({
         overrides: previous,
-        error: error instanceof Error ? error.message : 'تعذر إعادة ضبط ألوان القلب.',
+        error: friendlyError(error, 'تعذر إعادة ضبط ألوان القلب.'),
       });
     }
   },

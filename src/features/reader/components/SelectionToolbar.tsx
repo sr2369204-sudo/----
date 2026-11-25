@@ -50,6 +50,7 @@ import type { AyahReference } from '@/features/reader/services/reading-progress'
 import type { ElementRect } from '@/features/reader/components/MushafPageViewer';
 import { useTheme } from '@/hooks/use-theme';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 const HIGHLIGHT_COLORS = [
   '#FFD54F',
   '#AED581',
@@ -290,9 +291,7 @@ function Toolbar({
       }
     } catch (toggleError) {
       setError(
-        toggleError instanceof Error
-          ? `تعذر تحديث الختمة: ${toggleError.message}`
-          : 'تعذر تحديث الختمة.',
+        friendlyError(toggleError, 'تعذر تحديث الختمة.'),
       );
     } finally {
       setBusy(false);
@@ -340,7 +339,7 @@ function Toolbar({
       setPanel('toolbar');
       clearSelection();
     } catch (saveError) {
-      setError(saveError instanceof Error ? `تعذر حفظ التمييز: ${saveError.message}` : 'تعذر حفظ التمييز.');
+      setError(friendlyError(saveError, 'تعذر حفظ التمييز.'));
     } finally {
       setBusy(false);
     }
@@ -355,7 +354,7 @@ function Toolbar({
       setPanel('toolbar');
       clearSelection();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? `تعذر حذف التمييز: ${deleteError.message}` : 'تعذر حذف التمييز.');
+      setError(friendlyError(deleteError, 'تعذر حذف التمييز.'));
     } finally {
       setBusy(false);
     }
@@ -373,7 +372,7 @@ function Toolbar({
       await refreshSavedItems();
       setMessage('تم حفظ الملاحظة.');
     } catch (saveError) {
-      setError(saveError instanceof Error ? `تعذر حفظ الملاحظة: ${saveError.message}` : 'تعذر حفظ الملاحظة.');
+      setError(friendlyError(saveError, 'تعذر حفظ الملاحظة.'));
     } finally {
       setBusy(false);
     }
@@ -386,7 +385,7 @@ function Toolbar({
       await repository.deleteNote(id);
       await refreshSavedItems();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? `تعذر حذف الملاحظة: ${deleteError.message}` : 'تعذر حذف الملاحظة.');
+      setError(friendlyError(deleteError, 'تعذر حذف الملاحظة.'));
     } finally {
       setBusy(false);
     }
@@ -411,7 +410,7 @@ function Toolbar({
         /* the session keeps working; only the recording failed */
       });
       setError(
-        recordError instanceof Error ? `تعذر بدء التسجيل: ${recordError.message}` : 'تعذر بدء التسجيل.',
+        friendlyError(recordError, 'تعذر بدء التسجيل.'),
       );
     }
   }
@@ -468,7 +467,7 @@ function Toolbar({
       setMessage('تم حفظ الملاحظة الصوتية.');
     } catch (recordError) {
       setError(
-        recordError instanceof Error ? `تعذر حفظ التسجيل: ${recordError.message}` : 'تعذر حفظ التسجيل.',
+        friendlyError(recordError, 'تعذر حفظ التسجيل.'),
       );
     } finally {
       setBusy(false);
@@ -507,7 +506,7 @@ function Toolbar({
       await refreshSavedItems();
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? `تعذر حذف التسجيل: ${deleteError.message}` : 'تعذر حذف التسجيل.',
+        friendlyError(deleteError, 'تعذر حذف التسجيل.'),
       );
     } finally {
       setBusy(false);
@@ -520,7 +519,7 @@ function Toolbar({
     try {
       await onPlayAudio(selection);
     } catch (playError) {
-      setError(playError instanceof Error ? `تعذر تشغيل التلاوة: ${playError.message}` : 'تعذر تشغيل التلاوة.');
+      setError(friendlyError(playError, 'تعذر تشغيل التلاوة.'));
     } finally {
       setBusy(false);
     }
@@ -1330,7 +1329,7 @@ function TafsirPanel({
           setState({
             key: requestKey,
             text: null,
-            error: error instanceof Error ? error.message : 'تعذر تحميل التفسير.',
+            error: friendlyError(error, 'تعذر تحميل التفسير.'),
           });
         }
       });
@@ -1497,7 +1496,7 @@ function MeaningPanel({
           setState({
             key: requestKey,
             meanings: [],
-            error: error instanceof Error ? error.message : 'تعذر تحميل معنى الكلمة.',
+            error: friendlyError(error, 'تعذر تحميل معنى الكلمة.'),
           });
         }
       });
@@ -1740,7 +1739,7 @@ function SearchPanel({
           setState({
             key: requestKey,
             results: [],
-            error: error instanceof Error ? error.message : 'تعذر تنفيذ البحث.',
+            error: friendlyError(error, 'تعذر تنفيذ البحث.'),
           });
         }
       });

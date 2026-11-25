@@ -32,6 +32,7 @@ import {
   type ThemePreference,
 } from '@/features/reader/state/reader-preferences-store';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 // Every screen is laid out by hand (right-to-left rows, fixed arrows), so the
 // app must look the same on every phone. On a phone set to Arabic, Android
 // would also flip the layout by itself and mirror those screens a second time.
@@ -146,7 +147,7 @@ function AppLayout() {
       })
       .catch((error: unknown) => {
         if (active) {
-          setPreferenceError(error instanceof Error ? error.message : 'تعذر تحميل إعدادات التطبيق.');
+          setPreferenceError(friendlyError(error, 'تعذر تحميل إعدادات التطبيق.'));
         }
       });
 
@@ -887,7 +888,7 @@ export default function RootLayout() {
           <Text style={errorStyles.description}>
             {isLockError
               ? 'يستخدم المتصفح نظام تخزين خاص (OPFS) يمنع فتح قاعدة البيانات في أكثر من نافذة أو تبويب معاً لتفادي تعارض البيانات.\n\nيرجى إغلاق التبويبات الأخرى لصفحة التطبيق ثم الضغط على الزر أدناه.'
-              : dbError.message}
+              : 'حدثت مشكلة أثناء فتح بيانات التطبيق. أعد تشغيل التطبيق، وإن استمرت المشكلة تواصل معنا.'}
           </Text>
           <Pressable
             style={({ pressed }) => [errorStyles.button, pressed && { opacity: 0.85 }]}

@@ -13,6 +13,7 @@ import {
 import { useMemorizationStore } from '@/features/memorization/state/memorization-store';
 import { useTheme } from '@/hooks/use-theme';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 /**
  * Copies the reader's own data to the clipboard as text and pastes it back.
  * No server and no file sharing involved: the text can be kept anywhere.
@@ -31,7 +32,7 @@ export function BackupCard() {
       await Clipboard.setStringAsync(text);
       setMessage('تم نسخ النسخة الاحتياطية. الصقها في واتساب أو في ملاحظاتك واحتفظ بها.');
     } catch (error) {
-      setMessage(error instanceof Error ? `تعذر إنشاء النسخة: ${error.message}` : 'تعذر إنشاء النسخة.');
+      setMessage(friendlyError(error, 'تعذر إنشاء النسخة.'));
     } finally {
       setBusy(false);
     }
@@ -48,7 +49,7 @@ export function BackupCard() {
       const rows = Object.values(summary.rows).reduce((sum, count) => sum + count, 0);
       setMessage(`تم الاسترجاع: ${rows} عنصر و${summary.settings} إعداد.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'تعذر الاسترجاع.');
+      setMessage(friendlyError(error, 'تعذر الاسترجاع.'));
     } finally {
       setBusy(false);
     }

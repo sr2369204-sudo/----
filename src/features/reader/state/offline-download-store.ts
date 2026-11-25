@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { OfflineLibrary } from '@/features/reader/services/offline-library';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 export type OfflineDownloadTarget = number[] | 'all';
 
 type OfflineDownloadState = {
@@ -58,7 +59,7 @@ export const useOfflineDownloadStore = create<OfflineDownloadState>((set, get) =
         await library.downloadSurahs(target, options);
       }
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'تعذر إكمال التحميل.' });
+      set({ error: friendlyError(error, 'تعذر إكمال التحميل.') });
     } finally {
       set((state) => ({
         running: false,

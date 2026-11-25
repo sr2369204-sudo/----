@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { friendlyError, NETWORK_ERROR_MESSAGE } from '@/features/errors/friendly-error';
 import type { RecitationTrack } from '@/features/quran/services/content-provider';
 import {
   isFullSurahReciter,
@@ -158,9 +159,11 @@ export async function downloadRecitationSurahs(
 
   const cancelled = options.shouldCancel?.() ?? false;
   if (failed > 0 && !cancelled) {
-    throw firstError instanceof Error
-      ? new Error(`تعذر تحميل ${failed} مقطع. أعد المحاولة لاستكمال الباقي. (${firstError.message})`)
-      : new Error(`تعذر تحميل ${failed} مقطع. أعد المحاولة لاستكمال الباقي.`);
+    throw new Error(
+      friendlyError(firstError, '') === NETWORK_ERROR_MESSAGE
+        ? `${NETWORK_ERROR_MESSAGE} تعذر تحميل ${failed} مقطع، أعد المحاولة لاستكمال الباقي.`
+        : `تعذر تحميل ${failed} مقطع. أعد المحاولة لاستكمال الباقي.`,
+    );
   }
   return { failed, cancelled };
 }

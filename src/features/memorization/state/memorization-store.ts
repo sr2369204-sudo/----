@@ -6,6 +6,7 @@ import {
   saveMemorizedSurahs,
 } from '@/features/memorization/services/memorization-progress';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 type MemorizationState = {
   /** Surah numbers the reader has marked as memorized. */
   memorized: Set<number>;
@@ -49,7 +50,7 @@ export const useMemorizationStore = create<MemorizationState>((set, get) => ({
       set({
         loaded: true,
         loading: false,
-        error: error instanceof Error ? error.message : 'تعذر تحميل تقدم الحفظ.',
+        error: friendlyError(error, 'تعذر تحميل تقدم الحفظ.'),
       });
     }
   },
@@ -69,7 +70,7 @@ export const useMemorizationStore = create<MemorizationState>((set, get) => ({
     } catch (error) {
       set({
         memorized: previous,
-        error: error instanceof Error ? error.message : 'تعذر حفظ تقدم الحفظ.',
+        error: friendlyError(error, 'تعذر حفظ تقدم الحفظ.'),
       });
     }
   },
@@ -96,7 +97,7 @@ export const useMemorizationStore = create<MemorizationState>((set, get) => ({
     } catch (error) {
       set({
         memorized: previous,
-        error: error instanceof Error ? error.message : 'تعذر حفظ تقدم الحفظ.',
+        error: friendlyError(error, 'تعذر حفظ تقدم الحفظ.'),
       });
     }
   },
@@ -109,7 +110,7 @@ export const useMemorizationStore = create<MemorizationState>((set, get) => ({
     } catch (error) {
       set({
         memorized: previous,
-        error: error instanceof Error ? error.message : 'تعذر إعادة ضبط التقدم.',
+        error: friendlyError(error, 'تعذر إعادة ضبط التقدم.'),
       });
     }
   },

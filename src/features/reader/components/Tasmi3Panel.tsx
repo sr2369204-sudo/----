@@ -36,6 +36,7 @@ import {
 import type { RecitationScope } from '@/features/reader/services/recitation-queue';
 import { useTheme } from '@/hooks/use-theme';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 /** Folder inside the document directory that keeps the reader's own recordings. */
 const RECORDINGS_DIRECTORY = 'recordings';
 /** The panel lists only the newest takes it can show without crowding. */
@@ -160,7 +161,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       setExpanded(true);
     } catch (recordingError) {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
-      setError(recordingError instanceof Error ? recordingError.message : 'تعذر بدء التسجيل.');
+      setError(friendlyError(recordingError, 'تعذر بدء التسجيل.'));
     }
   }
 
@@ -194,7 +195,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       onReveal();
       setExpanded(true);
     } catch (recordingError) {
-      setError(recordingError instanceof Error ? recordingError.message : 'تعذر حفظ التسجيل.');
+      setError(friendlyError(recordingError, 'تعذر حفظ التسجيل.'));
     } finally {
       setBusy(false);
     }
@@ -249,7 +250,7 @@ export function Tasmi3Panel({ visible, scope, onHide, onReveal, onExit }: Props)
       await queryClient.invalidateQueries({ queryKey: ['recordings'] });
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? `تعذر حذف التسجيل: ${deleteError.message}` : 'تعذر حذف التسجيل.',
+        friendlyError(deleteError, 'تعذر حذف التسجيل.'),
       );
     } finally {
       setDeletingId(null);

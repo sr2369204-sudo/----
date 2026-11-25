@@ -13,6 +13,7 @@ import { quranContentProvider } from '@/features/quran/services/content-provider
 import { useTheme } from '@/hooks/use-theme';
 import { confirmDelete } from '@/components/confirm-delete';
 
+import { friendlyError } from '@/features/errors/friendly-error';
 export default function SavedWordsScreen() {
   const colors = useTheme();
   const database = useSQLiteContext();
@@ -53,7 +54,7 @@ export default function SavedWordsScreen() {
         await queryClient.invalidateQueries({ queryKey: ['annotations', 'saved-words'] });
       } catch (deleteError) {
         setError(
-          deleteError instanceof Error ? `تعذر حذف الكلمة: ${deleteError.message}` : 'تعذر حذف الكلمة.',
+          friendlyError(deleteError, 'تعذر حذف الكلمة.'),
         );
       } finally {
         setBusyId(null);
@@ -71,9 +72,7 @@ export default function SavedWordsScreen() {
         router.push({ pathname: '/reader', params: { pageNumber: String(page) } });
       } catch (openError) {
         setError(
-          openError instanceof Error
-            ? `تعذر فتح موضع الكلمة: ${openError.message}`
-            : 'تعذر فتح موضع الكلمة.',
+          friendlyError(openError, 'تعذر فتح موضع الكلمة.'),
         );
       } finally {
         setOpeningId(null);
@@ -117,9 +116,7 @@ export default function SavedWordsScreen() {
             {savedWordsQuery.error && (
               <View style={[styles.notice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
-                  {savedWordsQuery.error instanceof Error
-                    ? `تعذر تحميل الكلمات المحفوظة: ${savedWordsQuery.error.message}`
-                    : 'تعذر تحميل الكلمات المحفوظة.'}
+                  {friendlyError(savedWordsQuery.error, 'تعذر تحميل الكلمات المحفوظة.')}
                 </Text>
                 <Pressable accessibilityRole="button" onPress={() => void savedWordsQuery.refetch()}>
                   <Text style={[styles.retryText, { color: colors.primary }]}>إعادة المحاولة</Text>
