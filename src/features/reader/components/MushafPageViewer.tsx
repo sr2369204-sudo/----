@@ -612,8 +612,25 @@ body {
 }
 .header-ornament {
   color: ${isDark ? '#8a703d' : '#bba064'};
-  font-size: 11px;
-  opacity: 0.8;
+  opacity: 0.85;
+}
+/* A small ringed dot, drawn in CSS, replaces the old star-like glyph. */
+.header-ornament, .page-num-bracket {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.header-ornament::after, .page-num-bracket::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  border-radius: 50%;
+  background: currentColor;
 }
 .lines {
   display: grid;
@@ -895,7 +912,6 @@ body.tasmi3-hidden-page .st-name {
 }
 .page-num-bracket {
   color: ${isDark ? '#8a703d' : '#c5a363'};
-  font-size: 10px;
 }
 .page-number {
   color: ${isDark ? '#c5b690' : '#6f582e'};
@@ -910,15 +926,15 @@ body.tasmi3-hidden-page .st-name {
 <main class="page${page.pageNumber <= 2 ? ' opening-page' : ''}" aria-label="صفحة المصحف">
   <header class="page-header">
     <span class="header-label" id="header-surah-label">${surahHeaderLabel}</span>
-    <span class="header-ornament">۞</span>
+    <span class="header-ornament" aria-hidden="true"></span>
     <span class="header-label" id="header-juz-label">${juzHeaderLabel}</span>
   </header>
   <section class="lines" id="mushaf-lines">${linesHtml}<div id="topic-band-layer"></div><div id="highlight-layer"></div><div id="selection-layer"></div><div id="recitation-layer"></div><div id="recitation-word-layer"></div></section>
   <footer class="page-footer">
     <div class="page-number-ornament">
-      <span class="page-num-bracket">۞</span>
+      <span class="page-num-bracket" aria-hidden="true"></span>
       <span class="page-number" id="page-number">${pageNumberString}</span>
-      <span class="page-num-bracket">۞</span>
+      <span class="page-num-bracket" aria-hidden="true"></span>
     </div>
   </footer>
 </main>
