@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import {
-  Alert,
   I18nManager,
   Modal,
   Platform,
@@ -65,6 +64,7 @@ function AppLayout() {
   const [availableUpdate, setAvailableUpdate] = useState<Updates.Manifest | null>(null);
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState(false);
+  const [downloadPromptVisible, setDownloadPromptVisible] = useState(false);
   const colorScheme = useColorScheme();
   const { downloadProgress } = Updates.useUpdates();
   const themePreference = useReaderPreferencesStore((state) => state.themePreference);
@@ -194,7 +194,7 @@ function AppLayout() {
         if (choice === 'yes' || Platform.OS === 'web') {
           void store.start(database, 'all');
         } else if (choice !== 'never') {
-          askToDownloadLibrary(database);
+          setDownloadPromptVisible(true);
         }
       })
       .catch((error: unknown) => {
@@ -236,6 +236,16 @@ function AppLayout() {
         <StatusBar hidden />
         <Stack screenOptions={{ headerShown: false }} />
         <BrandIntro onReady={handleIntroReady} onFinished={handleIntroFinished} />
+        <DownloadPromptModal
+          visible={downloadPromptVisible}
+          colors={palette}
+          onLater={() => setDownloadPromptVisible(false)}
+          onDownload={() => {
+            setDownloadPromptVisible(false);
+            void rememberDownloadChoice(database, 'yes');
+            void useOfflineDownloadStore.getState().start(database, 'all');
+          }}
+        />
         <UpdateModal
           visible={availableUpdate !== null}
           notes={availableUpdate ? getUpdateNotes(availableUpdate) : []}
@@ -265,23 +275,152 @@ async function rememberDownloadChoice(database: SQLiteDatabase, choice: 'yes'): 
   }
 }
 
-function askToDownloadLibrary(database: SQLiteDatabase): void {
-  Alert.alert(
-    'تحميل المصحف للقراءة بدون إنترنت؟',
-    'تحميل المصحف كله يحتاج نحو ٥٠ إلى ١٠٠ ميجابايت من الإنترنت (تقدير تقريبي). الأفضل أن يكون الاتصال عبر الواي فاي.',
-    [
-      {
-        text: 'حمّل الآن',
-        onPress: () => {
-          void rememberDownloadChoice(database, 'yes');
-          void useOfflineDownloadStore.getState().start(database, 'all');
-        },
-      },
-      { text: 'لاحقاً', style: 'cancel' },
-    ],
-    { cancelable: true },
+function DownloadPromptModal({
+  visible,
+  colors,
+  onLater,
+  onDownload,
+}: {
+  visible: boolean;
+  colors: (typeof Colors)[keyof typeof Colors];
+  onLater: () => void;
+  onDownload: () => void;
+}) {
+  const facts = ['٥٠ إلى ١٠٠ ميجابايت', 'الأفضل عبر الواي فاي', 'يعمل بعدها بدون إنترنت'];
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onLater}
+      statusBarTranslucent>
+      <View style={updateStyles.overlay}>
+        <View
+          style={[
+            promptStyles.card,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+          <View style={[promptStyles.badge, { backgroundColor: `${colors.accent}22` }]}>
+            <Ionicons name="book-outline" size={30} color={colors.accent} />
+          </View>
+          <Text style={[promptStyles.title, { color: colors.text }]}>
+            تحميل المصحف للقراءة بدون إنترنت
+          </Text>
+          <Text style={[promptStyles.body, { color: colors.textSecondary }]}>
+            نحفظ صفحات المصحف على جهازك مرة واحدة، فتقرأ في أي وقت ومكان.
+          </Text>
+          <View style={promptStyles.facts}>
+            {facts.map((fact) => (
+              <View
+                key={fact}
+                style={[
+                  promptStyles.factRow,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                ]}>
+                <View style={[promptStyles.dot, { backgroundColor: colors.accent }]} />
+                <Text style={[promptStyles.factText, { color: colors.text }]}>{fact}</Text>
+              </View>
+            ))}
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onDownload}
+            style={({ pressed }) => [
+              promptStyles.primary,
+              { backgroundColor: colors.primary },
+              pressed && updateStyles.pressed,
+            ]}>
+            <Text style={[promptStyles.primaryText, { color: colors.onPrimary }]}>حمّل الآن</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={onLater} style={promptStyles.secondary}>
+            <Text style={[promptStyles.secondaryText, { color: colors.textSecondary }]}>لاحقاً</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
+
+const promptStyles = StyleSheet.create({
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 26,
+    borderWidth: 1,
+    paddingHorizontal: 22,
+    paddingTop: 26,
+    paddingBottom: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 22,
+  },
+  badge: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    marginTop: 16,
+    fontSize: 19,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  body: {
+    marginTop: 8,
+    fontSize: 13.5,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  facts: {
+    alignSelf: 'stretch',
+    gap: 8,
+    marginTop: 18,
+  },
+  factRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  factText: {
+    flex: 1,
+    fontSize: 13,
+    textAlign: 'right',
+  },
+  primary: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  primaryText: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  secondary: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 2,
+  },
+  secondaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
 
 function isThemePreference(value: string): value is ThemePreference {
   return value === 'system' || value === 'light' || value === 'dark' || value === 'night';
