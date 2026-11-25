@@ -716,6 +716,8 @@ export default function ReaderScreen() {
       todayDone: status.todayDone,
       perDay: status.perDay,
     });
+    // Hide the word/ayah options so only the celebration shows.
+    useReaderSelectionStore.getState().clearSelection();
     return `تم تسجيل وصولك لصفحة ${result.page}.`;
   }, [activePageNumber, database, queryClient, shownPageNumber]);
 
