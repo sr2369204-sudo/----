@@ -34,6 +34,7 @@ import {
   getRecitationStoredBytes,
   getRecitationSurahStatuses,
   type RecitationDownloadProgress,
+  type SurahDownloadState,
 } from '@/features/reader/services/recitation-offline';
 import { confirmDelete } from '@/components/confirm-delete';
 import { formatMegabytes } from '@/features/settings/utils/format';
@@ -95,6 +96,7 @@ export default function SettingsScreen() {
   const [recitationDownloading, setRecitationDownloading] = useState(false);
   const [recitationProgress, setRecitationProgress] = useState<RecitationDownloadProgress | null>(null);
   const [recitationStatuses, setRecitationStatuses] = useState<Record<number, boolean>>({});
+  const [surahStates, setSurahStates] = useState<Record<number, SurahDownloadState>>({});
   const recitationCancelRef = useRef(false);
   const [recitationRevision, setRecitationRevision] = useState(0);
   // The folder is listed again only when the reciter or the stored files change.
@@ -185,9 +187,11 @@ export default function SettingsScreen() {
     setRecitationDownloading(true);
     recitationCancelRef.current = false;
     setPreferenceError(null);
+    setSurahStates({});
     try {
       await downloadRecitationSurahs(reciterId, surahNumbers, {
         onProgress: setRecitationProgress,
+        onSurahProgress: setSurahStates,
         shouldCancel: () => recitationCancelRef.current,
       });
     } catch (error) {
@@ -461,6 +465,7 @@ export default function SettingsScreen() {
         recitationDownloading={recitationDownloading}
         recitationStatuses={recitationStatuses}
         recitationProgress={recitationProgress}
+        surahStates={surahStates}
         onOpen={refreshRecitationStatuses}
         onClose={() => setRecitationPickerOpen(false)}
       />
@@ -507,6 +512,43 @@ const surahFilters: { value: SurahFilter; label: string }[] = [
   { value: 'saved', label: 'المحمّلة' },
 ];
 
+const FAILED_COLOR = '#C0392B';
+
+type SurahRowStatus = {
+  label: string;
+  progress: number | null;
+  icon: 'checkmark-circle' | 'cloud-download-outline' | 'alert-circle' | 'time-outline' | 'sync-outline';
+  done: boolean;
+  failed: boolean;
+};
+
+/** One line of text, an icon and an optional bar for a surah row. */
+function describeSurahStatus(
+  state: SurahDownloadState | undefined,
+  downloading: boolean,
+  stored: boolean,
+): SurahRowStatus {
+  if (state) {
+    const finished = state.done + state.failed >= state.total && state.total > 0;
+    if (state.failed > 0 && (finished || !downloading)) {
+      return { label: `فشل التحميل (${toArabicNumbers(state.failed)} مقطع). أعد المحاولة`, progress: null, icon: 'alert-circle', done: false, failed: true };
+    }
+    if (state.total > 0 && state.done >= state.total) {
+      return { label: 'تم التحميل', progress: null, icon: 'checkmark-circle', done: true, failed: false };
+    }
+    if (downloading && state.done > 0) {
+      const ratio = state.done / state.total;
+      return { label: `جارٍ التحميل ${toArabicNumbers(Math.round(ratio * 100))}٪`, progress: ratio, icon: 'sync-outline', done: false, failed: false };
+    }
+    if (downloading) {
+      return { label: 'في الانتظار', progress: null, icon: 'time-outline', done: false, failed: false };
+    }
+  }
+  return stored
+    ? { label: 'التلاوة محمّلة', progress: null, icon: 'checkmark-circle', done: true, failed: false }
+    : { label: 'التلاوة غير محمّلة', progress: null, icon: 'cloud-download-outline', done: false, failed: false };
+}
+
 function SurahDownloadPicker({
   visible,
   colors,
@@ -519,6 +561,7 @@ function SurahDownloadPicker({
   recitationDownloading,
   recitationStatuses,
   recitationProgress,
+  surahStates,
   onOpen,
   onClose,
 }: {
@@ -533,6 +576,7 @@ function SurahDownloadPicker({
   recitationDownloading: boolean;
   recitationStatuses: Record<number, boolean>;
   recitationProgress: RecitationDownloadProgress | null;
+  surahStates: Record<number, SurahDownloadState>;
   onOpen?: () => void;
   onClose: () => void;
 }) {
@@ -573,6 +617,21 @@ function SurahDownloadPicker({
       );
     });
   }, [filter, normalizedQuery, recitationStatuses, surahs]);
+
+  const summary = useMemo(() => {
+    const entries = Object.entries(surahStates);
+    if (entries.length === 0) {
+      return null;
+    }
+    const failedNumbers = entries
+      .filter(([, state]) => state.failed > 0)
+      .map(([key]) => Number(key));
+    return {
+      failed: failedNumbers.length,
+      failedNumbers,
+      succeeded: entries.length - failedNumbers.length,
+    };
+  }, [surahStates]);
 
   const allVisibleSelected =
     visibleSurahs.length > 0 &&
@@ -640,6 +699,20 @@ function SurahDownloadPicker({
             </Pressable>
           ) : (
             <>
+              {!recitationDownloading && summary && (
+                <View style={[styles.pickerSummary, { backgroundColor: colors.background, borderColor: summary.failed > 0 ? FAILED_COLOR : colors.primary }]}>
+                  <Ionicons
+                    name={summary.failed > 0 ? 'alert-circle' : 'checkmark-circle'}
+                    size={20}
+                    color={summary.failed > 0 ? FAILED_COLOR : colors.primary}
+                  />
+                  <Text style={[styles.pickerSummaryText, { color: colors.text }]}>
+                    {summary.failed > 0
+                      ? `تم تحميل ${toArabicNumbers(summary.succeeded)} وفشل ${toArabicNumbers(summary.failed)}. اضغط إعادة المحاولة لاستكمال الباقي.`
+                      : `تم تحميل ${toArabicNumbers(summary.succeeded)} سورة بنجاح.`}
+                  </Text>
+                </View>
+              )}
               {recitationProgress && (
                 <View style={styles.pickerProgress}>
                   <View style={styles.progressHeader}>
@@ -737,6 +810,11 @@ function SurahDownloadPicker({
                 renderItem={({ item }) => {
                   const recitationDownloaded = recitationStatuses[item.surahNumber] === true;
                   const checked = selected.includes(item.surahNumber);
+                  const rowStatus = describeSurahStatus(
+                    surahStates[item.surahNumber],
+                    recitationDownloading,
+                    recitationDownloaded,
+                  );
                   return (
                     <Pressable
                       accessibilityRole="checkbox"
@@ -776,14 +854,17 @@ function SurahDownloadPicker({
                         <Text style={[styles.pickerName, { color: colors.text }]}>
                           {item.nameArabic}
                         </Text>
-                        <Text style={[styles.pickerMeta, { color: colors.textSecondary }]}>
-                          {recitationDownloaded ? 'التلاوة محمّلة' : 'التلاوة غير محمّلة'}
+                        <Text style={[styles.pickerMeta, { color: rowStatus.failed ? FAILED_COLOR : colors.textSecondary }]}>
+                          {rowStatus.label}
                         </Text>
+                        {rowStatus.progress !== null && (
+                          <DownloadProgressBar progress={rowStatus.progress} colors={colors} />
+                        )}
                       </View>
                       <Ionicons
-                        name={recitationDownloaded ? 'checkmark-circle' : 'cloud-download-outline'}
+                        name={rowStatus.icon}
                         size={20}
-                        color={recitationDownloaded ? colors.primary : colors.textSecondary}
+                        color={rowStatus.failed ? FAILED_COLOR : rowStatus.done ? colors.primary : colors.textSecondary}
                       />
                     </Pressable>
                   );
@@ -793,14 +874,22 @@ function SurahDownloadPicker({
               <View style={styles.pickerFooter}>
                 <Pressable
                   accessibilityRole="button"
-                  disabled={recitationDownloading || selected.length === 0}
+                  disabled={recitationDownloading || (selected.length === 0 && !(summary && summary.failed > 0))}
                   onPress={() => {
-                    void onDownloadRecitation(selected).then(closePicker);
+                    const targets =
+                      selected.length > 0 ? selected : summary?.failedNumbers ?? [];
+                    void onDownloadRecitation(targets).then(() => {
+                      setSelected([]);
+                    });
                   }}
                   style={[styles.primaryButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
                   <Ionicons name="musical-notes-outline" size={18} color={colors.background} />
                   <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-                    {recitationDownloading ? 'جارٍ تحميل التلاوة…' : 'تحميل التلاوة'}
+                    {recitationDownloading
+                      ? 'جارٍ تحميل التلاوة…'
+                      : selected.length === 0 && summary && summary.failed > 0
+                        ? 'إعادة المحاولة للسور الفاشلة'
+                        : 'تحميل التلاوة'}
                   </Text>
                 </Pressable>
                 {recitationDownloading && (
@@ -1211,6 +1300,20 @@ const styles = StyleSheet.create({
   },
   pickerMeta: {
     fontSize: 12,
+    textAlign: 'right',
+  },
+  pickerSummary: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  pickerSummaryText: {
+    flex: 1,
+    fontSize: 13,
     textAlign: 'right',
   },
   pickerFooter: {
