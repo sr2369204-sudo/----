@@ -3,6 +3,7 @@
 import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
+import { recordKhatmaPage } from '@/features/khatma/services/khatma';
 import { recordPageRead } from '@/features/reader/services/reading-history';
 import {
   useAudioPlayer,
@@ -657,7 +658,12 @@ export default function ReaderScreen() {
       return;
     }
     const timer = setTimeout(() => {
-      recordPageRead(database, shownPageNumber, toDateKey(new Date()))
+      const today = toDateKey(new Date());
+      // A running khatma counts the same page; it does nothing without one.
+      recordKhatmaPage(database, shownPageNumber, today)
+        .then(() => queryClient.invalidateQueries({ queryKey: ['khatma'] }))
+        .catch((error: unknown) => console.error('تعذر تسجيل صفحة الختمة.', error));
+      recordPageRead(database, shownPageNumber, today)
         .then((history) => queryClient.setQueryData(['reading', 'history'], history))
         .catch((error: unknown) => console.error('تعذر تسجيل الصفحة المقروءة.', error));
     }, 8_000);

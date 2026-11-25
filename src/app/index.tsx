@@ -17,6 +17,7 @@ import { AppUpdateBanner } from '@/components/app-update-banner';
 import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
+import { DailyDhikrModal } from '@/features/daily-dhikr/daily-dhikr-modal';
 import { ContinueReadingCard } from '@/features/home/components/continue-reading-card';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { RecordingsCard } from '@/features/home/components/recordings-card';
@@ -304,6 +305,7 @@ export default function HomeScreen() {
           onRetrySearch={() => undefined}
         />
       )}
+      <DailyDhikrModal enabled={introFinished} />
       <View
         pointerEvents="box-none"
         style={[styles.bottomStack, { paddingBottom: insets.bottom + Spacing.three }]}>
