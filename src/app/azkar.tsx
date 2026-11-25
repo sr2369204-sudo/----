@@ -20,10 +20,10 @@ import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import {
   AZKAR_SETS,
   azkarItemText,
-  getAzkarSet,
   type AzkarItem,
   type AzkarSetId,
 } from '@/features/azkar/data/azkar';
+import { HISN_SETS } from '@/features/azkar/data/hisn-azkar';
 import {
   azkarKey,
   azkarSetSummary,
@@ -38,6 +38,14 @@ import { toArabicNumbers } from '@/features/home/utils/format';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
 import { useTheme } from '@/hooks/use-theme';
 
+const ALL_SETS = [...AZKAR_SETS, ...HISN_SETS];
+const HISN_IDS = new Set<string>(HISN_SETS.map((entry) => entry.id));
+const isHisnSet = (id: string) => HISN_IDS.has(id);
+
+function getAzkarSet(id: AzkarSetId) {
+  return ALL_SETS.find((entry) => entry.id === id) ?? ALL_SETS[0];
+}
+
 const SET_ICONS: Record<AzkarSetId, keyof typeof Ionicons.glyphMap> = {
   morning: 'sunny-outline',
   evening: 'moon-outline',
@@ -48,6 +56,16 @@ const SET_ICONS: Record<AzkarSetId, keyof typeof Ionicons.glyphMap> = {
   hardship: 'heart-outline',
   beforeSalam: 'hand-left-outline',
   virtue: 'sparkles-outline',
+  hisnSleep: 'bed-outline',
+  hisnHome: 'home-outline',
+  hisnMosque: 'business-outline',
+  hisnPrayer: 'repeat-outline',
+  hisnWorry: 'heart-outline',
+  hisnSick: 'medkit-outline',
+  hisnFood: 'restaurant-outline',
+  hisnSocial: 'people-outline',
+  hisnTravel: 'airplane-outline',
+  hisnTawba: 'leaf-outline',
 };
 
 const GOLD = '#D8B56D';
@@ -394,15 +412,19 @@ export default function AzkarScreen() {
         <Text style={[styles.listIntro, { color: colors.textSecondary }]}>
           اختر مجموعة، وستظهر الأذكار واحدًا واحدًا في صفحة كاملة.
         </Text>
-        {AZKAR_SETS.map((entry) => {
+        {ALL_SETS.map((entry, position) => {
           const summary = progress
             ? azkarSetSummary(progress, entry.id, entry.items)
             : { done: 0, total: entry.items.length };
           const complete = summary.total > 0 && summary.done === summary.total;
           const ratio = summary.total > 0 ? summary.done / summary.total : 0;
+          const firstHisn = isHisnSet(entry.id) && (position === 0 || !isHisnSet(ALL_SETS[position - 1].id));
           return (
+            <View key={entry.id} style={styles.setWrap}>
+              {firstHisn ? (
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>حصن المسلم</Text>
+              ) : null}
             <Pressable
-              key={entry.id}
               accessibilityRole="button"
               disabled={!progress}
               onPress={() => setSetId(entry.id)}
@@ -432,6 +454,7 @@ export default function AzkarScreen() {
                 <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
               </View>
             </Pressable>
+            </View>
           );
         })}
       </ScrollView>
@@ -452,6 +475,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   screenTitle: { fontSize: TypeScale.display, fontWeight: '900' },
+  setWrap: { gap: 12 },
+  sectionTitle: { fontSize: TypeScale.body, fontWeight: '700', textAlign: 'right', marginTop: Spacing.two },
   listIntro: { fontSize: TypeScale.caption, textAlign: 'right', lineHeight: 22 },
   setCard: {
     flexDirection: 'row-reverse',

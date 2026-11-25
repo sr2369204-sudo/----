@@ -5,6 +5,8 @@
  * narrations; `source` names the narration. Quran passages match the bundled
  * Mushaf text.
  */
+import type { HisnSetId } from './hisn-azkar';
+
 export type AzkarSetId =
   | 'morning'
   | 'evening'
@@ -14,7 +16,8 @@ export type AzkarSetId =
   | 'daily'
   | 'hardship'
   | 'beforeSalam'
-  | 'virtue';
+  | 'virtue'
+  | HisnSetId;
 
 export type AzkarItem = {
   id: string;
@@ -459,6 +462,7 @@ export const SLEEP_TASBIH_ITEMS: AzkarItem[] = [
   { id: '2-8-c', text: 'اللَّهُ أَكْبَرُ', count: 34, source: 'حصن المسلم · أذكار النوم · متفق عليه' },
 ];
 
+/** The core sets. The Hisn al-Muslim sets live in hisn-azkar.ts and are added by the azkar screen. */
 export const AZKAR_SETS: AzkarSet[] = [
   {
     id: 'morning',
