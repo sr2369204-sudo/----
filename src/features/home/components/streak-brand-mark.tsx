@@ -149,7 +149,7 @@ export function StreakBrandMark({
             ],
           }}
         >
-          <Ionicons name="flame" size={36} color="#FFB627" />
+          <Ionicons name="flame" size={36} color="#F3D28C" />
         </Animated.View>
         <Text style={styles.number}>{toArabicNumbers(streak)}</Text>
       </Animated.View>
@@ -162,16 +162,16 @@ const styles = StyleSheet.create({
   layer: { ...(StyleSheet.absoluteFill as object), alignItems: 'center', justifyContent: 'center' },
   badge: {
     borderRadius: 16,
-    backgroundColor: '#7A2E0E',
+    backgroundColor: '#0F5640',
     borderWidth: 1.5,
-    borderColor: '#FFB627',
+    borderColor: '#F3D28C',
   },
   glow: {
     position: 'absolute',
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: '#FF8A1F',
+    backgroundColor: '#D8B56D',
   },
   number: {
     position: 'absolute',
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     color: '#FFF9EA',
-    textShadowColor: 'rgba(122,46,14,0.95)',
+    textShadowColor: 'rgba(4,26,20,0.95)',
     textShadowRadius: 3,
     textShadowOffset: { width: 0, height: 1 },
   },
