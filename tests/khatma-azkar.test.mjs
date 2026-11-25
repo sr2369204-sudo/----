@@ -3,12 +3,14 @@ import test from 'node:test';
 
 import {
   markReached,
+  khatmaCoversPage,
   khatmaStatus,
   parseKhatma,
   restartKhatma,
   serializeKhatma,
   startKhatma,
 } from '../src/features/khatma/services/khatma.ts';
+import { SURAH_START_PAGES, surahStartPage } from '../src/features/khatma/data/surah-start-pages.ts';
 import {
   parseAzkarProgress,
   serializeAzkarProgress,
@@ -23,34 +25,59 @@ test('khatma marks the reached page and tracks today', () => {
   let r = markReached(k, 10, '2026-11-25');
   assert.equal(r.kind, 'advanced');
   k = r.khatma;
-  assert.equal(k.reachedPage, 10);
+  assert.equal(k.done, 10);
   const s = khatmaStatus(k, '2026-11-25');
   assert.equal(s.done, 10);
   assert.equal(s.todayDone, 10);
   assert.equal(s.perDay, 21); // ceil((594 + 10) / 30)
   assert.equal(s.nextPage, 11);
-  // an earlier page never moves the mark back
+  assert.equal(s.reachedPage, 10);
   assert.equal(markReached(k, 5, '2026-11-25').kind, 'ahead');
-  // the same page again takes it back one page
   const undone = markReached(k, 10, '2026-11-25');
   assert.equal(undone.kind, 'undone');
-  assert.equal(undone.khatma.reachedPage, 9);
+  assert.equal(undone.khatma.done, 9);
+});
+
+test('khatma can start from a surah, wrap past the last page and have a kind', () => {
+  // Al-Baqarah starts on page 2; reaching page 50 means 49 pages done.
+  let k = startKhatma('2026-11-25', 30, { kind: 'memorization', startPage: surahStartPage(2) });
+  assert.equal(k.startPage, 2);
+  assert.equal(k.kind, 'memorization');
+  k = markReached(k, 50, '2026-11-25').khatma;
+  assert.equal(k.done, 49);
+  assert.equal(khatmaCoversPage(k, 30), true);
+  assert.equal(khatmaCoversPage(k, 51), false);
+  assert.equal(khatmaStatus(k, '2026-11-25').nextPage, 51);
+  // reaching page 604 and then page 1 wraps around; page 1 is the last page of this khatma
+  k = markReached(k, 604, '2026-11-25').khatma;
+  assert.equal(k.done, 603);
+  const end = markReached(k, 1, '2026-11-25');
+  assert.equal(end.khatma.done, 604);
+  assert.equal(khatmaStatus(end.khatma, '2026-11-25').finished, true);
+  assert.equal(surahStartPage(114), 604);
+  assert.equal(SURAH_START_PAGES.length, 114);
 });
 
 test('khatma rolls the day and reports behind and ahead of plan', () => {
-  let k = markReached(startKhatma('2026-11-01', 30), 40, '2026-11-01').khatma;
-  const next = khatmaStatus(k, '2026-11-02');
-  assert.equal(next.todayDone, 0);
+  const k = markReached(startKhatma('2026-11-01', 30), 40, '2026-11-01').khatma;
+  assert.equal(khatmaStatus(k, '2026-11-02').todayDone, 0);
   assert.ok(khatmaStatus(startKhatma('2026-11-01', 30), '2026-11-11').behindBy > 0);
-  assert.ok(khatmaStatus(startKhatma('2026-11-01', 30, 300), '2026-11-02').behindBy < 0);
+  assert.ok(khatmaStatus(startKhatma('2026-11-01', 30, { done: 300 }), '2026-11-02').behindBy < 0);
 });
 
-test('khatma round-trips and restarts with the count', () => {
-  const full = startKhatma('2026-11-01', 7, 604);
+test('khatma round-trips, reads the older format and restarts with the count', () => {
+  const full = startKhatma('2026-11-01', 7, { kind: 'review', startPage: 50, done: 604 });
   assert.equal(khatmaStatus(full, '2026-11-03').finished, true);
   assert.deepEqual(parseKhatma(serializeKhatma(full)), full);
-  assert.equal(restartKhatma(full, '2026-11-04').completed, 1);
-  assert.equal(restartKhatma(full, '2026-11-04').reachedPage, 0);
+  const restarted = restartKhatma(full, '2026-11-04');
+  assert.equal(restarted.completed, 1);
+  assert.equal(restarted.done, 0);
+  assert.equal(restarted.kind, 'review');
+  assert.equal(restarted.startPage, 50);
+  const old = parseKhatma(JSON.stringify({ startDate: '2026-11-01', targetDays: 30, reachedPage: 12 }));
+  assert.equal(old.done, 12);
+  assert.equal(old.startPage, 1);
+  assert.equal(old.kind, 'reading');
   assert.equal(parseKhatma('garbage'), null);
 });
 

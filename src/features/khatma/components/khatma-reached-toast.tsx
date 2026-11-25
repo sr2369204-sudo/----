@@ -5,13 +5,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
-import { MUSHAF_PAGES } from '@/features/khatma/services/khatma';
+import { KHATMA_KIND_TEXT, MUSHAF_PAGES, type KhatmaKind } from '@/features/khatma/services/khatma';
 
 export type KhatmaReachedEvent = {
   /** Changes on every mark so the same page can celebrate twice. */
   id: number;
   from: number;
   to: number;
+  /** Mushaf page reached. */
+  page: number;
+  kind: KhatmaKind;
   todayDone: number;
   perDay: number;
 };
@@ -24,13 +27,7 @@ const VISIBLE_MS = 3200;
  * it says how much is done and how much is left. Render it with `key={event.id}`
  * so every mark plays it again.
  */
-export function KhatmaReachedToast({
-  event,
-  onDone,
-}: {
-  event: KhatmaReachedEvent;
-  onDone: () => void;
-}) {
+export function KhatmaReachedToast({ event, onDone }: { event: KhatmaReachedEvent; onDone: () => void }) {
   const insets = useSafeAreaInsets();
   const shown = event;
   const [rise] = useState(() => new Animated.Value(0));
@@ -49,7 +46,12 @@ export function KhatmaReachedToast({
         useNativeDriver: true,
       }),
       Animated.parallel([
-        Animated.spring(pop, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
+        Animated.spring(pop, {
+          toValue: 1,
+          friction: 4,
+          tension: 120,
+          useNativeDriver: true,
+        }),
         Animated.timing(bar, {
           toValue: toPercent,
           duration: 900,
@@ -58,7 +60,11 @@ export function KhatmaReachedToast({
         }),
       ]),
       Animated.delay(VISIBLE_MS - 1500),
-      Animated.timing(rise, { toValue: 0, duration: 260, useNativeDriver: true }),
+      Animated.timing(rise, {
+        toValue: 0,
+        duration: 260,
+        useNativeDriver: true,
+      }),
     ]);
     animation.start(({ finished }) => {
       if (finished) {
@@ -81,7 +87,7 @@ export function KhatmaReachedToast({
       ? 'تم التراجع صفحة'
       : shown.perDay > 0 && shown.todayDone >= shown.perDay
         ? 'ما شاء الله، أتممت ورد اليوم'
-        : `بارك الله فيك، وصلت صفحة ${toArabicNumbers(shown.to)}`;
+        : KHATMA_KIND_TEXT[shown.kind].headline(toArabicNumbers(shown.page));
 
   return (
     <Animated.View
@@ -91,9 +97,17 @@ export function KhatmaReachedToast({
         {
           bottom: insets.bottom + 96,
           opacity: rise,
-          transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
+          transform: [
+            {
+              translateY: rise.interpolate({
+                inputRange: [0, 1],
+                outputRange: [40, 0],
+              }),
+            },
+          ],
         },
-      ]}>
+      ]}
+    >
       <View style={styles.card}>
         <View style={styles.top}>
           <Animated.View
@@ -101,12 +115,27 @@ export function KhatmaReachedToast({
               styles.badge,
               {
                 transform: [
-                  { scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) },
-                  { rotate: pop.interpolate({ inputRange: [0, 1], outputRange: ['-25deg', '0deg'] }) },
+                  {
+                    scale: pop.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.4, 1],
+                    }),
+                  },
+                  {
+                    rotate: pop.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['-25deg', '0deg'],
+                    }),
+                  },
                 ],
               },
-            ]}>
-            <Ionicons name={undone ? 'arrow-undo' : finished ? 'trophy' : 'checkmark'} size={22} color="#0B3B2C" />
+            ]}
+          >
+            <Ionicons
+              name={undone ? 'arrow-undo' : finished ? 'trophy' : 'checkmark'}
+              size={22}
+              color="#0B3B2C"
+            />
           </Animated.View>
           <View style={styles.copy}>
             <Text style={styles.headline}>{headline}</Text>
@@ -124,7 +153,12 @@ export function KhatmaReachedToast({
           <Animated.View
             style={[
               styles.fill,
-              { width: bar.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) },
+              {
+                width: bar.interpolate({
+                  inputRange: [0, 100],
+                  outputRange: ['0%', '100%'],
+                }),
+              },
             ]}
           />
         </View>
@@ -142,7 +176,13 @@ export function KhatmaReachedToast({
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', left: Spacing.three, right: Spacing.three, zIndex: 50, elevation: 12 },
+  wrap: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
+    zIndex: 50,
+    elevation: 12,
+  },
   card: {
     backgroundColor: '#0D6048',
     borderRadius: Radius.xl,
@@ -161,9 +201,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   copy: { flex: 1, alignItems: 'flex-end', gap: 2 },
-  headline: { fontSize: TypeScale.body, fontWeight: '900', color: '#FFF9EA', textAlign: 'right' },
-  sub: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.75)', textAlign: 'right' },
-  percent: { fontSize: 26, fontWeight: '900', color: '#F3D28C', fontVariant: ['tabular-nums'] },
+  headline: {
+    fontSize: TypeScale.body,
+    fontWeight: '900',
+    color: '#FFF9EA',
+    textAlign: 'right',
+  },
+  sub: {
+    fontSize: TypeScale.caption,
+    color: 'rgba(239, 248, 243, 0.75)',
+    textAlign: 'right',
+  },
+  percent: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#F3D28C',
+    fontVariant: ['tabular-nums'],
+  },
   track: {
     height: 10,
     borderRadius: Radius.pill,
@@ -171,7 +225,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.16)',
     flexDirection: 'row-reverse',
   },
-  fill: { height: '100%', borderRadius: Radius.pill, backgroundColor: '#D8B56D' },
+  fill: {
+    height: '100%',
+    borderRadius: Radius.pill,
+    backgroundColor: '#D8B56D',
+  },
   numbers: { flexDirection: 'row-reverse', justifyContent: 'space-between' },
   number: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.8)' },
   numberStrong: { color: '#F3D28C', fontWeight: '900' },

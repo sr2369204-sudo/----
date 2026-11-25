@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
-import { khatmaStatus, type Khatma } from '@/features/khatma/services/khatma';
+import { KHATMA_KIND_TEXT, khatmaStatus, type Khatma } from '@/features/khatma/services/khatma';
 
 type Props = {
   khatma: Khatma | null;
@@ -23,7 +23,8 @@ export function KhatmaHomeCard({ khatma, loading, today }: Props) {
       accessibilityRole="button"
       accessibilityLabel="الختمة"
       onPress={() => router.push('/khatma')}
-      style={({ pressed }) => pressed && styles.pressed}>
+      style={({ pressed }) => pressed && styles.pressed}
+    >
       <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.body}>
         <View pointerEvents="none" style={styles.glow} />
         <View style={styles.heading}>
@@ -31,7 +32,7 @@ export function KhatmaHomeCard({ khatma, loading, today }: Props) {
             <Ionicons name="book-outline" size={21} color="#E8C77F" />
           </View>
           <View style={styles.copy}>
-            <Text style={styles.title}>ختمتك</Text>
+            <Text style={styles.title}>{khatma ? KHATMA_KIND_TEXT[khatma.kind].title : 'ختمتك'}</Text>
             <Text style={styles.subtitle}>
               {loading
                 ? 'جارٍ التحميل…'
@@ -50,7 +51,8 @@ export function KhatmaHomeCard({ khatma, loading, today }: Props) {
             </View>
             <View style={styles.statsRow}>
               <Text style={styles.stat}>
-                وصلت صفحة <Text style={styles.statStrong}>{toArabicNumbers(status.done)}</Text>
+                {khatma ? KHATMA_KIND_TEXT[khatma.kind].reachedVerb : 'وصلت'} صفحة{' '}
+                <Text style={styles.statStrong}>{toArabicNumbers(status.reachedPage ?? 0)}</Text>
               </Text>
               <Text style={styles.stat}>
                 باقي <Text style={styles.statStrong}>{toArabicNumbers(status.remaining)}</Text> صفحة
@@ -74,7 +76,7 @@ export function KhatmaHomeCard({ khatma, loading, today }: Props) {
         ) : (
           <View style={styles.footer}>
             <Ionicons name="add-circle-outline" size={16} color="#D8B56D" />
-            <Text style={styles.footnote}>اختار مدة الختمة وابدأ. بعد القراءة اضغط «وصلت هنا» في المصحف.</Text>
+            <Text style={styles.footnote}>اختار نوع الختمة ونقطة البدء والمدة، وابدأ.</Text>
           </View>
         )}
       </GlassSurface>
@@ -94,7 +96,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: 'rgba(42, 133, 99, 0.2)',
   },
-  heading: { flexDirection: 'row-reverse', alignItems: 'center', gap: 11, minHeight: 48 },
+  heading: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 11,
+    minHeight: 48,
+  },
   icon: {
     width: 44,
     height: 44,
@@ -116,10 +123,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.13)',
     flexDirection: 'row-reverse',
   },
-  fill: { height: '100%', borderRadius: Radius.pill, backgroundColor: '#D8B56D' },
+  fill: {
+    height: '100%',
+    borderRadius: Radius.pill,
+    backgroundColor: '#D8B56D',
+  },
   statsRow: { flexDirection: 'row-reverse', justifyContent: 'space-between' },
   stat: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.76)' },
   statStrong: { color: '#F3D28C', fontWeight: '900' },
   footer: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
-  footnote: { flex: 1, fontSize: TypeScale.micro, textAlign: 'right', color: 'rgba(239, 248, 243, 0.78)' },
+  footnote: {
+    flex: 1,
+    fontSize: TypeScale.micro,
+    textAlign: 'right',
+    color: 'rgba(239, 248, 243, 0.78)',
+  },
 });

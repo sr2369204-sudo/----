@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { KHATMA_KIND_TEXT, type KhatmaKind } from '@/features/khatma/services/khatma';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -82,6 +83,7 @@ type Props = {
   isWordSaved: boolean;
   isDailyReadingReady: boolean;
   isDailyReadingComplete: boolean;
+  khatmaKind?: KhatmaKind;
   isAudioPlaying: boolean;
   onHighlightsChanged: () => void;
   onToggleBookmark: (surahNumber: number, ayahNumber: number) => void;
@@ -126,6 +128,7 @@ function Toolbar({
   isWordSaved,
   isDailyReadingReady,
   isDailyReadingComplete,
+  khatmaKind = 'reading',
   isAudioPlaying,
   onHighlightsChanged,
   onToggleBookmark,
@@ -571,7 +574,7 @@ function Toolbar({
   actions.push({
     key: 'daily-reading',
     icon: isDailyReadingComplete ? 'checkmark-circle' : 'checkmark-circle-outline',
-    label: isDailyReadingComplete ? 'إلغاء الوصول لهنا' : 'وصلت هنا (الختمة)',
+    label: isDailyReadingComplete ? 'إلغاء الوصول لهنا' : KHATMA_KIND_TEXT[khatmaKind].markLabel,
     active: isDailyReadingComplete,
     disabled: !isDailyReadingReady,
     onPress: () => void toggleSelectedAyahsReadStatus(),

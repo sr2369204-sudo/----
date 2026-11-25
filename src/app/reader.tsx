@@ -7,7 +7,12 @@ import {
   KhatmaReachedToast,
   type KhatmaReachedEvent,
 } from '@/features/khatma/components/khatma-reached-toast';
-import { khatmaStatus, loadKhatma, markKhatmaReached } from '@/features/khatma/services/khatma';
+import {
+  khatmaCoversPage,
+  khatmaStatus,
+  loadKhatma,
+  markKhatmaReached,
+} from '@/features/khatma/services/khatma';
 import { recordPageRead } from '@/features/reader/services/reading-history';
 import {
   useAudioPlayer,
@@ -689,10 +694,12 @@ export default function ReaderScreen() {
       id: Date.now(),
       from: result.from,
       to: result.to,
+      page: result.page,
+      kind: result.khatma.kind,
       todayDone: status.todayDone,
       perDay: status.perDay,
     });
-    return result.kind === 'undone' ? 'تم التراجع عن الصفحة.' : `تم تسجيل وصولك لصفحة ${result.to}.`;
+    return result.kind === 'undone' ? 'تم التراجع عن الصفحة.' : `تم تسجيل وصولك لصفحة ${result.page}.`;
   }, [activePageNumber, database, queryClient, shownPageNumber]);
 
   useEffect(() => {
@@ -1513,7 +1520,8 @@ export default function ReaderScreen() {
   const isDailyReadingComplete =
     selectedAyahReferences.length > 0 &&
     currentKhatmaPage !== null &&
-    (khatmaQuery.data?.reachedPage ?? 0) >= currentKhatmaPage;
+    khatmaQuery.data != null &&
+    khatmaCoversPage(khatmaQuery.data, currentKhatmaPage);
 
   const isBookmarked = selection
     ? selection.type === 'range'
@@ -1937,6 +1945,7 @@ export default function ReaderScreen() {
           isWordSaved={isWordSaved}
           isDailyReadingReady={khatmaQuery.data !== undefined}
           isDailyReadingComplete={isDailyReadingComplete}
+          khatmaKind={khatmaQuery.data?.kind ?? 'reading'}
           isAudioPlaying={isPlayingAudio}
           onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
           onToggleBookmark={toggleBookmark}
