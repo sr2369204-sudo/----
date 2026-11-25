@@ -140,8 +140,8 @@ export function HomeHero({
                   styles.title,
                   {
                     transform: [
-                      { translateX: streakShow.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
-                      { scale: streakShow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
+                      { translateX: streakShow.interpolate({ inputRange: [0, 1], outputRange: [0, -8] }) },
+                      { scale: streakShow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.16] }) },
                     ],
                   },
                 ]}>
@@ -151,7 +151,12 @@ export function HomeHero({
                 <RNAnimated.Text
                   style={[
                     styles.subtitle,
-                    { opacity: streakShow.interpolate({ inputRange: [0, 0.6], outputRange: [1, 0], extrapolate: 'clamp' }) },
+                    {
+                      opacity: streakShow.interpolate({ inputRange: [0, 0.6], outputRange: [1, 0], extrapolate: 'clamp' }),
+                      transform: [
+                        { translateY: streakShow.interpolate({ inputRange: [0, 1], outputRange: [0, -10], extrapolate: 'clamp' }) },
+                      ],
+                    },
                   ]}>
                   اقرأ القرآن وتدبّر آياته
                 </RNAnimated.Text>
@@ -161,7 +166,13 @@ export function HomeHero({
                     style={[
                       styles.subtitle,
                       styles.streakSubtitle,
-                      { opacity: streakShow.interpolate({ inputRange: [0.4, 1], outputRange: [0, 1], extrapolate: 'clamp' }) },
+                      {
+                        opacity: streakShow.interpolate({ inputRange: [0.2, 0.8], outputRange: [0, 1], extrapolate: 'clamp' }),
+                        transform: [
+                          { translateY: streakShow.interpolate({ inputRange: [0, 1], outputRange: [12, 0], extrapolate: 'clamp' }) },
+                          { scale: streakShow.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1], extrapolate: 'clamp' }) },
+                        ],
+                      },
                     ]}>
                     {streakPhrase(streak)}
                   </RNAnimated.Text>

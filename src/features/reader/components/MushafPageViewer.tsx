@@ -561,17 +561,6 @@ body {
 .page.is-ready {
   opacity: 1;
 }
-/* The two opening pages hold only a few lines, centred in the page. A fine
-   double frame around them stands in for the ornamental border of the print. */
-.opening-page::after {
-  content: '';
-  position: absolute;
-  inset: 26px 12px 26px;
-  border-radius: 14px;
-  border: 3px double ${isDark ? 'rgba(197, 163, 99, 0.45)' : 'rgba(197, 163, 99, 0.7)'};
-  pointer-events: none;
-  z-index: -1;
-}
 .page::before {
   content: '';
   position: absolute;
@@ -923,7 +912,7 @@ body.tasmi3-hidden-page .st-name {
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">${nameArtSymbols}</svg>
-<main class="page${page.pageNumber <= 2 ? ' opening-page' : ''}" aria-label="صفحة المصحف">
+<main class="page" aria-label="صفحة المصحف">
   <header class="page-header">
     <span class="header-label" id="header-surah-label">${surahHeaderLabel}</span>
     <span class="header-ornament" aria-hidden="true"></span>

@@ -37,7 +37,7 @@ export function useStreakMoment(streak: number): Animated.Value {
     let animation: Animated.CompositeAnimation | null = null;
     const play = () => {
       animation = Animated.sequence([
-        Animated.spring(show, { toValue: 1, friction: 5, tension: 110, useNativeDriver: true }),
+        Animated.spring(show, { toValue: 1, friction: 4, tension: 70, useNativeDriver: true }),
         Animated.delay(SHOWN_MS),
         Animated.timing(show, {
           toValue: 0,
@@ -138,8 +138,9 @@ export function StreakBrandMark({
               extrapolate: 'clamp',
             }),
             transform: [
-              { scale: show.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) },
-              { rotate: show.interpolate({ inputRange: [0, 1], outputRange: ['-25deg', '0deg'] }) },
+              { translateY: show.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) },
+              { scale: show.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) },
+              { rotate: show.interpolate({ inputRange: [0, 1], outputRange: ['-200deg', '0deg'] }) },
             ],
           },
         ]}
