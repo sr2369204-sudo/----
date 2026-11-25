@@ -170,3 +170,13 @@ test('every azkar set has unique ids, counts and sourced text', () => {
     assert.ok(set && set.items.every((item) => item.source), `${id} items need a source`);
   }
 });
+
+import { friendlyError } from '../src/features/errors/friendly-error.ts';
+
+test('technical errors become plain Arabic', () => {
+  assert.match(friendlyError(new Error('fetch failed'), 'فشل'), /الإنترنت/);
+  assert.match(friendlyError(new TypeError('Network request failed'), 'فشل'), /الإنترنت/);
+  assert.equal(friendlyError(new Error('Bookmarks require a valid surah'), 'تعذر الحفظ.'), 'تعذر الحفظ.');
+  assert.equal(friendlyError(new Error('لا يتوفر تسجيل للسورة.'), 'فشل'), 'لا يتوفر تسجيل للسورة.');
+  assert.doesNotMatch(friendlyError(new Error('Quran.com API returned HTTP 500.'), 'فشل'), /HTTP/);
+});
