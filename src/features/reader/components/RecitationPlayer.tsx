@@ -1,5 +1,6 @@
+/* eslint-disable react-hooks/refs -- the scroll-to-selected helper hands ref-backed callbacks to list items */
 import { Ionicons } from '@expo/vector-icons';
-import { useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ComponentRef } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -10,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 
 import { SeekBar } from '@/components/ui/seek-bar';
@@ -23,7 +25,7 @@ import {
 } from '@/features/reader/services/recitation-queue';
 import { useTheme } from '@/hooks/use-theme';
 
-import { friendlyError } from '@/features/errors/friendly-error';
+import { friendlyError, NETWORK_ERROR_MESSAGE } from '@/features/errors/friendly-error';
 type Palette = ReturnType<typeof useTheme>;
 
 export type RecitationPlayerStatus = {
@@ -390,6 +392,74 @@ export function RecitationPlayer({
   );
 }
 
+/**
+ * Opens a scrolling list on the selected item instead of at its start. Each item
+ * reports its position as it is laid out; once the selected one and the viewport
+ * are known the list is moved so the selected item sits in the middle.
+ */
+function useScrollToSelected(horizontal: boolean, selectedKey: number) {
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const positions = useRef(new Map<number, { start: number; size: number }>());
+  const viewport = useRef(0);
+  const content = useRef(0);
+  const placedFor = useRef<number | null>(null);
+
+  const place = useCallback(() => {
+    const item = positions.current.get(selectedKey);
+    if (!item || viewport.current <= 0 || content.current <= 0 || placedFor.current === selectedKey) {
+      return;
+    }
+    placedFor.current = selectedKey;
+    const target = item.start - (viewport.current - item.size) / 2;
+    const clamped = Math.max(0, Math.min(target, content.current - viewport.current));
+    scrollRef.current?.scrollTo(horizontal ? { x: clamped, animated: false } : { y: clamped, animated: false });
+  }, [horizontal, selectedKey]);
+
+  useEffect(() => {
+    placedFor.current = null;
+    place();
+  }, [place]);
+
+  return {
+    scrollRef,
+    onScrollViewLayout: (event: LayoutChangeEvent) => {
+      viewport.current = horizontal ? event.nativeEvent.layout.width : event.nativeEvent.layout.height;
+      place();
+    },
+    onContentSizeChange: (width: number, height: number) => {
+      content.current = horizontal ? width : height;
+      place();
+    },
+    onItemLayout: (key: number) => (event: LayoutChangeEvent) => {
+      const { x, y, width, height } = event.nativeEvent.layout;
+      positions.current.set(key, horizontal ? { start: x, size: width } : { start: y, size: height });
+      if (key === selectedKey) {
+        place();
+      }
+    },
+  };
+}
+
+/** Shown instead of a bare red line when a recitation cannot be fetched without internet. */
+function RecitationErrorNotice({ message, colors }: { message: string; colors: Palette }) {
+  if (message !== NETWORK_ERROR_MESSAGE) {
+    return <Text accessibilityRole="alert" style={styles.errorText}>{message}</Text>;
+  }
+  return (
+    <View
+      accessibilityRole="alert"
+      style={[styles.offlineNotice, { backgroundColor: `${colors.accent}1F`, borderColor: colors.accent }]}>
+      <Ionicons name="cloud-offline-outline" size={22} color={colors.accent} />
+      <View style={styles.offlineNoticeText}>
+        <Text style={[styles.offlineNoticeTitle, { color: colors.text }]}>لا يوجد اتصال بالإنترنت</Text>
+        <Text style={[styles.offlineNoticeBody, { color: colors.textSecondary }]}>
+          لتشغيل هذه التلاوة حمّلها للاستخدام دون إنترنت، أو شغّل الإنترنت ثم حاول مرة أخرى.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 type ReciterPickerProps = {
   visible: boolean;
   colors: Palette;
@@ -408,6 +478,7 @@ export function ReciterPickerDialog({
   onClose,
 }: ReciterPickerProps) {
   const orderedReciters = sortRecitersForDisplay(reciters);
+  const pickerScroll = useScrollToSelected(false, reciterId);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -449,6 +520,9 @@ export function ReciterPickerDialog({
           </View>
 
           <ScrollView
+            ref={pickerScroll.scrollRef}
+            onLayout={pickerScroll.onScrollViewLayout}
+            onContentSizeChange={pickerScroll.onContentSizeChange}
             style={styles.reciterList}
             contentContainerStyle={styles.reciterListContent}
             showsVerticalScrollIndicator={false}>
@@ -457,6 +531,7 @@ export function ReciterPickerDialog({
               return (
                 <Pressable
                   key={reciter.id}
+                  onLayout={pickerScroll.onItemLayout(reciter.id)}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   onPress={() => {
@@ -583,6 +658,7 @@ export function RecitationScopeDialog({
   const [toPage, setToPage] = useState(String(Math.min(604, currentPageNumber + 4)));
   const [localError, setLocalError] = useState<string | null>(null);
   const orderedReciters = sortRecitersForDisplay(reciters);
+  const chipScroll = useScrollToSelected(true, reciterId);
 
   const modes: { key: Mode; label: string }[] = chapterOnly
     ? [{ key: 'surah', label: 'سورة' }]
@@ -681,6 +757,9 @@ export function RecitationScopeDialog({
               <Text style={[styles.sectionLabel, { color: colors.text }]}>اختر القارئ</Text>
             </View>
             <ScrollView
+              ref={chipScroll.scrollRef}
+              onLayout={chipScroll.onScrollViewLayout}
+              onContentSizeChange={chipScroll.onContentSizeChange}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.chipRow}>
@@ -694,6 +773,7 @@ export function RecitationScopeDialog({
                   return (
                     <Pressable
                       key={reciter.id}
+                      onLayout={chipScroll.onItemLayout(reciter.id)}
                       accessibilityRole="button"
                       accessibilityState={{ selected }}
                       onPress={() => onSelectReciter(reciter.id)}
@@ -870,9 +950,7 @@ export function RecitationScopeDialog({
           )}
 
           {(localError || error) && (
-            <Text accessibilityRole="alert" style={styles.errorText}>
-              {localError ?? error}
-            </Text>
+            <RecitationErrorNotice message={(localError ?? error) as string} colors={colors} />
           )}
 
           <View style={styles.footerRow}>
@@ -1034,7 +1112,7 @@ export function RecitationPlayMenu({
             ))}
           </View>
 
-          {error && <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>}
+          {error && <RecitationErrorNotice message={error} colors={colors} />}
         </View>
       </View>
     </Modal>
@@ -1618,6 +1696,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   hintText: {
+    fontSize: 12.5,
+    lineHeight: 20,
+    textAlign: 'right',
+  },
+  offlineNotice: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.two,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  offlineNoticeText: {
+    flex: 1,
+    gap: 2,
+  },
+  offlineNoticeTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  offlineNoticeBody: {
     fontSize: 12.5,
     lineHeight: 20,
     textAlign: 'right',
