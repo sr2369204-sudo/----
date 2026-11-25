@@ -51,6 +51,22 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
       href: '/tajweed',
     },
     {
+      id: 'azkar',
+      label: 'الأذكار',
+      sublabel: 'صباح ومساء',
+      icon: 'sunny',
+      color: '#C9A24B',
+      href: '/azkar',
+    },
+    {
+      id: 'khatma',
+      label: 'الختمة',
+      sublabel: 'متتبع',
+      icon: 'trophy',
+      color: '#2A8563',
+      href: '/khatma',
+    },
+    {
       id: 'library',
       label: 'المكتبة',
       sublabel: 'السور',
@@ -61,9 +77,13 @@ export function HomeActionsGrid({ savedWordsCount }: { savedWordsCount?: number 
   ];
 
   return (
-    <View style={styles.row}>
-      {actions.map((action, index) => (
-        <ActionTile key={action.id} action={action} index={index} />
+    <View style={styles.grid}>
+      {[actions.slice(0, 3), actions.slice(3)].map((rowActions, rowIndex) => (
+        <View key={rowIndex} style={styles.row}>
+          {rowActions.map((action, index) => (
+            <ActionTile key={action.id} action={action} index={rowIndex * 3 + index} />
+          ))}
+        </View>
       ))}
     </View>
   );
@@ -126,6 +146,9 @@ function ActionTile({ action, index }: { action: ActionItem; index: number }) {
 }
 
 const styles = StyleSheet.create({
+  grid: {
+    gap: Spacing.two,
+  },
   row: {
     flexDirection: 'row-reverse',
     alignItems: 'stretch',

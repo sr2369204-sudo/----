@@ -8,9 +8,9 @@
 
 export type LatestRelease = {
   version: string;
-  /** Direct link to the APK file itself (GitHub Releases), downloaded inside the app. */
+  /** Main link. A direct .apk link is installed inside the app; a download page opens in the browser. */
   apkUrl: string;
-  /** Download page opened in the browser if the direct download fails (MediaFire). */
+  /** Opened in the browser if the main link is a page, or if the in-app download fails. */
   fallbackUrl: string;
 };
 
@@ -24,6 +24,19 @@ export function parseVersion(value: unknown): number[] | null {
     return null;
   }
   return value.trim().split('.').map(Number);
+}
+
+/**
+ * True when the link is the APK file itself (path ends in .apk), which the app can
+ * download and install on its own. A download page such as MediaFire's
+ * (".../mushaf.apk/file") is not, and is opened in the browser instead.
+ */
+export function isDirectApkLink(url: string): boolean {
+  try {
+    return new URL(url).pathname.toLowerCase().endsWith('.apk');
+  } catch {
+    return false;
+  }
 }
 
 /** Negative when a < b, 0 when equal, positive when a > b. Null when either is not a version. */

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { KHATMA_KIND_TEXT, type KhatmaKind } from '@/features/khatma/services/khatma';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -82,6 +83,7 @@ type Props = {
   isWordSaved: boolean;
   isDailyReadingReady: boolean;
   isDailyReadingComplete: boolean;
+  khatmaKind?: KhatmaKind;
   isAudioPlaying: boolean;
   onHighlightsChanged: () => void;
   onToggleBookmark: (surahNumber: number, ayahNumber: number) => void;
@@ -91,7 +93,8 @@ type Props = {
     wordId: string,
     wordText: string,
   ) => void;
-  onToggleDailyReading: (references: AyahReference[]) => Promise<void>;
+  /** Marks the page reached in the khatma. May return a message to show. */
+  onToggleDailyReading: (references: AyahReference[]) => Promise<string | void>;
   onPlayAudio: (selection: ReaderSelection) => Promise<void>;
   onStopAudio: () => void;
   /** Opens the long-press play menu (rest of surah / page start / surah start). */
@@ -125,6 +128,7 @@ function Toolbar({
   isWordSaved,
   isDailyReadingReady,
   isDailyReadingComplete,
+  khatmaKind = 'reading',
   isAudioPlaying,
   onHighlightsChanged,
   onToggleBookmark,
@@ -280,19 +284,15 @@ function Toolbar({
     setError(null);
     setMessage(null);
     try {
-      await onToggleDailyReading(selectedAyahReferences);
-      setMessage(
-        isDailyReadingComplete
-          ? 'تم إلغاء احتساب القراءة.'
-          : selectedAyahReferences.length === 1
-            ? 'تم احتساب الآية ضمن خطة اليوم.'
-            : 'تم احتساب الآيات ضمن خطة اليوم.',
-      );
+      const result = await onToggleDailyReading(selectedAyahReferences);
+      if (typeof result === 'string') {
+        setMessage(result);
+      }
     } catch (toggleError) {
       setError(
         toggleError instanceof Error
-          ? `تعذر تحديث خطة القراءة: ${toggleError.message}`
-          : 'تعذر تحديث خطة القراءة.',
+          ? `تعذر تحديث الختمة: ${toggleError.message}`
+          : 'تعذر تحديث الختمة.',
       );
     } finally {
       setBusy(false);
@@ -574,13 +574,7 @@ function Toolbar({
   actions.push({
     key: 'daily-reading',
     icon: isDailyReadingComplete ? 'checkmark-circle' : 'checkmark-circle-outline',
-    label: isDailyReadingComplete
-      ? isRange
-        ? 'إلغاء إتمام الآيات'
-        : 'إلغاء إتمام الآية'
-      : isRange
-        ? 'تمت قراءة الآيات'
-        : 'تمت قراءة الآية',
+    label: isDailyReadingComplete ? 'تم التسجيل' : KHATMA_KIND_TEXT[khatmaKind].markLabel,
     active: isDailyReadingComplete,
     disabled: !isDailyReadingReady,
     onPress: () => void toggleSelectedAyahsReadStatus(),

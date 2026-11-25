@@ -4,6 +4,7 @@ import { Linking, Platform } from 'react-native';
 
 import {
   compareVersions,
+  isDirectApkLink,
   isNewerRelease,
   LATEST_RELEASE_URL,
   type LatestRelease,
@@ -27,8 +28,8 @@ export const HEART_MIN_NATIVE_VERSION = '1.0.1';
  */
 const FALLBACK_RELEASE: LatestRelease = {
   version: HEART_MIN_NATIVE_VERSION,
-  apkUrl: 'https://www.mediafire.com/file/ueg0wlpbsg47ou1/mushaf.apk/file',
-  fallbackUrl: 'https://www.mediafire.com/file/ueg0wlpbsg47ou1/mushaf.apk/file',
+  apkUrl: 'https://www.mediafire.com/file/cipklohdd8u4xf1/mushaf.apk/file',
+  fallbackUrl: 'https://www.mediafire.com/file/cipklohdd8u4xf1/mushaf.apk/file',
 };
 
 /** Installed native build version, or null when updates are off (web, Expo Go, dev client). */
@@ -104,6 +105,15 @@ export function useApkInstall(release: LatestRelease | null) {
 
   const start = useCallback(async () => {
     const target = release ?? FALLBACK_RELEASE;
+    if (!isDirectApkLink(target.apkUrl)) {
+      // A download page (MediaFire): the browser handles the download and the installer.
+      try {
+        await Linking.openURL(target.apkUrl);
+      } catch (openError) {
+        console.error('تعذر فتح صفحة التنزيل.', openError);
+      }
+      return;
+    }
     setState({ status: 'downloading', progress: null });
     try {
       await downloadAndInstallApk(target.apkUrl, (progress) =>

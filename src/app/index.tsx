@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,6 +17,7 @@ import { AppUpdateBanner } from '@/components/app-update-banner';
 import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
+import { DailyDhikrModal } from '@/features/daily-dhikr/daily-dhikr-modal';
 import { ContinueReadingCard } from '@/features/home/components/continue-reading-card';
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { RecordingsCard } from '@/features/home/components/recordings-card';
@@ -24,7 +25,8 @@ import { OfflineDownloadBanner } from '@/features/home/components/offline-downlo
 import { ReadingStreakCard } from '@/features/home/components/reading-streak-card';
 import { loadReadingHistory } from '@/features/reader/services/reading-history';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
-import { DailyReadingPlan } from '@/features/home/components/daily-reading-plan';
+import { KhatmaHomeCard } from '@/features/khatma/components/khatma-home-card';
+import { loadKhatma } from '@/features/khatma/services/khatma';
 import { HomeHero } from '@/features/home/components/home-hero';
 import {
   HomeSearchResults,
@@ -39,11 +41,7 @@ import {
 } from '@/features/home/utils/home-search';
 import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
-import {
-  loadDailyReadingPlan,
-  loadLastReadingPosition,
-  setDailyAyahTarget,
-} from '@/features/reader/services/reading-progress';
+import { loadLastReadingPosition } from '@/features/reader/services/reading-progress';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, QuranSurahSummary } from '@/features/quran/types';
 import { warmOfflineData, getBundledAyahText, searchBundled } from '@/features/offline-data';
@@ -57,12 +55,9 @@ export default function HomeScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [searchAnchor, setSearchAnchor] = useState<SearchAnchor | null>(null);
   const [revelationFilter, setRevelationFilter] = useState<RevelationFilter>('all');
-  const [dailyPlanSaveError, setDailyPlanSaveError] = useState<string | null>(null);
-  const [dailyPlanUpdating, setDailyPlanUpdating] = useState(false);
 
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
   const submittedSearch = search.trim();
@@ -115,9 +110,10 @@ export default function HomeScreen() {
     queryFn: () => new SqliteAnnotationRepository(database).listRecordings(),
   });
 
-  const dailyPlanQuery = useQuery({
-    queryKey: ['reading', 'daily-plan'],
-    queryFn: () => loadDailyReadingPlan(database),
+  const khatmaQuery = useQuery({
+    queryKey: ['khatma'],
+    queryFn: () => loadKhatma(database),
+    staleTime: 0,
   });
 
   const readingHistoryQuery = useQuery({
@@ -129,21 +125,6 @@ export default function HomeScreen() {
     queryKey: ['reading', 'last-position'],
     queryFn: () => loadLastReadingPosition(database),
   });
-
-  const updateDailyTarget = useCallback(async (targetAyahs: number) => {
-    setDailyPlanUpdating(true);
-    setDailyPlanSaveError(null);
-    try {
-      const plan = await setDailyAyahTarget(database, targetAyahs);
-      queryClient.setQueryData(['reading', 'daily-plan'], plan);
-    } catch (error) {
-      setDailyPlanSaveError(
-        error instanceof Error ? `تعذر حفظ هدف القراءة: ${error.message}` : 'تعذر حفظ هدف القراءة.',
-      );
-    } finally {
-      setDailyPlanUpdating(false);
-    }
-  }, [database, queryClient]);
 
   // Normalising all 114 names on every keystroke showed up as typing latency,
   // so the directory's names are normalised once when they arrive instead.
@@ -229,20 +210,10 @@ export default function HomeScreen() {
               </View>
             </View>
             <HomeActionsGrid savedWordsCount={savedWords.data?.length} />
-            <DailyReadingPlan
-              plan={dailyPlanQuery.data ?? null}
-              surahNameByNumber={surahNames}
-              loading={dailyPlanQuery.isPending}
-              error={
-                dailyPlanSaveError ??
-                (dailyPlanQuery.error instanceof Error
-                  ? `تعذر تحميل خطة القراءة: ${dailyPlanQuery.error.message}`
-                  : dailyPlanQuery.error
-                    ? 'تعذر تحميل خطة القراءة اليومية.'
-                    : null)
-              }
-              updating={dailyPlanUpdating}
-              onChangeTarget={(target) => void updateDailyTarget(target)}
+            <KhatmaHomeCard
+              khatma={khatmaQuery.data ?? null}
+              loading={khatmaQuery.isPending}
+              today={toDateKey(new Date())}
             />
             <ReadingStreakCard
               history={readingHistoryQuery.data ?? null}
@@ -304,6 +275,7 @@ export default function HomeScreen() {
           onRetrySearch={() => undefined}
         />
       )}
+      <DailyDhikrModal enabled={introFinished} />
       <View
         pointerEvents="box-none"
         style={[styles.bottomStack, { paddingBottom: insets.bottom + Spacing.three }]}>

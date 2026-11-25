@@ -41,3 +41,9 @@ key to reuse `apkUrl`.
 - The new APK must be signed with the same key as the old one or Android refuses to install over
   it. EAS keeps the Android keystore: https://docs.expo.dev/app-signing/managed-credentials
   Do not delete or regenerate it.
+
+## Which link the app uses
+`latest-release.json` has `apkUrl` (main link) and `fallbackUrl`. Today `apkUrl` is the MediaFire
+page (fast for readers in Egypt) and `fallbackUrl` is the GitHub release file. A main link that is a
+page opens in the browser. A main link that ends in `.apk` (a direct file) is downloaded and installed
+inside the app, and if that fails the app opens `fallbackUrl` in the browser.

@@ -14,6 +14,13 @@ export type RecitationDownloadProgress = {
   total: number;
 };
 
+/** Live state of one surah while a download runs. */
+export type SurahDownloadState = {
+  done: number;
+  total: number;
+  failed: number;
+};
+
 function getDirectory(reciterId: number): Directory {
   const directory = new Directory(Paths.document, RECITATION_DIRECTORY, String(reciterId));
   directory.create({ idempotent: true, intermediates: true });
@@ -39,6 +46,8 @@ const TRACK_RETRY_BACKOFF_MS = 600;
 
 export type RecitationDownloadOptions = {
   onProgress?: (progress: RecitationDownloadProgress) => void;
+  /** Reports the per-surah counts every time a track finishes or fails. */
+  onSurahProgress?: (states: Record<number, SurahDownloadState>) => void;
   /** Checked between tracks; returning true stops the download cleanly. */
   shouldCancel?: () => boolean;
 };
@@ -100,11 +109,26 @@ export async function downloadRecitationSurahs(
     tracks.push(...(await quranContentProvider.getChapterRecitation(reciterId, surahNumber)));
   }
   const total = tracks.length;
+  const surahStates: Record<number, SurahDownloadState> = {};
+  for (const surahNumber of surahNumbers) {
+    surahStates[surahNumber] = { done: 0, total: 0, failed: 0 };
+  }
+  for (const track of tracks) {
+    surahStates[track.surahNumber].total += 1;
+  }
+  const emitSurahs = (): void => {
+    const copy: Record<number, SurahDownloadState> = {};
+    for (const key of Object.keys(surahStates)) {
+      copy[Number(key)] = { ...surahStates[Number(key)] };
+    }
+    options.onSurahProgress?.(copy);
+  };
   let done = 0;
   let failed = 0;
   let cursor = 0;
   let firstError: unknown = null;
   options.onProgress?.({ done, total });
+  emitSurahs();
 
   const worker = async (): Promise<void> => {
     for (;;) {
@@ -119,9 +143,13 @@ export async function downloadRecitationSurahs(
       try {
         await downloadTrack(reciterId, tracks[index]);
         done += 1;
+        surahStates[tracks[index].surahNumber].done += 1;
         options.onProgress?.({ done, total });
+        emitSurahs();
       } catch (error) {
         failed += 1;
+        surahStates[tracks[index].surahNumber].failed += 1;
+        emitSurahs();
         firstError ??= error;
       }
     }

@@ -3,6 +3,16 @@
 import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
+import {
+  KhatmaReachedToast,
+  type KhatmaReachedEvent,
+} from '@/features/khatma/components/khatma-reached-toast';
+import {
+  khatmaCoversPage,
+  khatmaStatus,
+  loadKhatma,
+  markKhatmaReached,
+} from '@/features/khatma/services/khatma';
 import { recordPageRead } from '@/features/reader/services/reading-history';
 import {
   useAudioPlayer,
@@ -66,9 +76,7 @@ import {
 } from '@/features/reader/services/recitation-queue';
 import { TajweedGuideDialog } from '@/features/reader/components/TajweedGuideDialog';
 import {
-  loadDailyReadingPlan,
   saveLastReadingPosition,
-  toggleDailyAyahCompletion,
   type AyahReference,
 } from '@/features/reader/services/reading-progress';
 import {
@@ -480,10 +488,12 @@ export default function ReaderScreen() {
     staleTime: 24 * 60 * 60 * 1000,
   });
 
-  const dailyPlanQuery = useQuery({
-    queryKey: ['reading', 'daily-plan'],
-    queryFn: () => loadDailyReadingPlan(database),
+  const khatmaQuery = useQuery({
+    queryKey: ['khatma'],
+    queryFn: () => loadKhatma(database),
+    staleTime: 0,
   });
+  const [khatmaEvent, setKhatmaEvent] = useState<KhatmaReachedEvent | null>(null);
 
   const recitersQuery = useQuery({
     queryKey: ['quran', 'reciters'],
@@ -664,10 +674,38 @@ export default function ReaderScreen() {
     return () => clearTimeout(timer);
   }, [database, queryClient, shownPageNumber]);
 
-  const toggleDailyReading = useCallback(async (references: AyahReference[]) => {
-    const plan = await toggleDailyAyahCompletion(database, references);
-    queryClient.setQueryData(['reading', 'daily-plan'], plan);
-  }, [database, queryClient]);
+  // "Reached here": marks the page of the selected ayah as the khatma's mark.
+  const markKhatmaHere = useCallback(async (): Promise<string | void> => {
+    const pageToMark = shownPageNumber ?? activePageNumber;
+    if (pageToMark === null) {
+      return 'تعذر تحديد الصفحة.';
+    }
+    const today = toDateKey(new Date());
+    const result = await markKhatmaReached(database, pageToMark, today);
+    if (result === null) {
+      return 'ابدأ ختمة من الشاشة الرئيسية أولاً.';
+    }
+    queryClient.setQueryData(['khatma'], result.khatma);
+    if (result.kind === 'unchanged') {
+      return result.reason === 'outside'
+        ? 'الصفحة دي برّه نطاق الختمة.'
+        : result.reason === 'same'
+          ? 'الصفحة دي متسجلة بالفعل.'
+          : 'وصلت لصفحة أبعد من دي بالفعل.';
+    }
+    const status = khatmaStatus(result.khatma, today);
+    setKhatmaEvent({
+      id: Date.now(),
+      from: result.from,
+      to: result.to,
+      total: status.total,
+      page: result.page,
+      kind: result.khatma.kind,
+      todayDone: status.todayDone,
+      perDay: status.perDay,
+    });
+    return `تم تسجيل وصولك لصفحة ${result.page}.`;
+  }, [activePageNumber, database, queryClient, shownPageNumber]);
 
   useEffect(() => {
     if (!page || page.pageNumber !== activePageNumber) {
@@ -1483,12 +1521,12 @@ export default function ReaderScreen() {
       ayahNumber: ayah.ayahNumber,
     }));
   }, [selection]);
-  const completedAyahKeys = new Set(dailyPlanQuery.data?.completedAyahs ?? []);
+  const currentKhatmaPage = shownPageNumber ?? activePageNumber;
   const isDailyReadingComplete =
     selectedAyahReferences.length > 0 &&
-    selectedAyahReferences.every((ayah) =>
-      completedAyahKeys.has(`${ayah.surahNumber}:${ayah.ayahNumber}`),
-    );
+    currentKhatmaPage !== null &&
+    khatmaQuery.data != null &&
+    khatmaCoversPage(khatmaQuery.data, currentKhatmaPage);
 
   const isBookmarked = selection
     ? selection.type === 'range'
@@ -1901,14 +1939,6 @@ export default function ReaderScreen() {
       {navigationError && !navigationOpen && (
         <Text accessibilityRole="alert" style={styles.error}>{navigationError}</Text>
       )}
-      {dailyPlanQuery.error && dailyPlanQuery.data === undefined && (
-        <Text accessibilityRole="alert" style={styles.error}>
-          {dailyPlanQuery.error instanceof Error
-            ? `تعذر تحميل خطة القراءة اليومية: ${dailyPlanQuery.error.message}`
-            : 'تعذر تحميل خطة القراءة اليومية.'}
-        </Text>
-      )}
-
       {!isPlayingAudio && (
         <SelectionToolbar
           surahName={currentSurahName}
@@ -1918,17 +1948,25 @@ export default function ReaderScreen() {
           buttonShape={displayPreferencesQuery.data?.toolbarShape ?? DEFAULT_READER_TOOLBAR_SHAPE}
           isBookmarked={isBookmarked}
           isWordSaved={isWordSaved}
-          isDailyReadingReady={dailyPlanQuery.data !== undefined}
+          isDailyReadingReady={khatmaQuery.data !== undefined}
           isDailyReadingComplete={isDailyReadingComplete}
+          khatmaKind={khatmaQuery.data?.kind ?? 'reading'}
           isAudioPlaying={isPlayingAudio}
           onHighlightsChanged={() => setHighlightRevision((revision) => revision + 1)}
           onToggleBookmark={toggleBookmark}
           onToggleSaveWord={toggleSaveWord}
-          onToggleDailyReading={toggleDailyReading}
+          onToggleDailyReading={markKhatmaHere}
           onPlayAudio={playSelection}
           onStopAudio={stopAudio}
           onOpenPlayMenu={openPlayMenu}
           onOpenAyah={openAyah}
+        />
+      )}
+      {khatmaEvent && (
+        <KhatmaReachedToast
+          key={khatmaEvent.id}
+          event={khatmaEvent}
+          onDone={() => setKhatmaEvent(null)}
         />
       )}
 

@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   compareVersions,
+  isDirectApkLink,
   isNewerRelease,
   parseLatestRelease,
 } from '../src/features/release/latest-release.ts';
@@ -56,9 +57,16 @@ test('the committed latest-release.json is valid and not ahead of app.json', () 
   assert.ok(compareVersions(file.version, app) <= 0, 'release file version is ahead of app.json');
 });
 
-test('the committed release file uses a direct GitHub Releases link', () => {
+test('tells a direct APK link from a download page', () => {
+  assert.equal(isDirectApkLink('https://github.com/o/r/releases/latest/download/mushaf.apk'), true);
+  assert.equal(isDirectApkLink('https://www.mediafire.com/file/abc/mushaf.apk/file'), false);
+  assert.equal(isDirectApkLink('not a url'), false);
+});
+
+test('the committed release file has an https main link and fallback', () => {
   const file = parseLatestRelease(JSON.parse(readFileSync('latest-release.json', 'utf8')));
-  assert.match(file.apkUrl, /^https:\/\/github\.com\/.+\/releases\/latest\/download\/mushaf\.apk$/);
+  assert.match(file.apkUrl, /^https:\/\//);
+  assert.match(file.fallbackUrl, /^https:\/\//);
 });
 
 test('the workflow patch attaches the built APK to a release', () => {
