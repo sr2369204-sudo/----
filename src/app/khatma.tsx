@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { confirmDelete } from '@/components/confirm-delete';
+import { ConfirmSheet } from '@/components/confirm-sheet';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
@@ -151,6 +151,8 @@ export default function KhatmaScreen() {
     setDaysText(String(next));
   };
 
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
   const status = khatma ? khatmaStatus(khatma, today) : null;
 
   const surahList = (onPick: (surah: number) => void, selected: number) => (
@@ -228,7 +230,9 @@ export default function KhatmaScreen() {
       {icon ? (
         <Ionicons name={icon} size={18} color={active ? KHATMA_GOLD_LIGHT : colors.textSecondary} />
       ) : null}
-      <Text style={[styles.tileText, { color: active ? '#FFFFFF' : colors.text }]}>{label}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.tileText, { color: active ? '#FFFFFF' : colors.text }]}>
+        {label}
+      </Text>
     </Pressable>
   );
 
@@ -291,13 +295,13 @@ export default function KhatmaScreen() {
 
             <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               {sectionHead(1, 'نوع الختمة')}
-              <View style={styles.tileRow}>
+              <View style={styles.kindRow}>
                 {(Object.keys(KHATMA_KIND_TEXT) as KhatmaKind[]).map((key) =>
                   tile(
                     KHATMA_KIND_TEXT[key].chip,
                     kind === key,
                     () => setKind(key),
-                    styles.tileThird,
+                    styles.kindTile,
                     KIND_ICONS[key],
                   ),
                 )}
@@ -491,6 +495,26 @@ export default function KhatmaScreen() {
               </View>
             </GlassSurface>
 
+            {!status.finished && (
+            <View style={styles.tiles}>
+              <Tile
+                icon="today-outline"
+                label="ورد اليوم"
+                value={`${toArabicNumbers(status.perDay)} صفحة`}
+              />
+              <Tile
+                icon="checkmark-done-outline"
+                label="أنجزت اليوم"
+                value={toArabicNumbers(status.todayDone)}
+              />
+              <Tile
+                icon="calendar-outline"
+                label="الأيام المتبقية"
+                value={toArabicNumbers(status.daysLeft)}
+              />
+            </View>
+            )}
+
             {status.reachedPage !== null && (
               <View
                 style={[
@@ -531,25 +555,6 @@ export default function KhatmaScreen() {
               </View>
             ) : (
               <>
-                <View style={styles.tiles}>
-                  <Tile
-                    icon="today-outline"
-                    label="ورد اليوم"
-                    value={`${toArabicNumbers(status.perDay)} صفحة`}
-                  />
-                  <Tile
-                    icon="checkmark-done-outline"
-                    label="أنجزت اليوم"
-                    value={toArabicNumbers(status.todayDone)}
-                  />
-                  <Tile
-                    icon="calendar-outline"
-                    label="الأيام المتبقية"
-                    value={toArabicNumbers(status.daysLeft)}
-                  />
-                  <Tile icon="flame-outline" label="أيام متتالية" value={toArabicNumbers(status.streak)} />
-                </View>
-
                 <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={styles.cardHead}>
                     <View style={[styles.bullet, { backgroundColor: colors.primary }]} />
@@ -627,17 +632,24 @@ export default function KhatmaScreen() {
 
             <Pressable
               accessibilityRole="button"
-              onPress={() =>
-                confirmDelete(
-                  'إلغاء الختمة؟',
-                  'سيتم مسح تقدم هذه الختمة. سجل قراءتك العام يبقى كما هو.',
-                  () => void persist(null),
-                )
-              }
-              style={styles.reset}
+              onPress={() => setConfirmCancel(true)}
+              style={({ pressed }) => [styles.dangerButton, pressed && { opacity: 0.85 }]}
             >
-              <Text style={[styles.note, { color: colors.textSecondary }]}>إلغاء الختمة والبدء من جديد</Text>
+              <Ionicons name="refresh" size={20} color="#FFF" />
+              <Text style={styles.dangerText}>إلغاء الختمة والبدء من جديد</Text>
             </Pressable>
+            <ConfirmSheet
+              visible={confirmCancel}
+              title="إلغاء الختمة؟"
+              message="سيتم مسح تقدم هذه الختمة وتبدأ من جديد. سجل قراءتك العام يبقى كما هو."
+              confirmLabel="نعم، إلغاء الختمة"
+              icon="refresh"
+              onCancel={() => setConfirmCancel(false)}
+              onConfirm={() => {
+                setConfirmCancel(false);
+                void persist(null);
+              }}
+            />
           </>
         )}
       </ScrollView>
@@ -840,6 +852,8 @@ const styles = StyleSheet.create({
   },
   tileText: { fontSize: TypeScale.label, fontWeight: '800', textAlign: 'center' },
   tileThird: { width: '31.8%' },
+  kindRow: { flexDirection: 'row-reverse', gap: 8 },
+  kindTile: { flex: 1, minWidth: 0 },
   tileHalf: { width: '48.5%' },
   juzGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 },
   juzTile: { width: '15.4%', minHeight: 42 },
@@ -859,9 +873,9 @@ const styles = StyleSheet.create({
   summaryDivider: { width: 1, height: 34, backgroundColor: 'rgba(216,181,109,0.35)' },
   stopCard: { borderWidth: 1.5, alignItems: 'flex-end' },
   stopText: { fontSize: TypeScale.title, fontWeight: '900', textAlign: 'right' },
-  tiles: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: Spacing.two },
+  tiles: { flexDirection: 'row-reverse', gap: Spacing.two },
   tile: {
-    width: '48.5%',
+    flex: 1,
     borderWidth: 1,
     borderRadius: Radius.lg,
     paddingVertical: 14,
@@ -882,5 +896,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
   },
-  reset: { alignSelf: 'center', padding: 8 },
+  dangerButton: {
+    height: 52,
+    borderRadius: Radius.lg,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#C0392B',
+  },
+  dangerText: { color: '#FFF', fontSize: TypeScale.body, fontWeight: '900' },
 });

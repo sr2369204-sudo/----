@@ -4,6 +4,7 @@ import { Link } from 'expo-router';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { useCallback, useRef, type ReactNode } from 'react';
 import {
+  Animated as RNAnimated,
   Pressable,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { useAmbientLoop } from '@/hooks/use-ambient-loop';
+import { StreakBrandMark, useStreakMoment } from '@/features/home/components/streak-brand-mark';
 import type { SearchAnchor } from '@/features/home/components/home-search-results';
 
 const GRAIN_SOURCE = require('../../../../assets/images/glass-grain.png');
@@ -35,6 +37,8 @@ type HomeHeroProps = {
   searchValue: string;
   onSearchChange: (value: string) => void;
   onSearchAnchorChange: (anchor: SearchAnchor) => void;
+  /** Days in a row; above zero, a flame badge now and then replaces the app icon. */
+  streak?: number;
   /** Shown inside the header under the brand row, e.g. the continue-reading card. */
   children?: ReactNode;
 };
@@ -48,8 +52,10 @@ export function HomeHero({
   searchValue,
   onSearchChange,
   onSearchAnchorChange,
+  streak = 0,
   children,
 }: HomeHeroProps) {
+  const streakShow = useStreakMoment(streak);
   const insets = useSafeAreaInsets();
   const searchContainerRef = useRef<ViewInstance>(null);
   /** Last anchor reported upward, so unchanged measurements are dropped. */
@@ -120,15 +126,28 @@ export function HomeHero({
         <View style={styles.topRow}>
           <View style={styles.identity}>
             <View style={styles.brandMark}>
-              <Image
-                source={require('../../../../assets/images/icon.png')}
-                contentFit="contain"
-                style={styles.brandMarkImage}
-                accessibilityLabel="شعار مصحف"
-              />
+              <StreakBrandMark streak={streak} show={streakShow}>
+                <Image
+                  source={require('../../../../assets/images/icon.png')}
+                  contentFit="contain"
+                  style={styles.brandMarkImage}
+                  accessibilityLabel="شعار مصحف"
+                />
+              </StreakBrandMark>
             </View>
             <View style={styles.brandCopy}>
-              <Text style={styles.title}>مصحف</Text>
+              <RNAnimated.Text
+                style={[
+                  styles.title,
+                  {
+                    transform: [
+                      { translateX: streakShow.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
+                      { scale: streakShow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
+                    ],
+                  },
+                ]}>
+                مصحف
+              </RNAnimated.Text>
               <Text style={styles.subtitle}>اقرأ القرآن وتدبّر آياته</Text>
             </View>
           </View>

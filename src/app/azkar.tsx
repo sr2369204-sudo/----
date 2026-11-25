@@ -186,12 +186,37 @@ function StoryViewer({
   const finished = index >= items.length;
   const length = items.length;
 
+  const progressRef = useRef(progress);
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
+  /** Past the last dhikr, go back to the first unfinished one; finish only when none is left. */
+  const forwardFrom = useCallback(
+    (current: number) => {
+      if (current + 1 < length) {
+        return current + 1;
+      }
+      const counts = progressRef.current.counts;
+      const open = items.findIndex((entry, position) => {
+        const done = (counts[azkarKey(setId, entry.id)] ?? 0) >= entry.count;
+        return !done && position !== current;
+      });
+      const selfOpen = (counts[azkarKey(setId, items[current]?.id ?? '')] ?? 0) < (items[current]?.count ?? 0);
+      if (open !== -1) {
+        return open;
+      }
+      return selfOpen ? current : length;
+    },
+    [items, length, setId],
+  );
+
   const go = useCallback(
     (delta: 1 | -1) => {
       setDirection(delta);
-      setIndex((current) => Math.min(length, Math.max(0, current + delta)));
+      setIndex((current) => (delta === 1 ? forwardFrom(current) : Math.max(0, current - 1)));
     },
-    [length],
+    [forwardFrom],
   );
 
   useEffect(() => {
@@ -202,7 +227,7 @@ function StoryViewer({
     return () => subscription.remove();
   }, [onClose]);
 
-  // In Arabic the right side is "forward": a swipe toward the left moves on.
+  // Right side taps move forward and a swipe toward the left moves on; the progress segments fill left to right to match.
   const pan = useMemo(
     () =>
       PanResponder.create({
@@ -292,7 +317,7 @@ function StoryViewer({
                 const from = index;
                 setTimeout(() => {
                   setDirection(1);
-                  setIndex((current) => (current === from ? from + 1 : current));
+                  setIndex((current) => (current === from ? forwardFrom(from) : current));
                 }, ADVANCE_DELAY);
               }
             }}
@@ -453,14 +478,14 @@ const styles = StyleSheet.create({
 
   story: { flex: 1, backgroundColor: '#0B3D2E' },
   storyRings: { position: 'absolute', left: -110, bottom: -120 },
-  segments: { flexDirection: 'row-reverse', gap: 3, paddingHorizontal: 12, paddingTop: 8 },
+  segments: { flexDirection: 'row', gap: 3, paddingHorizontal: 12, paddingTop: 8 },
   segment: {
     flex: 1,
     height: 3,
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.2)',
     overflow: 'hidden',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
   },
   segmentActive: { backgroundColor: 'rgba(255,255,255,0.32)' },
   segmentFill: { height: '100%', backgroundColor: GOLD_LIGHT },

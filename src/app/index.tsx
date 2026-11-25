@@ -22,8 +22,7 @@ import { ContinueReadingCard } from '@/features/home/components/continue-reading
 import { HomeActionsGrid } from '@/features/home/components/home-actions-grid';
 import { RecordingsCard } from '@/features/home/components/recordings-card';
 import { OfflineDownloadBanner } from '@/features/home/components/offline-download-banner';
-import { ReadingStreakCard } from '@/features/home/components/reading-streak-card';
-import { loadReadingHistory } from '@/features/reader/services/reading-history';
+import { currentStreak, loadReadingHistory } from '@/features/reader/services/reading-history';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
 import { KhatmaHomeCard } from '@/features/khatma/components/khatma-home-card';
 import { loadKhatma } from '@/features/khatma/services/khatma';
@@ -191,7 +190,12 @@ export default function HomeScreen() {
             <HomeHero
               searchValue={search}
               onSearchChange={setSearch}
-              onSearchAnchorChange={setSearchAnchor}>
+              onSearchAnchorChange={setSearchAnchor}
+              streak={
+                readingHistoryQuery.data
+                  ? currentStreak(readingHistoryQuery.data.days, toDateKey(new Date()))
+                  : 0
+              }>
               <ContinueReadingCard
                 position={lastReadingPositionQuery.data ?? null}
                 surahNameByNumber={surahNames}
@@ -213,10 +217,6 @@ export default function HomeScreen() {
             <KhatmaHomeCard
               khatma={khatmaQuery.data ?? null}
               loading={khatmaQuery.isPending}
-              today={toDateKey(new Date())}
-            />
-            <ReadingStreakCard
-              history={readingHistoryQuery.data ?? null}
               today={toDateKey(new Date())}
             />
 
