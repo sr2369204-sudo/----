@@ -20,7 +20,7 @@ import {
   type Khatma,
 } from '@/features/khatma/services/khatma';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
-import { loadReadingHistory } from '@/features/reader/services/reading-history';
+import { loadLastReadingPosition } from '@/features/reader/services/reading-progress';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function KhatmaScreen() {
@@ -50,8 +50,10 @@ export default function KhatmaScreen() {
 
   const begin = useCallback(
     async (days: number, useExisting: boolean) => {
-      const seed = useExisting ? (await loadReadingHistory(database)).pages : [];
-      await persist(startKhatma(today, days, seed, khatma?.completed ?? 0));
+      const position = useExisting ? await loadLastReadingPosition(database) : null;
+      // Start from the page before the last reading position, so that page still counts.
+      const reached = position ? Math.max(0, position.pageNumber - 1) : 0;
+      await persist(startKhatma(today, days, reached, khatma?.completed ?? 0));
     },
     [database, khatma?.completed, persist, today],
   );
@@ -96,18 +98,18 @@ export default function KhatmaScreen() {
               ))}
             </View>
             <Text style={[styles.note, { color: colors.textSecondary }]}>
-              تتحدّث الختمة تلقائياً من الصفحات اللي تقرأها في المصحف. لو عندك قراءة سابقة، تقدر تبدأ منها:
+              بعد ما تقرأ، حدّد آية في المصحف واضغط «وصلت هنا (الختمة)» عشان تسجّل وصولك. أو ابدأ من آخر موضع قراءة ليك:
             </Text>
             <View style={styles.presets}>
               {KHATMA_PRESETS.map((days) => (
                 <Pressable
                   key={days}
                   accessibilityRole="button"
-                  accessibilityLabel={`ختمة في ${days} يوم من قراءتي الحالية`}
+                  accessibilityLabel={`ختمة في ${days} يوم من آخر موضع قراءة`}
                   onPress={() => void begin(days, true)}
                   style={[styles.preset, styles.presetOutline, { borderColor: colors.border }]}>
                   <Text style={[styles.presetNumber, { color: colors.text }]}>{toArabicNumbers(days)}</Text>
-                  <Text style={[styles.presetLabel, { color: colors.textSecondary }]}>من قراءتي</Text>
+                  <Text style={[styles.presetLabel, { color: colors.textSecondary }]}>من آخر موضع</Text>
                 </Pressable>
               ))}
             </View>
