@@ -2,17 +2,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  BackHandler,
+  Easing,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import {
   AZKAR_SETS,
   azkarItemText,
   getAzkarSet,
-  suggestedAzkarSet,
   type AzkarItem,
   type AzkarSetId,
 } from '@/features/azkar/data/azkar';
@@ -23,8 +31,9 @@ import {
   resetAzkarSet,
   saveAzkarProgress,
   tapAzkarItem,
+  type AzkarProgress,
 } from '@/features/azkar/services/azkar-progress';
-import { ConcentricRings, KhatmaPercentRing } from '@/features/khatma/components/khatma-ring';
+import { ConcentricRings } from '@/features/khatma/components/khatma-ring';
 import { toArabicNumbers } from '@/features/home/utils/format';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
 import { useTheme } from '@/hooks/use-theme';
@@ -42,166 +51,272 @@ const SET_ICONS: Record<AzkarSetId, keyof typeof Ionicons.glyphMap> = {
 };
 
 const GOLD = '#D8B56D';
+const GOLD_LIGHT = '#F3D28C';
+const SIDE_ZONE = 0.28;
+const ADVANCE_DELAY = 700;
 
-/**
- * One zikr card. When it becomes complete while on screen it pops a check,
- * then fades, shrinks and collapses out of the list before calling `onGone`.
- */
-function AzkarCard({
-  index,
+/** One full-page dhikr. Pops a check when it reaches its count. */
+function StoryPage({
   item,
   text,
   count,
-  complete,
-  disabled,
-  onPress,
-  onGone,
+  index,
+  total,
+  fromDirection,
+  onCount,
 }: {
-  index: number;
   item: AzkarItem;
   text: string;
   count: number;
-  complete: boolean;
-  disabled: boolean;
-  onPress: () => void;
-  onGone: () => void;
+  index: number;
+  total: number;
+  fromDirection: 1 | -1;
+  onCount: () => void;
 }) {
-  const colors = useTheme();
-  const [height, setHeight] = useState(0);
-  const [progress] = useState(() => new Animated.Value(count / item.count));
-  const [pop] = useState(() => new Animated.Value(0));
-  const [leave] = useState(() => new Animated.Value(0));
-  const [tapScale] = useState(() => new Animated.Value(1));
-  const leaving = complete;
+  const complete = count >= item.count;
+  const [enter] = useState(() => new Animated.Value(0));
+  const [pop] = useState(() => new Animated.Value(complete ? 1 : 0));
+  const [press] = useState(() => new Animated.Value(1));
+  const wasComplete = useRef(complete);
 
   useEffect(() => {
-    Animated.timing(progress, {
-      toValue: Math.min(1, count / item.count),
-      duration: 220,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false,
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
     }).start();
-  }, [count, item.count, progress]);
+  }, [enter]);
 
   useEffect(() => {
-    if (!complete) {
+    if (complete && !wasComplete.current) {
+      wasComplete.current = true;
+      Animated.spring(pop, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }).start();
+    }
+  }, [complete, pop]);
+
+  const handleCount = () => {
+    if (complete) {
       return;
     }
     Animated.sequence([
-      Animated.spring(pop, { toValue: 1, friction: 4, tension: 140, useNativeDriver: false }),
-      Animated.delay(380),
-      Animated.timing(leave, {
-        toValue: 1,
-        duration: 460,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]).start(({ finished }) => {
-      if (finished) {
-        onGone();
-      }
-    });
-  }, [complete, leave, onGone, pop]);
-
-  const handlePress = () => {
-    Animated.sequence([
-      Animated.timing(tapScale, { toValue: 0.97, duration: 70, useNativeDriver: false }),
-      Animated.spring(tapScale, { toValue: 1, friction: 5, useNativeDriver: false }),
+      Animated.timing(press, { toValue: 0.94, duration: 60, useNativeDriver: true }),
+      Animated.spring(press, { toValue: 1, friction: 5, useNativeDriver: true }),
     ]).start();
-    onPress();
+    onCount();
   };
-
-  const collapse =
-    leaving && height > 0
-      ? { height: leave.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }
-      : null;
 
   return (
     <Animated.View
-      onLayout={(event) => {
-        if (!leaving) {
-          setHeight(event.nativeEvent.layout.height);
-        }
-      }}
       style={[
-        collapse,
+        styles.page,
         {
-          opacity: leave.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 0.2, 0] }),
-          marginBottom: leave.interpolate({ inputRange: [0, 1], outputRange: [0, -12] }),
+          opacity: enter,
           transform: [
-            {
-              scale: Animated.multiply(
-                tapScale,
-                leave.interpolate({ inputRange: [0, 1], outputRange: [1, 0.86] }),
-              ),
-            },
-            { translateX: leave.interpolate({ inputRange: [0, 1], outputRange: [0, -36] }) },
+            { translateX: enter.interpolate({ inputRange: [0, 1], outputRange: [40 * fromDirection, 0] }) },
           ],
-          overflow: 'hidden',
         },
       ]}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${complete ? 'اكتمل' : 'اضغط للعد'}، ${toArabicNumbers(count)} من ${toArabicNumbers(item.count)}`}
-        disabled={disabled || complete}
-        onPress={handlePress}
-        style={[
-          styles.card,
-          { backgroundColor: colors.surface, borderColor: complete ? colors.primary : colors.border },
-        ]}
-      >
-        <View style={[styles.cardRail, { backgroundColor: complete ? colors.primary : GOLD }]} />
-        <View style={styles.cardHeader}>
-          <View style={[styles.indexBadge, { backgroundColor: colors.backgroundSelected }]}>
-            <Text style={[styles.indexText, { color: colors.primary }]}>{toArabicNumbers(index + 1)}</Text>
+      <View style={styles.pageMeta}>
+        <Text style={styles.pageIndex}>
+          {toArabicNumbers(index + 1)} / {toArabicNumbers(total)}
+        </Text>
+        {item.note ? (
+          <View style={styles.noteChip}>
+            <Text style={styles.noteText}>{item.note}</Text>
           </View>
-          {item.note ? (
-            <View style={[styles.noteChip, { backgroundColor: `${colors.accent}22` }]}>
-              <Text style={[styles.noteText, { color: colors.accent }]}>{item.note}</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={[styles.zikrText, { color: colors.text }]}>{text}</Text>
-        {item.source ? (
-          <Text style={[styles.source, { color: colors.textSecondary }]}>{item.source}</Text>
         ) : null}
-        <View style={styles.counterWrap}>
-          <View style={[styles.counterTrack, { backgroundColor: colors.backgroundSelected }]}>
-            <Animated.View
-              style={[
-                styles.counterFill,
-                {
-                  width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-                  backgroundColor: complete ? colors.primary : GOLD,
-                },
-              ]}
-            />
-          </View>
-          <View style={styles.counterLabelRow}>
-            {item.count > 1 ? (
-              <View style={[styles.counterPill, { backgroundColor: colors.backgroundSelected }]}>
-                <Text style={[styles.counterText, { color: colors.text }]}>
-                  {toArabicNumbers(count)} / {toArabicNumbers(item.count)}
-                </Text>
-              </View>
-            ) : (
-              <Text style={[styles.tapHint, { color: colors.textSecondary }]}>اضغط عند الانتهاء</Text>
-            )}
+      </View>
+      <ScrollView
+        style={styles.pageScroll}
+        contentContainerStyle={styles.pageScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.zikrText}>{text}</Text>
+        {item.source ? <Text style={styles.source}>{item.source}</Text> : null}
+      </ScrollView>
+      <Animated.View style={{ transform: [{ scale: press }] }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${toArabicNumbers(count)} من ${toArabicNumbers(item.count)}`}
+          onPress={handleCount}
+          style={[styles.counter, complete && styles.counterDone]}
+        >
+          {complete ? (
             <Animated.View
               style={{
-                opacity: pop,
                 transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }],
-                position: 'absolute',
-                end: 0,
               }}
             >
-              <Ionicons name="checkmark-circle" size={30} color={colors.primary} />
+              <Ionicons name="checkmark" size={38} color="#0B3D2E" />
             </Animated.View>
-          </View>
-        </View>
-      </Pressable>
+          ) : (
+            <>
+              <Text style={styles.counterNumber}>{toArabicNumbers(count)}</Text>
+              <Text style={styles.counterTotal}>
+                {item.count > 1 ? `من ${toArabicNumbers(item.count)}` : 'اضغط عند الانتهاء'}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      </Animated.View>
     </Animated.View>
+  );
+}
+
+function StoryViewer({
+  setId,
+  progress,
+  update,
+  onClose,
+}: {
+  setId: AzkarSetId;
+  progress: AzkarProgress;
+  update: (next: AzkarProgress) => Promise<void>;
+  onClose: () => void;
+}) {
+  const set = getAzkarSet(setId);
+  const items = set.items;
+  const [index, setIndex] = useState(() => {
+    const first = items.findIndex((item) => (progress.counts[azkarKey(setId, item.id)] ?? 0) < item.count);
+    return first === -1 ? 0 : first;
+  });
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const finished = index >= items.length;
+  const length = items.length;
+
+  const go = useCallback(
+    (delta: 1 | -1) => {
+      setDirection(delta);
+      setIndex((current) => Math.min(length, Math.max(0, current + delta)));
+    },
+    [length],
+  );
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onClose]);
+
+  // In Arabic the right side is "forward": a swipe toward the left moves on.
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        onPanResponderRelease: (_event, gesture) => {
+          if (Math.abs(gesture.dx) > 50) {
+            go(gesture.dx < 0 ? 1 : -1);
+          }
+        },
+      }),
+    [go],
+  );
+
+  const item = items[index];
+  const doneCount = items.filter(
+    (entry) => (progress.counts[azkarKey(setId, entry.id)] ?? 0) >= entry.count,
+  ).length;
+
+  return (
+    <SafeAreaView style={styles.story}>
+      <ConcentricRings size={300} opacity={0.08} style={styles.storyRings} />
+      <View style={styles.segments}>
+        {items.map((entry, position) => {
+          const count = progress.counts[azkarKey(setId, entry.id)] ?? 0;
+          const fill =
+            count >= entry.count ? 1 : position === index ? Math.max(0.08, count / entry.count) : 0;
+          return (
+            <View key={entry.id} style={[styles.segment, position === index && styles.segmentActive]}>
+              <View style={[styles.segmentFill, { width: `${fill * 100}%` }]} />
+            </View>
+          );
+        })}
+      </View>
+      <View style={styles.storyTop}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="إغلاق"
+          onPress={onClose}
+          style={styles.close}
+        >
+          <Ionicons name="close" size={22} color="#FFF9EA" />
+        </Pressable>
+        <View style={styles.storyTitleWrap}>
+          <Text style={styles.storyTitle}>{set.title}</Text>
+          <Text style={styles.storySub}>
+            {toArabicNumbers(doneCount)} من {toArabicNumbers(items.length)} مكتمل
+          </Text>
+        </View>
+        <Ionicons name={SET_ICONS[setId]} size={22} color={GOLD_LIGHT} />
+      </View>
+
+      <View style={styles.stage} {...pan.panHandlers}>
+        {finished ? (
+          <View style={styles.finish}>
+            <Ionicons name="checkmark-circle" size={84} color={GOLD_LIGHT} />
+            <Text style={styles.finishTitle}>ما شاء الله، أتممت {set.title}</Text>
+            <Text style={styles.finishSub}>تقبّل الله منك</Text>
+            <Pressable accessibilityRole="button" onPress={onClose} style={styles.finishButton}>
+              <Text style={styles.finishButtonText}>رجوع للقائمة</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                void update(resetAzkarSet(progress, setId));
+                setDirection(-1);
+                setIndex(0);
+              }}
+              style={styles.finishLink}
+            >
+              <Text style={styles.finishLinkText}>إعادة العدّ</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <StoryPage
+            key={`${setId}:${item.id}`}
+            item={item}
+            text={azkarItemText(setId, item)}
+            count={progress.counts[azkarKey(setId, item.id)] ?? 0}
+            index={index}
+            total={items.length}
+            fromDirection={direction}
+            onCount={() => {
+              const count = progress.counts[azkarKey(setId, item.id)] ?? 0;
+              void update(tapAzkarItem(progress, setId, item));
+              if (count + 1 >= item.count) {
+                const from = index;
+                setTimeout(() => {
+                  setDirection(1);
+                  setIndex((current) => (current === from ? from + 1 : current));
+                }, ADVANCE_DELAY);
+              }
+            }}
+          />
+        )}
+        {!finished ? (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="التالي"
+              onPress={() => go(1)}
+              style={[styles.zone, styles.zoneRight]}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="السابق"
+              onPress={() => go(-1)}
+              style={[styles.zone, styles.zoneLeft]}
+            />
+          </>
+        ) : null}
+      </View>
+      {!finished ? <Text style={styles.hint}>اضغط على اليمين للتالي، واليسار للسابق، أو اسحب</Text> : null}
+    </SafeAreaView>
   );
 }
 
@@ -209,11 +324,8 @@ export default function AzkarScreen() {
   const colors = useTheme();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
-  const [setId, setSetId] = useState<AzkarSetId>(() => suggestedAzkarSet(new Date()));
-  const [leaving, setLeaving] = useState<Record<string, true>>({});
-  const [showDone, setShowDone] = useState(false);
+  const [setId, setSetId] = useState<AzkarSetId | null>(null);
   const today = toDateKey(new Date());
-  const set = getAzkarSet(setId);
 
   const progressQuery = useQuery({
     queryKey: ['azkar', 'progress', today],
@@ -223,7 +335,7 @@ export default function AzkarScreen() {
   const progress = progressQuery.data;
 
   const update = useCallback(
-    async (next: NonNullable<typeof progress>) => {
+    async (next: AzkarProgress) => {
       queryClient.setQueryData(['azkar', 'progress', today], next);
       try {
         await saveAzkarProgress(database, next);
@@ -234,19 +346,11 @@ export default function AzkarScreen() {
     [database, queryClient, today],
   );
 
-  const summary = progress
-    ? azkarSetSummary(progress, setId, set.items)
-    : { done: 0, total: set.items.length };
-  const ratio = summary.total > 0 ? summary.done / summary.total : 0;
-  const allDone = summary.total > 0 && summary.done === summary.total;
+  const close = useCallback(() => setSetId(null), []);
 
-  const rows = set.items.map((item, index) => {
-    const key = azkarKey(setId, item.id);
-    const count = progress?.counts[key] ?? 0;
-    return { item, index, key, count, complete: count >= item.count };
-  });
-  const open = rows.filter((row) => !row.complete || leaving[row.key]);
-  const finished = rows.filter((row) => row.complete && !leaving[row.key]);
+  if (setId !== null && progress) {
+    return <StoryViewer setId={setId} progress={progress} update={update} onClose={close} />;
+  }
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
@@ -262,142 +366,49 @@ export default function AzkarScreen() {
           </Pressable>
           <Text style={[styles.screenTitle, { color: colors.text }]}>الأذكار</Text>
         </View>
-
-        <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.hero}>
-          <View pointerEvents="none" style={styles.heroGlow} />
-          <ConcentricRings size={220} opacity={0.09} style={styles.heroRings} />
-          <View style={styles.heroRow}>
-            <KhatmaPercentRing fraction={ratio} size={104} thickness={9} />
-            <View style={styles.heroCopy}>
-              <View style={styles.heroTitleRow}>
-                <Ionicons name={SET_ICONS[setId]} size={18} color="#E8C77F" />
-                <Text style={styles.heroTitle}>{set.title}</Text>
-              </View>
-              <Text style={styles.heroSubtitle}>{set.subtitle}</Text>
-              <Text style={styles.heroCount}>
-                {toArabicNumbers(summary.done)}
-                <Text style={styles.heroCountTotal}> من {toArabicNumbers(summary.total)} ذكر</Text>
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.heroFoot}>
-            {allDone
-              ? 'ما شاء الله، أتممت أذكارك. تقبّل الله منك'
-              : 'اضغط على الذكر لتعدّه، وسيختفي عند اكتماله'}
-          </Text>
-        </GlassSurface>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-          style={styles.chipsScroll}
-        >
-          {AZKAR_SETS.map((entry) => {
-            const selected = entry.id === setId;
-            const entrySummary = progress
-              ? azkarSetSummary(progress, entry.id, entry.items)
-              : { done: 0, total: entry.items.length };
-            const complete = entrySummary.total > 0 && entrySummary.done === entrySummary.total;
-            return (
-              <Pressable
-                key={entry.id}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                onPress={() => {
-                  setSetId(entry.id);
-                  setShowDone(false);
-                }}
-                style={[
-                  styles.chip,
-                  selected
-                    ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                    : { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-              >
-                <Ionicons
-                  name={complete ? 'checkmark-circle' : SET_ICONS[entry.id]}
-                  size={15}
-                  color={selected ? '#FFFFFF' : complete ? colors.primary : colors.textSecondary}
-                />
-                <Text style={[styles.chipText, { color: selected ? '#FFFFFF' : colors.text }]}>
-                  {entry.title.replace('أذكار ', '')}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {open.map((row) => (
-          <AzkarCard
-            key={`${setId}:${row.item.id}`}
-            index={row.index}
-            item={row.item}
-            text={azkarItemText(setId, row.item)}
-            count={row.count}
-            complete={row.complete}
-            disabled={!progress}
-            onPress={() => {
-              if (!progress) {
-                return;
-              }
-              if (row.count + 1 >= row.item.count) {
-                setLeaving((current) => ({ ...current, [row.key]: true }));
-              }
-              void update(tapAzkarItem(progress, setId, row.item));
-            }}
-            onGone={() =>
-              setLeaving((current) => {
-                const next = { ...current };
-                delete next[row.key];
-                return next;
-              })
-            }
-          />
-        ))}
-
-        {finished.length > 0 ? (
-          <View style={[styles.doneBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.listIntro, { color: colors.textSecondary }]}>
+          اختر مجموعة، وستظهر الأذكار واحدًا واحدًا في صفحة كاملة.
+        </Text>
+        {AZKAR_SETS.map((entry) => {
+          const summary = progress
+            ? azkarSetSummary(progress, entry.id, entry.items)
+            : { done: 0, total: entry.items.length };
+          const complete = summary.total > 0 && summary.done === summary.total;
+          const ratio = summary.total > 0 ? summary.done / summary.total : 0;
+          return (
             <Pressable
+              key={entry.id}
               accessibilityRole="button"
-              onPress={() => setShowDone((value) => !value)}
-              style={styles.doneHeader}
+              disabled={!progress}
+              onPress={() => setSetId(entry.id)}
+              style={({ pressed }) => [
+                styles.setCard,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: complete ? colors.primary : colors.border,
+                  opacity: pressed ? 0.9 : 1,
+                },
+              ]}
             >
-              <Ionicons
-                name={showDone ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={colors.textSecondary}
-              />
-              <Text style={[styles.doneTitle, { color: colors.text }]}>
-                المكتملة ({toArabicNumbers(finished.length)})
-              </Text>
-              <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+              <View style={[styles.setIcon, { backgroundColor: complete ? colors.primary : '#0F5640' }]}>
+                <Ionicons name={complete ? 'checkmark' : SET_ICONS[entry.id]} size={22} color={GOLD_LIGHT} />
+              </View>
+              <View style={styles.setCopy}>
+                <Text style={[styles.setTitle, { color: colors.text }]}>{entry.title}</Text>
+                <Text style={[styles.setSub, { color: colors.textSecondary }]}>{entry.subtitle}</Text>
+                <View style={[styles.setTrack, { backgroundColor: colors.backgroundSelected }]}>
+                  <View style={[styles.setFill, { width: `${ratio * 100}%` }]} />
+                </View>
+              </View>
+              <View style={styles.setCount}>
+                <Text style={[styles.setCountNumber, { color: colors.primary }]}>
+                  {toArabicNumbers(summary.done)}/{toArabicNumbers(summary.total)}
+                </Text>
+                <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
+              </View>
             </Pressable>
-            {showDone
-              ? finished.map((row) => (
-                  <View key={row.key} style={[styles.doneRow, { borderTopColor: colors.border }]}>
-                    <Text numberOfLines={1} style={[styles.doneText, { color: colors.textSecondary }]}>
-                      {toArabicNumbers(row.index + 1)}. {azkarItemText(setId, row.item).slice(0, 60)}
-                    </Text>
-                  </View>
-                ))
-              : null}
-          </View>
-        ) : null}
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            if (progress) {
-              setLeaving({});
-              void update(resetAzkarSet(progress, setId));
-            }
-          }}
-          style={styles.reset}
-        >
-          <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-          <Text style={[styles.resetText, { color: colors.textSecondary }]}>إعادة العدّ</Text>
-        </Pressable>
+          );
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -416,103 +427,100 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   screenTitle: { fontSize: TypeScale.display, fontWeight: '900' },
-  hero: { padding: Spacing.three, gap: 12 },
-  heroGlow: {
-    position: 'absolute',
-    top: -80,
-    left: -40,
-    width: 200,
-    height: 200,
-    borderRadius: Radius.pill,
-    backgroundColor: 'rgba(216, 181, 109, 0.16)',
-  },
-  heroRings: { position: 'absolute', left: -80, bottom: -100 },
-  heroRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16 },
-  heroTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
-  chipsScroll: { flexGrow: 0 },
-  chips: { flexDirection: 'row-reverse', gap: 8, paddingVertical: 2 },
-  chip: {
+  listIntro: { fontSize: TypeScale.caption, textAlign: 'right', lineHeight: 22 },
+  setCard: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: Radius.pill,
+    gap: 12,
     borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
   },
-  chipText: { fontSize: TypeScale.label, fontWeight: '800' },
-  cardRail: { position: 'absolute', top: 14, bottom: 14, end: 0, width: 4, borderRadius: 2 },
-  counterPill: { borderRadius: Radius.pill, paddingHorizontal: 14, paddingVertical: 4 },
-  tapHint: { fontSize: TypeScale.micro },
-  doneBox: { borderWidth: 1, borderRadius: Radius.lg, overflow: 'hidden' },
-  doneHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, padding: Spacing.three },
-  doneTitle: { flex: 1, fontSize: TypeScale.body, fontWeight: '800', textAlign: 'right' },
-  doneRow: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 10,
-  },
-  doneText: { fontSize: TypeScale.caption, textAlign: 'right' },
-  heroIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(216, 181, 109, 0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(216, 181, 109, 0.45)',
-  },
-  heroCopy: { flex: 1, alignItems: 'flex-end', gap: 2 },
-  heroTitle: { fontSize: TypeScale.title, fontWeight: '900', color: '#FFF9EA' },
-  heroSubtitle: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.7)' },
-  heroCount: { marginTop: 4, fontSize: TypeScale.heading, fontWeight: '900', color: '#F3D28C' },
-  heroCountTotal: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.65)', fontWeight: '600' },
-  heroTrack: {
-    height: 8,
-    borderRadius: Radius.pill,
+  setIcon: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
+  setCopy: { flex: 1, alignItems: 'flex-end', gap: 3 },
+  setTitle: { fontSize: TypeScale.title, fontWeight: '900' },
+  setSub: { fontSize: TypeScale.caption },
+  setTrack: {
+    height: 5,
+    borderRadius: 3,
+    alignSelf: 'stretch',
     overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
     flexDirection: 'row-reverse',
   },
-  heroFill: { height: '100%', borderRadius: Radius.pill, backgroundColor: '#D8B56D' },
-  heroFoot: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.78)', textAlign: 'right' },
-  tabs: { flexDirection: 'row-reverse', padding: 4, borderRadius: Radius.pill, gap: 4 },
-  tab: {
+  setFill: { height: '100%', borderRadius: 3, backgroundColor: GOLD },
+  setCount: { alignItems: 'center', flexDirection: 'row', gap: 2 },
+  setCountNumber: { fontSize: TypeScale.label, fontWeight: '900' },
+
+  story: { flex: 1, backgroundColor: '#0B3D2E' },
+  storyRings: { position: 'absolute', left: -110, bottom: -120 },
+  segments: { flexDirection: 'row-reverse', gap: 3, paddingHorizontal: 12, paddingTop: 8 },
+  segment: {
     flex: 1,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 9,
-    borderRadius: Radius.pill,
-  },
-  tabText: { fontSize: TypeScale.label, fontWeight: '800' },
-  card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.three, gap: 10 },
-  cardHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: Spacing.two },
-  indexBadge: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  indexText: { fontSize: TypeScale.caption, fontWeight: '900' },
-  noteChip: { borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 3 },
-  noteText: { fontSize: TypeScale.micro, fontWeight: '800' },
-  zikrText: { fontSize: TypeScale.title, lineHeight: 36, textAlign: 'center', fontWeight: '600' },
-  source: { fontSize: TypeScale.micro, textAlign: 'center', lineHeight: 18 },
-  counterWrap: { gap: 6, marginTop: 2 },
-  counterTrack: {
-    height: 6,
-    borderRadius: Radius.pill,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     overflow: 'hidden',
     flexDirection: 'row-reverse',
   },
-  counterFill: { height: '100%', borderRadius: Radius.pill },
-  counterLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  counterText: { fontSize: TypeScale.body, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  reset: { flexDirection: 'row-reverse', alignSelf: 'center', alignItems: 'center', gap: 6, padding: 8 },
-  resetText: { fontSize: TypeScale.label },
+  segmentActive: { backgroundColor: 'rgba(255,255,255,0.32)' },
+  segmentFill: { height: '100%', backgroundColor: GOLD_LIGHT },
+  storyTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, padding: 14 },
+  storyTitleWrap: { flex: 1, alignItems: 'flex-end' },
+  storyTitle: { fontSize: TypeScale.title, fontWeight: '900', color: '#FFF9EA' },
+  storySub: { fontSize: TypeScale.micro, color: 'rgba(239,248,243,0.7)' },
+  close: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  stage: { flex: 1 },
+  page: { flex: 1, paddingHorizontal: 22, paddingBottom: 12, gap: 12 },
+  pageMeta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  pageIndex: { fontSize: TypeScale.caption, color: GOLD, fontWeight: '800' },
+  noteChip: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(216,181,109,0.18)',
+  },
+  noteText: { fontSize: TypeScale.micro, fontWeight: '800', color: GOLD_LIGHT },
+  pageScroll: { flex: 1 },
+  pageScrollContent: { flexGrow: 1, justifyContent: 'center', gap: 16, paddingVertical: 8 },
+  zikrText: { fontSize: 26, lineHeight: 46, textAlign: 'center', fontWeight: '600', color: '#FFF9EA' },
+  source: { fontSize: TypeScale.micro, textAlign: 'center', lineHeight: 18, color: 'rgba(239,248,243,0.62)' },
+  counter: {
+    alignSelf: 'center',
+    minWidth: 150,
+    height: 86,
+    borderRadius: 43,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: GOLD,
+    backgroundColor: 'rgba(216,181,109,0.14)',
+  },
+  counterDone: { backgroundColor: GOLD_LIGHT, borderColor: GOLD_LIGHT },
+  counterNumber: { fontSize: 30, fontWeight: '900', color: GOLD_LIGHT, fontVariant: ['tabular-nums'] },
+  counterTotal: { fontSize: TypeScale.caption, color: 'rgba(255,249,234,0.8)' },
+  zone: { position: 'absolute', top: 0, bottom: 0, width: `${SIDE_ZONE * 100}%` },
+  zoneRight: { right: 0 },
+  zoneLeft: { left: 0 },
+  hint: { textAlign: 'center', fontSize: TypeScale.micro, color: 'rgba(239,248,243,0.5)', paddingBottom: 8 },
+  finish: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+  finishTitle: { fontSize: TypeScale.display, fontWeight: '900', color: '#FFF9EA', textAlign: 'center' },
+  finishSub: { fontSize: TypeScale.body, color: GOLD_LIGHT },
+  finishButton: {
+    marginTop: 12,
+    backgroundColor: GOLD_LIGHT,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+  },
+  finishButtonText: { fontWeight: '900', color: '#0B3D2E', fontSize: TypeScale.body },
+  finishLink: { padding: 8 },
+  finishLinkText: { color: 'rgba(239,248,243,0.7)', fontSize: TypeScale.label },
 });
