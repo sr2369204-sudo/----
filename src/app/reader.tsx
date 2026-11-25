@@ -35,6 +35,7 @@ import {
   Text,
   TextInput,
   View,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -2019,6 +2020,7 @@ export default function ReaderScreen() {
         busy={navigationBusy}
         error={navigationError}
         directory={directory}
+        currentSurahNumber={selection?.surahNumber ?? page?.surahs[0]?.surahNumber ?? null}
         colors={colors}
         onModeChange={(mode) => {
           setNavigationMode(mode);
@@ -2129,6 +2131,7 @@ function NavigationDialog({
   busy,
   error,
   directory,
+  currentSurahNumber,
   colors,
   onModeChange,
   onValueChange,
@@ -2143,6 +2146,7 @@ function NavigationDialog({
   busy: boolean;
   error: string | null;
   directory: QuranSurahDirectory | undefined;
+  currentSurahNumber: number | null;
   colors: ReturnType<typeof useTheme>;
   onModeChange: (mode: NavigationMode) => void;
   onValueChange: (value: string) => void;
@@ -2244,33 +2248,58 @@ function NavigationDialog({
               ))}
             </ScrollView>
           ) : directory ? (
-            <ScrollView contentContainerStyle={styles.surahList}>
-              {directory.surahs.map((surah) => (
-                <Pressable
-                  key={surah.surahNumber}
-                  accessibilityRole="button"
-                  disabled={busy}
-                  onPress={() => onChoose('surah', surah.surahNumber)}
-                  style={({ pressed }) => [
-                    styles.surahItem,
-                    { borderColor: sheet.gold, backgroundColor: sheet.panelLight },
-                    pressed && styles.surahItemPressed,
-                  ]}>
-                  <View style={[styles.surahNumberBadge, { backgroundColor: sheet.gold }]}>
-                    <Text style={[styles.surahNumber, { color: sheet.onGold }]}>
-                      {toArabicNumbers(surah.surahNumber)}
-                    </Text>
-                  </View>
-                  <View style={styles.surahTextBlock}>
-                    <Text style={[styles.surahName, { color: sheet.name }]}>{surah.nameArabic}</Text>
-                    <Text style={[styles.surahMeta, { color: `${sheet.cream}B3` }]}>
-                      {surah.revelationPlace === 'makkah' ? 'مكية' : 'مدنية'} · {toArabicNumbers(surah.ayahCount)} {surah.ayahCount >= 3 && surah.ayahCount <= 10 ? 'آيات' : 'آية'}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-back" size={15} color={sheet.gold} />
-                </Pressable>
-              ))}
-            </ScrollView>
+            <FlatList
+              data={directory.surahs}
+              keyExtractor={(surah) => String(surah.surahNumber)}
+              contentContainerStyle={styles.surahList}
+              // Only the rows near the screen are built, and the list opens on
+              // the surah being read, so the sheet appears at once.
+              initialNumToRender={12}
+              windowSize={7}
+              getItemLayout={(_, index) => ({
+                length: SURAH_ROW_HEIGHT,
+                offset: SURAH_ROW_HEIGHT * index,
+                index,
+              })}
+              initialScrollIndex={
+                currentSurahNumber !== null
+                  ? Math.max(0, Math.min(directory.surahs.length - 1, currentSurahNumber - 1) - 1)
+                  : 0
+              }
+              renderItem={({ item: surah }) => {
+                const isCurrent = surah.surahNumber === currentSurahNumber;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isCurrent }}
+                    disabled={busy}
+                    onPress={() => onChoose('surah', surah.surahNumber)}
+                    style={({ pressed }) => [
+                      styles.surahItem,
+                      {
+                        borderColor: sheet.gold,
+                        backgroundColor: isCurrent ? `${sheet.gold}33` : sheet.panelLight,
+                        borderWidth: isCurrent ? 2.5 : 1.5,
+                      },
+                      pressed && styles.surahItemPressed,
+                    ]}>
+                    <View style={[styles.surahNumberBadge, { backgroundColor: sheet.gold }]}>
+                      <Text style={[styles.surahNumber, { color: sheet.onGold }]}>
+                        {toArabicNumbers(surah.surahNumber)}
+                      </Text>
+                    </View>
+                    <View style={styles.surahTextBlock}>
+                      <Text style={[styles.surahName, { color: sheet.name }]}>{surah.nameArabic}</Text>
+                      <Text style={[styles.surahMeta, { color: `${sheet.cream}B3` }]}>
+                        {isCurrent ? 'أنت هنا · ' : ''}
+                        {surah.revelationPlace === 'makkah' ? 'مكية' : 'مدنية'} · {toArabicNumbers(surah.ayahCount)} {surah.ayahCount >= 3 && surah.ayahCount <= 10 ? 'آيات' : 'آية'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-back" size={15} color={sheet.gold} />
+                  </Pressable>
+                );
+              }}
+            />
           ) : (
             <Pressable accessibilityRole="button" onPress={onDirectoryRetry}>
               <Text style={[styles.directoryMessage, { color: sheet.name }]}>
@@ -2312,6 +2341,9 @@ function retryPageQuery(failureCount: number, error: unknown): boolean {
 function pageQueryRetryDelay(attemptIndex: number): number {
   return Math.min(300 * 2 ** attemptIndex, 1_200);
 }
+
+/** Height of a surah row plus the gap under it; the list is laid out from it without measuring. */
+const SURAH_ROW_HEIGHT = 66;
 
 const SLEEP_TIMER_STEPS = [15, 30, 60];
 
@@ -2662,7 +2694,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.three,
   },
   surahItem: {
-    minHeight: 58,
+    height: SURAH_ROW_HEIGHT - 8,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: Spacing.three,
