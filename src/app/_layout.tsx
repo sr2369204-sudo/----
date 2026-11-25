@@ -157,9 +157,11 @@ function AppLayout() {
 
   // Storing the whole Mushaf takes tens of megabytes, so the first time the
   // reader is asked once (Wi-Fi is the better choice). "Yes" resumes the
-  // download on every launch until it is complete, "never" stops asking, and
-  // "later" simply asks again on the next launch. Pages already stored are
-  // skipped, which makes the resumed pass cheap.
+  // download on every launch until it is complete, and "later" simply asks
+  // again on the next launch. A stored "never" still stops the asking; it now
+  // comes only from deleting the downloaded Mushaf in settings or from older
+  // app versions. Pages already stored are skipped, which makes the resumed
+  // pass cheap.
   useEffect(() => {
     if (!introFinished) {
       return;
@@ -249,7 +251,7 @@ function AppLayout() {
   );
 }
 
-async function rememberDownloadChoice(database: SQLiteDatabase, choice: 'yes' | 'never'): Promise<void> {
+async function rememberDownloadChoice(database: SQLiteDatabase, choice: 'yes'): Promise<void> {
   try {
     await database.runAsync(
       `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
@@ -276,7 +278,6 @@ function askToDownloadLibrary(database: SQLiteDatabase): void {
         },
       },
       { text: 'لاحقاً', style: 'cancel' },
-      { text: 'لا تسألني', onPress: () => void rememberDownloadChoice(database, 'never') },
     ],
     { cancelable: true },
   );
