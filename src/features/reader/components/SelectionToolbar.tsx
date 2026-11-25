@@ -574,7 +574,7 @@ function Toolbar({
   actions.push({
     key: 'daily-reading',
     icon: isDailyReadingComplete ? 'checkmark-circle' : 'checkmark-circle-outline',
-    label: isDailyReadingComplete ? 'إلغاء الوصول لهنا' : KHATMA_KIND_TEXT[khatmaKind].markLabel,
+    label: isDailyReadingComplete ? 'تم التسجيل' : KHATMA_KIND_TEXT[khatmaKind].markLabel,
     active: isDailyReadingComplete,
     disabled: !isDailyReadingReady,
     onPress: () => void toggleSelectedAyahsReadStatus(),

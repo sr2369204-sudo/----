@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { confirmDelete } from '@/components/confirm-delete';
@@ -11,21 +11,47 @@ import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
 import {
+  IslamicStar,
+  KHATMA_GOLD,
+  KhatmaPercentRing,
+} from '@/features/khatma/components/khatma-ring';
+import { surahEndPage, surahStartPage } from '@/features/khatma/data/surah-start-pages';
+import {
+  juzRange,
   KHATMA_KIND_TEXT,
   KHATMA_PRESETS,
   khatmaStatus,
+  khatmaTotal,
   loadKhatma,
+  MUSHAF_PAGES,
   restartKhatma,
   saveKhatma,
   startKhatma,
   type Khatma,
   type KhatmaKind,
 } from '@/features/khatma/services/khatma';
-import { SURAH_START_PAGES, surahStartPage } from '@/features/khatma/data/surah-start-pages';
-import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
+import { khatmaRangeLabel } from '@/features/khatma/utils/khatma-labels';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
+import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
 import { loadLastReadingPosition } from '@/features/reader/services/reading-progress';
 import { useTheme } from '@/hooks/use-theme';
+
+type RangeMode = 'full' | 'juz' | 'surah' | 'custom';
+
+const RANGE_MODES: { key: RangeMode; label: string }[] = [
+  { key: 'full', label: 'المصحف كله' },
+  { key: 'juz', label: 'جزء' },
+  { key: 'surah', label: 'سورة' },
+  { key: 'custom', label: 'من صفحة إلى صفحة' },
+];
+
+function parsePage(text: string): number | null {
+  const value = Number.parseInt(
+    text.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))),
+    10,
+  );
+  return Number.isInteger(value) && value >= 1 && value <= MUSHAF_PAGES ? value : null;
+}
 
 export default function KhatmaScreen() {
   const colors = useTheme();
@@ -39,9 +65,36 @@ export default function KhatmaScreen() {
     staleTime: 0,
   });
   const khatma = khatmaQuery.data ?? null;
+
   const [kind, setKind] = useState<KhatmaKind>('reading');
-  const [startSurah, setStartSurah] = useState(1);
-  const [pickingSurah, setPickingSurah] = useState(false);
+  const [mode, setMode] = useState<RangeMode>('full');
+  const [fullFromSurah, setFullFromSurah] = useState(1);
+  const [juz, setJuz] = useState(1);
+  const [singleSurah, setSingleSurah] = useState(2);
+  const [startText, setStartText] = useState('1');
+  const [endText, setEndText] = useState(String(MUSHAF_PAGES));
+  const [days, setDays] = useState(30);
+  const [daysText, setDaysText] = useState('30');
+  const [picker, setPicker] = useState<null | 'full' | 'surah' | 'customStart' | 'customEnd'>(null);
+
+  const range = useMemo<{ startPage: number; endPage: number } | null>(() => {
+    if (mode === 'full') {
+      const startPage = surahStartPage(fullFromSurah);
+      return { startPage, endPage: startPage === 1 ? MUSHAF_PAGES : startPage - 1 };
+    }
+    if (mode === 'juz') {
+      return juzRange(juz);
+    }
+    if (mode === 'surah') {
+      return { startPage: surahStartPage(singleSurah), endPage: surahEndPage(singleSurah) };
+    }
+    const startPage = parsePage(startText);
+    const endPage = parsePage(endText);
+    return startPage !== null && endPage !== null && endPage >= startPage ? { startPage, endPage } : null;
+  }, [endText, fullFromSurah, juz, mode, singleSurah, startText]);
+
+  const plannedTotal = range ? khatmaTotal(range) : 0;
+  const plannedPerDay = range ? Math.ceil(plannedTotal / days) : 0;
 
   const persist = useCallback(
     async (next: Khatma | null) => {
@@ -55,27 +108,125 @@ export default function KhatmaScreen() {
     [database, queryClient],
   );
 
-  const begin = useCallback(
-    async (days: number, useExisting: boolean) => {
-      const position = useExisting ? await loadLastReadingPosition(database) : null;
-      // Start from the page before the last reading position, so that page still counts.
-      const startPage = position ? position.pageNumber : surahStartPage(startSurah);
-      await persist(
-        startKhatma(today, days, {
-          kind,
-          startPage,
-          completed: khatma?.completed ?? 0,
-        }),
-      );
-    },
-    [database, khatma?.completed, kind, persist, startSurah, today],
-  );
+  const begin = useCallback(async () => {
+    if (!range) {
+      return;
+    }
+    await persist(
+      startKhatma(today, days, {
+        kind,
+        startPage: range.startPage,
+        endPage: range.endPage,
+        completed: khatma?.completed ?? 0,
+      }),
+    );
+  }, [days, khatma?.completed, kind, persist, range, today]);
+
+  /** Starts the range from the page where the reader last stopped. */
+  const startFromLastPosition = useCallback(async () => {
+    const position = await loadLastReadingPosition(database);
+    if (position) {
+      setMode('custom');
+      setStartText(String(position.pageNumber));
+      setEndText(String(MUSHAF_PAGES));
+    }
+  }, [database]);
+
+  const setDaysValue = (value: number) => {
+    const next = Math.max(1, Math.min(365, value));
+    setDays(next);
+    setDaysText(String(next));
+  };
 
   const status = khatma ? khatmaStatus(khatma, today) : null;
 
+  const surahList = (onPick: (surah: number) => void, selected: number) => (
+    <ScrollView nestedScrollEnabled style={styles.surahList}>
+      {BUNDLED_SURAH_DIRECTORY.surahs.map((surah) => (
+        <Pressable
+          key={surah.surahNumber}
+          accessibilityRole="button"
+          onPress={() => {
+            onPick(surah.surahNumber);
+            setPicker(null);
+          }}
+          style={[styles.surahRow, { borderColor: colors.border }]}
+        >
+          <Text style={[styles.note, { color: colors.textSecondary }]}>
+            ص {toArabicNumbers(surahStartPage(surah.surahNumber))}
+          </Text>
+          <Text
+            style={[
+              styles.note,
+              {
+                color: selected === surah.surahNumber ? colors.primary : colors.text,
+                fontWeight: selected === surah.surahNumber ? '900' : '400',
+              },
+            ]}
+          >
+            {toArabicNumbers(surah.surahNumber)}. {surah.nameArabic}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+
+  const surahButton = (label: string, target: 'full' | 'surah' | 'customStart' | 'customEnd') => (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => setPicker(picker === target ? null : target)}
+      style={[
+        styles.preset,
+        styles.surahButton,
+        { backgroundColor: colors.backgroundSelected, borderColor: colors.border },
+      ]}
+    >
+      <Ionicons
+        name={picker === target ? 'chevron-up' : 'chevron-down'}
+        size={16}
+        color={colors.textSecondary}
+      />
+      <Text style={[styles.chipText, { color: colors.text }]}>{label}</Text>
+    </Pressable>
+  );
+
+  const chip = (label: string, active: boolean, onPress: () => void, key?: string | number) => (
+    <Pressable
+      key={key ?? label}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[
+        styles.preset,
+        {
+          borderColor: active ? colors.primary : colors.border,
+          backgroundColor: active ? colors.primary : colors.backgroundSelected,
+        },
+      ]}
+    >
+      <Text style={[styles.chipText, { color: active ? '#FFFFFF' : colors.text }]}>{label}</Text>
+    </Pressable>
+  );
+
+  const pageInput = (value: string, onChange: (text: string) => void, label: string) => (
+    <View style={styles.pageField}>
+      <Text style={[styles.note, { color: colors.textSecondary }]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType="number-pad"
+        maxLength={3}
+        style={[
+          styles.input,
+          { color: colors.text, borderColor: colors.border, backgroundColor: colors.backgroundSelected },
+        ]}
+      />
+    </View>
+  );
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.topRow}>
           <Pressable
             accessibilityRole="button"
@@ -90,179 +241,180 @@ export default function KhatmaScreen() {
             <Text style={[styles.caption, { color: colors.textSecondary }]}>
               {khatma && khatma.completed > 0
                 ? `ختمات مكتملة: ${toArabicNumbers(khatma.completed)}`
-                : 'اختم المصحف في المدة اللي تناسبك'}
+                : 'اجعل لك وردًا ثابتًا مع كتاب الله'}
             </Text>
           </View>
         </View>
 
         {!khatma || !status ? (
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.heading, { color: colors.text }]}>نوع الختمة</Text>
-            <View style={styles.presets}>
-              {(Object.keys(KHATMA_KIND_TEXT) as KhatmaKind[]).map((key) => (
-                <Pressable
-                  key={key}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: kind === key }}
-                  onPress={() => setKind(key)}
-                  style={[
-                    styles.preset,
-                    {
-                      borderColor: kind === key ? colors.primary : colors.border,
-                    },
-                    {
-                      backgroundColor: kind === key ? colors.primary : colors.backgroundSelected,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.presetNumber,
-                      {
-                        fontSize: TypeScale.body,
-                        color: kind === key ? '#FFFFFF' : colors.text,
-                      },
-                    ]}
-                  >
-                    {KHATMA_KIND_TEXT[key].chip}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={styles.cardHead}>
+              <IslamicStar size={22} color={colors.primary} />
+              <Text style={[styles.heading, { color: colors.text }]}>نوع الختمة</Text>
             </View>
-            <Text style={[styles.heading, { color: colors.text }]}>تبدأ من أي سورة؟</Text>
+            <View style={styles.presets}>
+              {(Object.keys(KHATMA_KIND_TEXT) as KhatmaKind[]).map((key) =>
+                chip(KHATMA_KIND_TEXT[key].chip, kind === key, () => setKind(key)),
+              )}
+            </View>
+
+            <View style={styles.cardHead}>
+              <IslamicStar size={22} color={colors.primary} />
+              <Text style={[styles.heading, { color: colors.text }]}>النطاق</Text>
+            </View>
+            <View style={styles.presets}>
+              {RANGE_MODES.map((item) =>
+                chip(item.label, mode === item.key, () => {
+                  setMode(item.key);
+                  setPicker(null);
+                }),
+              )}
+            </View>
+
+            {mode === 'full' && (
+              <>
+                <Text style={[styles.note, { color: colors.textSecondary }]}>
+                  تقدر تبدأ من أي سورة، وتكمل لحد ما ترجع لنقطة البداية.
+                </Text>
+                {surahButton(
+                  `تبدأ من سورة ${BUNDLED_SURAH_DIRECTORY.surahs[fullFromSurah - 1].nameArabic}`,
+                  'full',
+                )}
+                {picker === 'full' && surahList(setFullFromSurah, fullFromSurah)}
+              </>
+            )}
+            {mode === 'juz' && (
+              <View style={styles.presets}>
+                {Array.from({ length: 30 }, (_, i) => i + 1).map((n) =>
+                  chip(toArabicNumbers(n), juz === n, () => setJuz(n), n),
+                )}
+              </View>
+            )}
+            {mode === 'surah' && (
+              <>
+                {surahButton(`سورة ${BUNDLED_SURAH_DIRECTORY.surahs[singleSurah - 1].nameArabic}`, 'surah')}
+                {picker === 'surah' && surahList(setSingleSurah, singleSurah)}
+              </>
+            )}
+            {mode === 'custom' && (
+              <>
+                <View style={styles.pagesRow}>
+                  {pageInput(endText, setEndText, 'إلى صفحة')}
+                  {pageInput(startText, setStartText, 'من صفحة')}
+                </View>
+                <View style={styles.pagesRow}>
+                  {surahButton('إلى آخر سورة…', 'customEnd')}
+                  {surahButton('من أول سورة…', 'customStart')}
+                </View>
+                {picker === 'customStart' && surahList((n) => setStartText(String(surahStartPage(n))), 0)}
+                {picker === 'customEnd' && surahList((n) => setEndText(String(surahEndPage(n))), 0)}
+                {range === null && (
+                  <Text style={[styles.note, { color: '#B24C4C' }]}>
+                    اكتب أرقام صفحات من ١ إلى ٦٠٤، ورقم النهاية لا يقل عن رقم البداية.
+                  </Text>
+                )}
+              </>
+            )}
+            <Pressable accessibilityRole="button" onPress={() => void startFromLastPosition()}>
+              <Text style={[styles.link, { color: colors.primary }]}>ابدأ من آخر موضع قراءة ليك</Text>
+            </Pressable>
+
+            <View style={styles.cardHead}>
+              <IslamicStar size={22} color={colors.primary} />
+              <Text style={[styles.heading, { color: colors.text }]}>في كم يوم؟</Text>
+            </View>
+            <View style={styles.presets}>
+              {KHATMA_PRESETS.map((value) =>
+                chip(`${toArabicNumbers(value)} يوم`, days === value, () => setDaysValue(value), value),
+              )}
+            </View>
+            <View style={styles.stepper}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="زيادة يوم"
+                onPress={() => setDaysValue(days + 1)}
+                style={[styles.stepButton, { borderColor: colors.border }]}
+              >
+                <Ionicons name="add" size={20} color={colors.text} />
+              </Pressable>
+              <TextInput
+                value={daysText}
+                keyboardType="number-pad"
+                maxLength={3}
+                onChangeText={(text) => {
+                  setDaysText(text);
+                  const parsed = Number.parseInt(text, 10);
+                  if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 365) {
+                    setDays(parsed);
+                  }
+                }}
+                style={[
+                  styles.input,
+                  styles.daysInput,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.backgroundSelected,
+                  },
+                ]}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إنقاص يوم"
+                onPress={() => setDaysValue(days - 1)}
+                style={[styles.stepButton, { borderColor: colors.border }]}
+              >
+                <Ionicons name="remove" size={20} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <GlassSurface variant="emerald" radius={Radius.lg} contentStyle={styles.summary}>
+              <Text style={styles.summaryTitle}>
+                {KHATMA_KIND_TEXT[kind].title}
+                {range ? ` · ${khatmaRangeLabel(range)}` : ''}
+              </Text>
+              <Text style={styles.summaryText}>
+                {range
+                  ? `${toArabicNumbers(plannedTotal)} صفحة في ${toArabicNumbers(days)} يوم، يعني حوالي ${toArabicNumbers(plannedPerDay)} صفحة كل يوم`
+                  : 'حدّد النطاق أولاً'}
+              </Text>
+            </GlassSurface>
             <Pressable
               accessibilityRole="button"
-              onPress={() => setPickingSurah((open) => !open)}
-              style={[
-                styles.preset,
-                styles.surahButton,
-                {
-                  backgroundColor: colors.backgroundSelected,
-                  borderColor: colors.border,
-                },
-              ]}
+              disabled={range === null}
+              onPress={() => void begin()}
+              style={[styles.primaryButton, { backgroundColor: colors.primary, opacity: range ? 1 : 0.4 }]}
             >
-              <Ionicons
-                name={pickingSurah ? 'chevron-up' : 'chevron-down'}
-                size={16}
-                color={colors.textSecondary}
-              />
-              <Text style={[styles.presetNumber, { fontSize: TypeScale.body, color: colors.text }]}>
-                سورة {BUNDLED_SURAH_DIRECTORY.surahs[startSurah - 1].nameArabic} · صفحة{' '}
-                {toArabicNumbers(SURAH_START_PAGES[startSurah - 1])}
-              </Text>
+              <Text style={styles.primaryText}>ابدأ الختمة</Text>
             </Pressable>
-            {pickingSurah && (
-              <ScrollView nestedScrollEnabled style={styles.surahList}>
-                {BUNDLED_SURAH_DIRECTORY.surahs.map((surah) => (
-                  <Pressable
-                    key={surah.surahNumber}
-                    accessibilityRole="button"
-                    onPress={() => {
-                      setStartSurah(surah.surahNumber);
-                      setPickingSurah(false);
-                    }}
-                    style={[styles.surahRow, { borderColor: colors.border }]}
-                  >
-                    <Text style={[styles.note, { color: colors.textSecondary }]}>
-                      صفحة {toArabicNumbers(SURAH_START_PAGES[surah.surahNumber - 1])}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.note,
-                        {
-                          color: startSurah === surah.surahNumber ? colors.primary : colors.text,
-                        },
-                      ]}
-                    >
-                      {toArabicNumbers(surah.surahNumber)}. {surah.nameArabic}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
-            <Text style={[styles.heading, { color: colors.text }]}>في كم يوم تريد أن تختم؟</Text>
-            <View style={styles.presets}>
-              {KHATMA_PRESETS.map((days) => (
-                <Pressable
-                  key={days}
-                  accessibilityRole="button"
-                  accessibilityLabel={`ختمة في ${days} يوم`}
-                  onPress={() => void begin(days, false)}
-                  style={[
-                    styles.preset,
-                    {
-                      backgroundColor: colors.backgroundSelected,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.presetNumber, { color: colors.primary }]}>
-                    {toArabicNumbers(days)}
-                  </Text>
-                  <Text style={[styles.presetLabel, { color: colors.textSecondary }]}>يوم</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={[styles.note, { color: colors.textSecondary }]}>
-              بعد ما تقرأ، حدّد آية في المصحف واضغط زر الختمة عشان تسجّل وصولك. أو ابدأ من آخر موضع قراءة ليك:
-            </Text>
-            <View style={styles.presets}>
-              {KHATMA_PRESETS.map((days) => (
-                <Pressable
-                  key={days}
-                  accessibilityRole="button"
-                  accessibilityLabel={`ختمة في ${days} يوم من آخر موضع قراءة`}
-                  onPress={() => void begin(days, true)}
-                  style={[styles.preset, styles.presetOutline, { borderColor: colors.border }]}
-                >
-                  <Text style={[styles.presetNumber, { color: colors.text }]}>{toArabicNumbers(days)}</Text>
-                  <Text style={[styles.presetLabel, { color: colors.textSecondary }]}>من آخر موضع</Text>
-                </Pressable>
-              ))}
-            </View>
           </View>
         ) : (
           <>
             <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.hero}>
               <View pointerEvents="none" style={styles.heroGlow} />
-              <View style={styles.heroTop}>
-                <View style={styles.heroIcon}>
-                  <Ionicons name="book-outline" size={22} color="#E8C77F" />
-                </View>
+              <IslamicStar size={170} opacity={0.08} style={styles.heroStar} />
+              <Text style={styles.bismillah}>بسم الله الرحمن الرحيم</Text>
+              <View style={styles.heroMain}>
+                <KhatmaPercentRing fraction={status.done / status.total} size={132} thickness={11} />
                 <View style={styles.heroCopy}>
                   <Text style={styles.heroTitle}>{KHATMA_KIND_TEXT[khatma.kind].title}</Text>
+                  <Text style={styles.heroSubtitle}>{khatmaRangeLabel(khatma)}</Text>
                   <Text style={styles.heroSubtitle}>
-                    {toArabicNumbers(khatma.targetDays)} يوم · اليوم {toArabicNumbers(status.daysElapsed + 1)}{' '}
-                    · من سورة{' '}
-                    {BUNDLED_SURAH_DIRECTORY.surahs.find(
-                      (s) => SURAH_START_PAGES[s.surahNumber - 1] === khatma.startPage,
-                    )?.nameArabic ?? `صفحة ${toArabicNumbers(khatma.startPage)}`}
+                    {toArabicNumbers(khatma.targetDays)} يوم · اليوم {toArabicNumbers(status.daysElapsed + 1)}
+                  </Text>
+                  <Text style={styles.heroFoot}>
+                    {toArabicNumbers(status.done)} من {toArabicNumbers(status.total)} صفحة · باقي{' '}
+                    {toArabicNumbers(status.remaining)}
                   </Text>
                 </View>
-                <Text style={styles.heroPercent}>{toArabicNumbers(status.percent)}٪</Text>
               </View>
-              <View style={styles.heroTrack}>
-                <View style={[styles.heroFill, { width: `${(status.done / 604) * 100}%` }]} />
-              </View>
-              <Text style={styles.heroFoot}>
-                {toArabicNumbers(status.done)} من ٦٠٤ صفحة · باقي {toArabicNumbers(status.remaining)}
-              </Text>
             </GlassSurface>
 
             {status.finished ? (
-              <View
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.accent,
-                  },
-                ]}
-              >
-                <Text style={[styles.heading, { color: colors.text }]}>ما شاء الله، ختمت المصحف</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.accent }]}>
+                <Text style={[styles.heading, { color: colors.text }]}>ما شاء الله، أتممت الختمة</Text>
                 <Text style={[styles.note, { color: colors.textSecondary }]}>
-                  تقبّل الله منك. تحب تبدأ ختمة جديدة؟
+                  تقبّل الله منك. تحب تبدأ ختمة جديدة بنفس النطاق؟
                 </Text>
                 <Pressable
                   accessibilityRole="button"
@@ -273,27 +425,14 @@ export default function KhatmaScreen() {
                 </Pressable>
               </View>
             ) : (
-              <View
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.statRow}>
                   <Stat label="ورد اليوم" value={`${toArabicNumbers(status.perDay)} صفحة`} />
-                  <Stat label="قرأت اليوم" value={toArabicNumbers(status.todayDone)} />
+                  <Stat label="أنجزت اليوم" value={toArabicNumbers(status.todayDone)} />
                   <Stat label="الأيام المتبقية" value={toArabicNumbers(status.daysLeft)} />
                 </View>
                 <Text
-                  style={[
-                    styles.note,
-                    {
-                      color: status.behindBy > 0 ? '#B24C4C' : colors.textSecondary,
-                    },
-                  ]}
+                  style={[styles.note, { color: status.behindBy > 0 ? '#B24C4C' : colors.textSecondary }]}
                 >
                   {status.behindBy > 0
                     ? `متأخر ${toArabicNumbers(status.behindBy)} صفحة عن الخطة. زيد شوية في وردك.`
@@ -301,20 +440,15 @@ export default function KhatmaScreen() {
                       ? `متقدم ${toArabicNumbers(-status.behindBy)} صفحة عن الخطة. ثبّتك الله.`
                       : 'ماشي على الخطة بالظبط.'}
                 </Text>
-                {status.nextPage !== null && (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() =>
-                      router.push({
-                        pathname: '/reader',
-                        params: { pageNumber: String(status.nextPage) },
-                      })
-                    }
-                    style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                  >
-                    <Text style={styles.primaryText}>كمّل من صفحة {toArabicNumbers(status.nextPage)}</Text>
-                  </Pressable>
-                )}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    router.push({ pathname: '/reader', params: { pageNumber: String(status.nextPage) } })
+                  }
+                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={styles.primaryText}>كمّل من صفحة {toArabicNumbers(status.nextPage)}</Text>
+                </Pressable>
               </View>
             )}
 
@@ -459,6 +593,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   surahList: { maxHeight: 220 },
+  cardHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  chipText: { fontSize: TypeScale.label, fontWeight: '800' },
+  link: { fontSize: TypeScale.label, fontWeight: '800', textAlign: 'right' },
+  pagesRow: { flexDirection: 'row-reverse', gap: Spacing.two },
+  pageField: { flex: 1, gap: 4 },
+  input: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    fontSize: TypeScale.body,
+    textAlign: 'center',
+  },
+  daysInput: { minWidth: 80 },
+  stepper: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  stepButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summary: { padding: Spacing.three, gap: 4 },
+  summaryTitle: { fontSize: TypeScale.label, fontWeight: '900', color: '#FFF9EA', textAlign: 'right' },
+  summaryText: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.85)', textAlign: 'right' },
+  heroStar: { position: 'absolute', left: -50, bottom: -60 },
+  bismillah: { fontSize: TypeScale.caption, color: KHATMA_GOLD, textAlign: 'center' },
+  heroMain: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16 },
   surahRow: {
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',

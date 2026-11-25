@@ -12,6 +12,20 @@ export const SURAH_START_PAGES: readonly number[] = [
   602, 603, 603, 603, 604, 604, 604,
 ];
 
+/** Last Mushaf page of each surah, index 0 is Al-Fatihah. */
+export const SURAH_END_PAGES: readonly number[] = [
+  1, 49, 76, 106, 127, 150, 176, 186, 207, 221, 235, 248, 255, 261, 267, 281, 293, 304, 312, 321, 331, 341,
+  349, 359, 366, 376, 385, 396, 404, 410, 414, 417, 427, 434, 440, 445, 452, 458, 467, 476, 482, 489, 495,
+  498, 502, 506, 510, 515, 517, 520, 523, 525, 528, 531, 534, 537, 541, 545, 548, 551, 552, 554, 555, 557,
+  559, 561, 564, 566, 568, 570, 571, 573, 575, 577, 578, 580, 581, 583, 584, 585, 586, 587, 589, 589, 590,
+  591, 592, 592, 594, 594, 595, 596, 596, 596, 597, 597, 598, 599, 599, 600, 600, 600, 601, 601, 601, 602,
+  602, 602, 603, 603, 603, 604, 604, 604,
+];
+
+export function surahEndPage(surahNumber: number): number {
+  return SURAH_END_PAGES[surahNumber - 1] ?? 604;
+}
+
 export function surahStartPage(surahNumber: number): number {
   return SURAH_START_PAGES[surahNumber - 1] ?? 1;
 }

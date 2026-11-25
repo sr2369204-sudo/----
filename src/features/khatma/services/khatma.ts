@@ -52,7 +52,9 @@ export type Khatma = {
   targetDays: number;
   /** Mushaf page where the khatma starts, e.g. 2 for Al-Baqarah. It wraps past page 604 back to 1. */
   startPage: number;
-  /** Pages done so far counted from `startPage`, 0..604. */
+  /** Last Mushaf page of the khatma. 604 for a full khatma. */
+  endPage: number;
+  /** Pages done so far counted from `startPage`, 0..total. */
   done: number;
   /** Day the `todayBase` below belongs to. */
   todayDate: string;
@@ -63,6 +65,8 @@ export type Khatma = {
 };
 
 export type KhatmaStatus = {
+  /** Pages in this khatma. */
+  total: number;
   done: number;
   remaining: number;
   percent: number;
@@ -114,7 +118,25 @@ export function doneToPage(startPage: number, done: number): number {
 
 /** True when `page` is already inside the part of the khatma that is done. */
 export function khatmaCoversPage(khatma: Khatma, page: number): boolean {
-  return khatma.done >= pageToDone(khatma.startPage, page);
+  const target = pageToDone(khatma.startPage, page);
+  return target <= khatmaTotal(khatma) && khatma.done >= target;
+}
+
+/** Pages in the khatma. A range that ends before it starts wraps past page 604. */
+export function khatmaTotal(khatma: Pick<Khatma, 'startPage' | 'endPage'>): number {
+  return pageToDone(khatma.startPage, khatma.endPage);
+}
+
+/** Page where each juz (1..30) starts on the Madani Mushaf. Some juz begin mid-page (7, 11, 26); the page they begin on is listed. */
+export const JUZ_START_PAGES: readonly number[] = [
+  1, 22, 42, 62, 82, 102, 121, 142, 162, 182, 201, 222, 242, 262, 282, 302, 322, 342, 362, 382, 402, 422, 442,
+  462, 482, 502, 522, 542, 562, 582,
+];
+
+export function juzRange(juz: number): { startPage: number; endPage: number } {
+  const startPage = JUZ_START_PAGES[juz - 1] ?? 1;
+  const next = JUZ_START_PAGES[juz];
+  return { startPage, endPage: next === undefined ? MUSHAF_PAGES : next - 1 };
 }
 
 export function startKhatma(
@@ -123,16 +145,20 @@ export function startKhatma(
   options: {
     kind?: KhatmaKind;
     startPage?: number;
+    endPage?: number;
     done?: number;
     completed?: number;
   } = {},
 ): Khatma {
-  const done = clampDone(options.done ?? 0);
+  const startPage = clampPage(options.startPage ?? 1);
+  const endPage = clampPage(options.endPage ?? MUSHAF_PAGES);
+  const done = Math.min(clampDone(options.done ?? 0), khatmaTotal({ startPage, endPage }));
   return {
     kind: options.kind ?? 'reading',
     startDate: today,
     targetDays: Math.max(1, Math.min(365, Math.round(targetDays))),
-    startPage: clampPage(options.startPage ?? 1),
+    startPage,
+    endPage,
     done,
     todayDate: today,
     todayBase: done,
@@ -151,13 +177,17 @@ export function parseKhatma(value: string | null): Khatma | null {
     }
     // Version 2 stored the page reached; with the start at page 1 that is the same number.
     const rawDone = Number.isInteger(p.done) ? p.done : p.reachedPage;
-    const done = Number.isInteger(rawDone) ? clampDone(rawDone as number) : 0;
     const kind: KhatmaKind = p.kind === 'memorization' || p.kind === 'review' ? p.kind : 'reading';
+    const startPage = Number.isInteger(p.startPage) ? clampPage(p.startPage as number) : 1;
+    const endPage = Number.isInteger(p.endPage) ? clampPage(p.endPage as number) : MUSHAF_PAGES;
+    const total = khatmaTotal({ startPage, endPage });
+    const done = Math.min(Number.isInteger(rawDone) ? clampDone(rawDone as number) : 0, total);
     return {
       kind,
       startDate: p.startDate,
       targetDays: p.targetDays as number,
-      startPage: Number.isInteger(p.startPage) ? clampPage(p.startPage as number) : 1,
+      startPage,
+      endPage,
       done,
       todayDate: isDateKey(p.todayDate) ? p.todayDate : p.startDate,
       todayBase: Number.isInteger(p.todayBase) ? Math.min(clampDone(p.todayBase as number), done) : 0,
@@ -169,7 +199,7 @@ export function parseKhatma(value: string | null): Khatma | null {
 }
 
 export function serializeKhatma(khatma: Khatma): string {
-  return JSON.stringify({ format: FORMAT, version: 3, ...khatma });
+  return JSON.stringify({ format: FORMAT, version: 4, ...khatma });
 }
 
 /** Rolls the "start of today" marker forward when a new day began. */
@@ -179,19 +209,21 @@ function rollDay(khatma: Khatma, today: string): Khatma {
 
 export type ReachResult =
   | { kind: 'advanced'; khatma: Khatma; from: number; to: number; page: number }
-  | { kind: 'undone'; khatma: Khatma; from: number; to: number; page: number }
-  | { kind: 'ahead'; khatma: Khatma };
+  | { kind: 'unchanged'; khatma: Khatma; reason: 'same' | 'earlier' | 'outside' };
 
 /**
  * The reader taps "reached here" on a Mushaf page. Everything from the start
- * up to that page counts as done. A later page moves the mark forward. Tapping
- * the page that is already the mark takes it back one page. An earlier page
- * changes nothing, so progress is never lost by accident. `from` and `to` are
- * page counts, `page` is the Mushaf page now reached.
+ * up to that page counts as done. A later page moves the mark forward. The
+ * same page or an earlier one changes nothing, so progress is never lost by
+ * accident, and neither does a page outside the khatma's range. `from` and
+ * `to` are page counts, `page` is the Mushaf page now reached.
  */
 export function markReached(khatma: Khatma, pageNumber: number, today: string): ReachResult {
   const rolled = rollDay(khatma, today);
   const target = pageToDone(rolled.startPage, clampPage(pageNumber));
+  if (target > khatmaTotal(rolled)) {
+    return { kind: 'unchanged', khatma: rolled, reason: 'outside' };
+  }
   if (target > rolled.done) {
     return {
       kind: 'advanced',
@@ -201,27 +233,14 @@ export function markReached(khatma: Khatma, pageNumber: number, today: string): 
       page: clampPage(pageNumber),
     };
   }
-  if (target === rolled.done) {
-    const to = target - 1;
-    return {
-      kind: 'undone',
-      khatma: {
-        ...rolled,
-        done: to,
-        todayBase: Math.min(rolled.todayBase, to),
-      },
-      from: target,
-      to,
-      page: to > 0 ? doneToPage(rolled.startPage, to) : rolled.startPage,
-    };
-  }
-  return { kind: 'ahead', khatma: rolled };
+  return { kind: 'unchanged', khatma: rolled, reason: target === rolled.done ? 'same' : 'earlier' };
 }
 
 export function khatmaStatus(khatma: Khatma, today: string): KhatmaStatus {
   const rolled = rollDay(khatma, today);
   const done = rolled.done;
-  const remaining = MUSHAF_PAGES - done;
+  const total = khatmaTotal(rolled);
+  const remaining = total - done;
   const daysElapsed = Math.max(0, daysBetween(khatma.startDate, today));
   // Day 1 is the start day: with a 30-day goal the last day is day 30.
   const daysLeft = Math.max(1, khatma.targetDays - daysElapsed);
@@ -229,13 +248,14 @@ export function khatmaStatus(khatma: Khatma, today: string): KhatmaStatus {
   // Today's share: what was left this morning spread over the days left.
   const perDay = Math.ceil((remaining + todayDone) / daysLeft);
   const expectedByToday = Math.min(
-    MUSHAF_PAGES,
-    Math.ceil((MUSHAF_PAGES * Math.min(khatma.targetDays, daysElapsed + 1)) / khatma.targetDays),
+    total,
+    Math.ceil((total * Math.min(khatma.targetDays, daysElapsed + 1)) / khatma.targetDays),
   );
   return {
+    total,
     done,
     remaining,
-    percent: Math.round((done / MUSHAF_PAGES) * 100),
+    percent: Math.round((done / total) * 100),
     daysElapsed,
     daysLeft,
     perDay,
@@ -243,7 +263,7 @@ export function khatmaStatus(khatma: Khatma, today: string): KhatmaStatus {
     todayLeft: Math.max(0, perDay - todayDone),
     behindBy: expectedByToday - done,
     finished: remaining === 0,
-    nextPage: doneToPage(rolled.startPage, Math.min(MUSHAF_PAGES, done + 1)),
+    nextPage: doneToPage(rolled.startPage, Math.min(total, done + 1)),
     reachedPage: done > 0 ? doneToPage(rolled.startPage, done) : null,
   };
 }
@@ -287,10 +307,11 @@ export async function markKhatmaReached(
 
 /** After a finished khatma: count it and start a new one with the same goal. */
 export function restartKhatma(khatma: Khatma, today: string): Khatma {
-  const finished = khatma.done >= MUSHAF_PAGES ? 1 : 0;
+  const finished = khatma.done >= khatmaTotal(khatma) ? 1 : 0;
   return startKhatma(today, khatma.targetDays, {
     kind: khatma.kind,
     startPage: khatma.startPage,
+    endPage: khatma.endPage,
     completed: khatma.completed + finished,
   });
 }

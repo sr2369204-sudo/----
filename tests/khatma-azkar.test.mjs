@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   markReached,
+  khatmaTotal,
+  juzRange,
   khatmaCoversPage,
   khatmaStatus,
   parseKhatma,
@@ -10,7 +12,7 @@ import {
   serializeKhatma,
   startKhatma,
 } from '../src/features/khatma/services/khatma.ts';
-import { SURAH_START_PAGES, surahStartPage } from '../src/features/khatma/data/surah-start-pages.ts';
+import { SURAH_START_PAGES, surahEndPage, surahStartPage } from '../src/features/khatma/data/surah-start-pages.ts';
 import {
   parseAzkarProgress,
   serializeAzkarProgress,
@@ -32,15 +34,19 @@ test('khatma marks the reached page and tracks today', () => {
   assert.equal(s.perDay, 21); // ceil((594 + 10) / 30)
   assert.equal(s.nextPage, 11);
   assert.equal(s.reachedPage, 10);
-  assert.equal(markReached(k, 5, '2026-11-25').kind, 'ahead');
-  const undone = markReached(k, 10, '2026-11-25');
-  assert.equal(undone.kind, 'undone');
-  assert.equal(undone.khatma.done, 9);
+  const earlier = markReached(k, 5, '2026-11-25');
+  assert.equal(earlier.kind, 'unchanged');
+  assert.equal(earlier.reason, 'earlier');
+  // Pressing the button again on the page that is already the mark does nothing.
+  const same = markReached(k, 10, '2026-11-25');
+  assert.equal(same.kind, 'unchanged');
+  assert.equal(same.reason, 'same');
+  assert.equal(same.khatma.done, 10);
 });
 
 test('khatma can start from a surah, wrap past the last page and have a kind', () => {
   // Al-Baqarah starts on page 2; reaching page 50 means 49 pages done.
-  let k = startKhatma('2026-11-25', 30, { kind: 'memorization', startPage: surahStartPage(2) });
+  let k = startKhatma('2026-11-25', 30, { kind: 'memorization', startPage: surahStartPage(2), endPage: 1 });
   assert.equal(k.startPage, 2);
   assert.equal(k.kind, 'memorization');
   k = markReached(k, 50, '2026-11-25').khatma;
@@ -56,6 +62,25 @@ test('khatma can start from a surah, wrap past the last page and have a kind', (
   assert.equal(khatmaStatus(end.khatma, '2026-11-25').finished, true);
   assert.equal(surahStartPage(114), 604);
   assert.equal(SURAH_START_PAGES.length, 114);
+});
+
+test('khatma can cover a range of pages, a juz or a single surah', () => {
+  // Surah Al-Mulk to the end: pages 562..604 is 43 pages.
+  let k = startKhatma('2026-11-25', 10, { startPage: surahStartPage(67), endPage: 604 });
+  assert.equal(khatmaStatus(k, '2026-11-25').total, 43);
+  assert.equal(markReached(k, 100, '2026-11-25').reason, 'outside');
+  assert.equal(khatmaCoversPage(k, 100), false);
+  k = markReached(k, 570, '2026-11-25').khatma;
+  assert.equal(k.done, 9);
+  assert.equal(khatmaStatus(k, '2026-11-25').percent, Math.round((9 / 43) * 100));
+  k = markReached(k, 604, '2026-11-25').khatma;
+  assert.equal(khatmaStatus(k, '2026-11-25').finished, true);
+  assert.equal(restartKhatma(k, '2026-11-26').endPage, 604);
+  // Al-Baqarah alone: pages 2..49.
+  assert.equal(khatmaTotal({ startPage: surahStartPage(2), endPage: surahEndPage(2) }), 48);
+  assert.deepEqual(juzRange(1), { startPage: 1, endPage: 21 });
+  assert.deepEqual(juzRange(30), { startPage: 582, endPage: 604 });
+  assert.equal(khatmaTotal({ startPage: 2, endPage: 1 }), 604);
 });
 
 test('khatma rolls the day and reports behind and ahead of plan', () => {

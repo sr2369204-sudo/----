@@ -686,20 +686,25 @@ export default function ReaderScreen() {
       return 'ابدأ ختمة من الشاشة الرئيسية أولاً.';
     }
     queryClient.setQueryData(['khatma'], result.khatma);
-    if (result.kind === 'ahead') {
-      return 'وصلت لصفحة أبعد من دي بالفعل.';
+    if (result.kind === 'unchanged') {
+      return result.reason === 'outside'
+        ? 'الصفحة دي برّه نطاق الختمة.'
+        : result.reason === 'same'
+          ? 'الصفحة دي متسجلة بالفعل.'
+          : 'وصلت لصفحة أبعد من دي بالفعل.';
     }
     const status = khatmaStatus(result.khatma, today);
     setKhatmaEvent({
       id: Date.now(),
       from: result.from,
       to: result.to,
+      total: status.total,
       page: result.page,
       kind: result.khatma.kind,
       todayDone: status.todayDone,
       perDay: status.perDay,
     });
-    return result.kind === 'undone' ? 'تم التراجع عن الصفحة.' : `تم تسجيل وصولك لصفحة ${result.page}.`;
+    return `تم تسجيل وصولك لصفحة ${result.page}.`;
   }, [activePageNumber, database, queryClient, shownPageNumber]);
 
   useEffect(() => {
