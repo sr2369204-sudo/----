@@ -11,7 +11,8 @@ import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
 import {
-  IslamicStar,
+  ConcentricRings,
+  IslamicArch,
   KHATMA_GOLD,
   KhatmaPercentRing,
 } from '@/features/khatma/components/khatma-ring';
@@ -30,7 +31,12 @@ import {
   type Khatma,
   type KhatmaKind,
 } from '@/features/khatma/services/khatma';
-import { khatmaRangeLabel } from '@/features/khatma/utils/khatma-labels';
+import {
+  dayMonthLabel,
+  khatmaRangeLabel,
+  surahLabel,
+  weekdayName,
+} from '@/features/khatma/utils/khatma-labels';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
 import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
 import { loadLastReadingPosition } from '@/features/reader/services/reading-progress';
@@ -249,7 +255,7 @@ export default function KhatmaScreen() {
         {!khatma || !status ? (
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.cardHead}>
-              <IslamicStar size={22} color={colors.primary} />
+              <View style={[styles.bullet, { backgroundColor: colors.primary }]} />
               <Text style={[styles.heading, { color: colors.text }]}>نوع الختمة</Text>
             </View>
             <View style={styles.presets}>
@@ -259,7 +265,7 @@ export default function KhatmaScreen() {
             </View>
 
             <View style={styles.cardHead}>
-              <IslamicStar size={22} color={colors.primary} />
+              <View style={[styles.bullet, { backgroundColor: colors.primary }]} />
               <Text style={[styles.heading, { color: colors.text }]}>النطاق</Text>
             </View>
             <View style={styles.presets}>
@@ -320,7 +326,7 @@ export default function KhatmaScreen() {
             </Pressable>
 
             <View style={styles.cardHead}>
-              <IslamicStar size={22} color={colors.primary} />
+              <View style={[styles.bullet, { backgroundColor: colors.primary }]} />
               <Text style={[styles.heading, { color: colors.text }]}>في كم يوم؟</Text>
             </View>
             <View style={styles.presets}>
@@ -392,7 +398,8 @@ export default function KhatmaScreen() {
           <>
             <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.hero}>
               <View pointerEvents="none" style={styles.heroGlow} />
-              <IslamicStar size={170} opacity={0.08} style={styles.heroStar} />
+              <ConcentricRings size={230} opacity={0.1} style={styles.heroRings} />
+              <IslamicArch width={64} opacity={0.14} style={styles.heroArch} />
               <Text style={styles.bismillah}>بسم الله الرحمن الرحيم</Text>
               <View style={styles.heroMain}>
                 <KhatmaPercentRing fraction={status.done / status.total} size={132} thickness={11} />
@@ -410,6 +417,30 @@ export default function KhatmaScreen() {
               </View>
             </GlassSurface>
 
+            {status.reachedPage !== null && (
+              <View
+                style={[
+                  styles.card,
+                  styles.stopCard,
+                  { backgroundColor: colors.surface, borderColor: KHATMA_GOLD },
+                ]}
+              >
+                <View style={styles.cardHead}>
+                  <Ionicons name="bookmark" size={18} color={KHATMA_GOLD} />
+                  <Text style={[styles.heading, { color: colors.text }]}>وقفت عند</Text>
+                </View>
+                <Text style={[styles.stopText, { color: colors.text }]}>
+                  {khatma.lastAyah
+                    ? `${surahLabel(khatma.lastAyah.surahNumber)}، آية ${toArabicNumbers(khatma.lastAyah.ayahNumber)}`
+                    : `صفحة ${toArabicNumbers(status.reachedPage)}`}
+                </Text>
+                <Text style={[styles.note, { color: colors.textSecondary }]}>
+                  صفحة {toArabicNumbers(status.reachedPage)}
+                  {status.juz ? ` · الجزء ${toArabicNumbers(status.juz)}` : ''}
+                </Text>
+              </View>
+            )}
+
             {status.finished ? (
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.accent }]}>
                 <Text style={[styles.heading, { color: colors.text }]}>ما شاء الله، أتممت الختمة</Text>
@@ -425,31 +456,99 @@ export default function KhatmaScreen() {
                 </Pressable>
               </View>
             ) : (
-              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.statRow}>
-                  <Stat label="ورد اليوم" value={`${toArabicNumbers(status.perDay)} صفحة`} />
-                  <Stat label="أنجزت اليوم" value={toArabicNumbers(status.todayDone)} />
-                  <Stat label="الأيام المتبقية" value={toArabicNumbers(status.daysLeft)} />
+              <>
+                <View style={styles.tiles}>
+                  <Tile
+                    icon="today-outline"
+                    label="ورد اليوم"
+                    value={`${toArabicNumbers(status.perDay)} صفحة`}
+                  />
+                  <Tile
+                    icon="checkmark-done-outline"
+                    label="أنجزت اليوم"
+                    value={toArabicNumbers(status.todayDone)}
+                  />
+                  <Tile
+                    icon="calendar-outline"
+                    label="الأيام المتبقية"
+                    value={toArabicNumbers(status.daysLeft)}
+                  />
+                  <Tile icon="flame-outline" label="أيام متتالية" value={toArabicNumbers(status.streak)} />
                 </View>
-                <Text
-                  style={[styles.note, { color: status.behindBy > 0 ? '#B24C4C' : colors.textSecondary }]}
-                >
-                  {status.behindBy > 0
-                    ? `متأخر ${toArabicNumbers(status.behindBy)} صفحة عن الخطة. زيد شوية في وردك.`
-                    : status.behindBy < 0
-                      ? `متقدم ${toArabicNumbers(-status.behindBy)} صفحة عن الخطة. ثبّتك الله.`
-                      : 'ماشي على الخطة بالظبط.'}
-                </Text>
+
+                <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.cardHead}>
+                    <View style={[styles.bullet, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.heading, { color: colors.text }]}>آخر ٧ أيام</Text>
+                  </View>
+                  <View style={styles.chart}>
+                    {status.last7.map((day) => {
+                      const max = Math.max(status.perDay, ...status.last7.map((d) => d.pages), 1);
+                      return (
+                        <View key={day.date} style={styles.chartCol}>
+                          <Text style={[styles.chartValue, { color: colors.textSecondary }]}>
+                            {day.pages > 0 ? toArabicNumbers(day.pages) : ''}
+                          </Text>
+                          <View style={[styles.chartTrack, { backgroundColor: colors.backgroundSelected }]}>
+                            <View
+                              style={[
+                                styles.chartBar,
+                                {
+                                  height: `${(day.pages / max) * 100}%`,
+                                  backgroundColor: day.date === today ? KHATMA_GOLD : colors.primary,
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text style={[styles.chartDay, { color: colors.textSecondary }]}>
+                            {weekdayName(day.date)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Text
+                    style={[styles.note, { color: status.behindBy > 0 ? '#B24C4C' : colors.textSecondary }]}
+                  >
+                    {status.behindBy > 0
+                      ? `متأخر ${toArabicNumbers(status.behindBy)} صفحة عن الخطة. زيد شوية في وردك.`
+                      : status.behindBy < 0
+                        ? `متقدم ${toArabicNumbers(-status.behindBy)} صفحة عن الخطة. ثبّتك الله.`
+                        : 'ماشي على الخطة.'}
+                  </Text>
+                  {status.projectedFinish ? (
+                    <Text
+                      style={[styles.note, { color: status.onPace ? colors.primary : colors.textSecondary }]}
+                    >
+                      بالمعدل الحالي هتختم حوالي {dayMonthLabel(status.projectedFinish)}
+                      {status.onPace ? '، في الميعاد.' : '.'}
+                    </Text>
+                  ) : null}
+                </View>
+
                 <Pressable
                   accessibilityRole="button"
                   onPress={() =>
-                    router.push({ pathname: '/reader', params: { pageNumber: String(status.nextPage) } })
+                    router.push({
+                      pathname: '/reader',
+                      params: khatma.lastAyah
+                        ? {
+                            pageNumber: String(status.reachedPage ?? status.nextPage),
+                            surahNumber: String(khatma.lastAyah.surahNumber),
+                            ayahNumber: String(khatma.lastAyah.ayahNumber),
+                          }
+                        : { pageNumber: String(status.nextPage) },
+                    })
                   }
                   style={[styles.primaryButton, { backgroundColor: colors.primary }]}
                 >
-                  <Text style={styles.primaryText}>كمّل من صفحة {toArabicNumbers(status.nextPage)}</Text>
+                  <Text style={styles.primaryText}>
+                    {khatma.lastAyah
+                      ? 'كمّل من آخر آية وقفت عندها'
+                      : `ابدأ من صفحة ${toArabicNumbers(status.nextPage)}`}
+                  </Text>
                 </Pressable>
-              </View>
+              </>
             )}
 
             <Pressable
@@ -472,10 +571,19 @@ export default function KhatmaScreen() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Tile({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
   const colors = useTheme();
   return (
-    <View style={styles.stat}>
+    <View style={[styles.tile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <Ionicons name={icon} size={18} color={KHATMA_GOLD} />
       <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
       <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
     </View>
@@ -619,7 +727,26 @@ const styles = StyleSheet.create({
   summary: { padding: Spacing.three, gap: 4 },
   summaryTitle: { fontSize: TypeScale.label, fontWeight: '900', color: '#FFF9EA', textAlign: 'right' },
   summaryText: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.85)', textAlign: 'right' },
-  heroStar: { position: 'absolute', left: -50, bottom: -60 },
+  heroRings: { position: 'absolute', left: -90, bottom: -110 },
+  heroArch: { position: 'absolute', right: 10, top: -34 },
+  bullet: { width: 8, height: 8, borderRadius: 4 },
+  stopCard: { borderWidth: 1.5, alignItems: 'flex-end' },
+  stopText: { fontSize: TypeScale.title, fontWeight: '900', textAlign: 'right' },
+  tiles: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: Spacing.two },
+  tile: {
+    width: '48.5%',
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingVertical: 14,
+    alignItems: 'center',
+    gap: 4,
+  },
+  chart: { flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 6, height: 120 },
+  chartCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%' },
+  chartTrack: { flex: 1, width: '70%', borderRadius: 8, justifyContent: 'flex-end', overflow: 'hidden' },
+  chartBar: { width: '100%', borderRadius: 8 },
+  chartValue: { fontSize: 10, height: 14 },
+  chartDay: { fontSize: 10 },
   bismillah: { fontSize: TypeScale.caption, color: KHATMA_GOLD, textAlign: 'center' },
   heroMain: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16 },
   surahRow: {

@@ -7,38 +7,109 @@ export const KHATMA_GOLD = '#D8B56D';
 export const KHATMA_GOLD_LIGHT = '#F3D28C';
 
 /**
- * An eight-pointed star (two squares turned against each other), the shape of
- * the rub el hizb sign. Plain views, so it needs no native module.
+ * A mihrab arch outline: a pointed-round top over straight sides, with a second
+ * arch inside it. Used as a faint watermark. Plain views, no native module.
  */
-export function IslamicStar({
-  size,
+export function IslamicArch({
+  width,
   color = KHATMA_GOLD,
   opacity = 1,
-  filled = false,
+  style,
+}: {
+  width: number;
+  color?: string;
+  opacity?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const height = width * 1.45;
+  const arch = (w: number, h: number, inset: number): ViewStyle => ({
+    position: 'absolute',
+    left: inset,
+    top: inset,
+    width: w,
+    height: h,
+    borderWidth: 1.5,
+    borderColor: color,
+    borderTopLeftRadius: w / 2,
+    borderTopRightRadius: w / 2,
+    borderBottomWidth: 0,
+  });
+  return (
+    <View pointerEvents="none" style={[{ width, height, opacity }, style]}>
+      <View style={arch(width, height, 0)} />
+      <View style={arch(width - 16, height - 16, 8)} />
+      <View style={arch(width - 32, height - 32, 16)} />
+    </View>
+  );
+}
+
+/** A ring of small beads, like a tasbih, in a box of `size`. */
+export function BeadsRing({
+  size,
+  count = 36,
+  color = KHATMA_GOLD,
+  opacity = 0.5,
+  bead = 3,
+}: {
+  size: number;
+  count?: number;
+  color?: string;
+  opacity?: number;
+  bead?: number;
+}) {
+  const radius = size / 2 - bead;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', width: size, height: size, opacity }}>
+      {Array.from({ length: count }, (_, i) => {
+        const angle = (i / count) * Math.PI * 2;
+        return (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              width: bead,
+              height: bead,
+              borderRadius: bead / 2,
+              backgroundColor: color,
+              left: size / 2 + Math.cos(angle) * radius - bead / 2,
+              top: size / 2 + Math.sin(angle) * radius - bead / 2,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+/** A few thin concentric circles, a calm round pattern for backgrounds. */
+export function ConcentricRings({
+  size,
+  color = KHATMA_GOLD,
+  opacity = 0.12,
   style,
 }: {
   size: number;
   color?: string;
   opacity?: number;
-  filled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  // Both squares have their corners at half the box size from the centre, so the tips line up.
-  const side = size / Math.SQRT2;
-  const square: ViewStyle = {
-    position: 'absolute',
-    width: side,
-    height: side,
-    left: (size - side) / 2,
-    top: (size - side) / 2,
-    borderWidth: 1.5,
-    borderColor: color,
-    backgroundColor: filled ? color : 'transparent',
-  };
   return (
     <View pointerEvents="none" style={[{ width: size, height: size, opacity }, style]}>
-      <View style={square} />
-      <View style={[square, { transform: [{ rotate: '45deg' }] }]} />
+      {[1, 0.78, 0.56, 0.34].map((scale) => (
+        <View
+          key={scale}
+          style={{
+            position: 'absolute',
+            width: size * scale,
+            height: size * scale,
+            left: (size - size * scale) / 2,
+            top: (size - size * scale) / 2,
+            borderRadius: size,
+            borderWidth: 1.5,
+            borderColor: color,
+          }}
+        />
+      ))}
     </View>
   );
 }
@@ -128,7 +199,7 @@ export function useAnimatedFraction(fraction: number, from?: number, duration = 
   return { value, percent: text };
 }
 
-/** A ring with the percentage and a faint star behind it. */
+/** A ring with the percentage in its middle and a band of beads around it. */
 export function KhatmaPercentRing({
   fraction,
   from,
@@ -143,18 +214,23 @@ export function KhatmaPercentRing({
   caption?: string;
 }) {
   const { value, percent } = useAnimatedFraction(fraction, from);
+  const outer = size + 18;
   return (
-    <KhatmaRing progress={value} size={size} thickness={thickness}>
-      <IslamicStar size={size - thickness * 2 - 10} opacity={0.22} />
-      <Text style={[styles.percent, { fontSize: size * 0.26 }]}>{toArabicNumbers(percent)}٪</Text>
-      {caption ? <Text style={styles.caption}>{caption}</Text> : null}
-    </KhatmaRing>
+    <View style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center' }}>
+      <BeadsRing size={outer} count={Math.round(outer / 4)} />
+      <KhatmaRing progress={value} size={size} thickness={thickness}>
+        <View style={styles.percentBox}>
+          <Text style={[styles.percent, { fontSize: size * 0.26 }]}>{toArabicNumbers(percent)}٪</Text>
+          {caption ? <Text style={styles.caption}>{caption}</Text> : null}
+        </View>
+      </KhatmaRing>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   center: {
-    ...StyleSheet.absoluteFill as object,
+    ...(StyleSheet.absoluteFill as object),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -163,5 +239,6 @@ const styles = StyleSheet.create({
     color: KHATMA_GOLD_LIGHT,
     fontVariant: ['tabular-nums'],
   },
+  percentBox: { alignItems: 'center', justifyContent: 'center' },
   caption: { fontSize: 10, color: 'rgba(239, 248, 243, 0.75)' },
 });

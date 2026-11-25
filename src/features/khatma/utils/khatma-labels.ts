@@ -36,3 +36,35 @@ export function khatmaRangeLabel(khatma: Pick<Khatma, 'startPage' | 'endPage'>):
   const to = endSurah ? `سورة ${surahName(endSurah)}` : `صفحة ${toArabicNumbers(endPage)}`;
   return `من ${from} إلى ${to}`;
 }
+
+/** "سورة البقرة" for a surah number. */
+export function surahLabel(number: number): string {
+  return `سورة ${surahName(number)}`;
+}
+
+const WEEKDAYS = ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
+const MONTHS = [
+  'يناير',
+  'فبراير',
+  'مارس',
+  'أبريل',
+  'مايو',
+  'يونيو',
+  'يوليو',
+  'أغسطس',
+  'سبتمبر',
+  'أكتوبر',
+  'نوفمبر',
+  'ديسمبر',
+];
+
+/** Short weekday name for a YYYY-MM-DD key. */
+export function weekdayName(key: string): string {
+  return WEEKDAYS[new Date(`${key}T00:00:00Z`).getUTCDay()];
+}
+
+/** "٢٥ نوفمبر" for a YYYY-MM-DD key. */
+export function dayMonthLabel(key: string): string {
+  const [, month, day] = key.split('-').map(Number);
+  return `${toArabicNumbers(day)} ${MONTHS[month - 1]}`;
+}

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   markReached,
+  juzOfPage,
   khatmaTotal,
   juzRange,
   khatmaCoversPage,
@@ -83,6 +84,24 @@ test('khatma can cover a range of pages, a juz or a single surah', () => {
   assert.equal(khatmaTotal({ startPage: 2, endPage: 1 }), 604);
 });
 
+test('khatma is not late on day one, only after a day has ended, and remembers the ayah', () => {
+  const fresh = startKhatma('2026-11-25', 30);
+  assert.equal(khatmaStatus(fresh, '2026-11-25').behindBy, 0);
+  // Day 2 with nothing read: yesterday's share (21 pages) is missed.
+  assert.equal(khatmaStatus(fresh, '2026-11-26').behindBy, 21);
+  // Reading today's share on day 1 is on plan, not "ahead".
+  let k = markReached(fresh, 20, '2026-11-25', { surahNumber: 2, ayahNumber: 40 }).khatma;
+  assert.equal(khatmaStatus(k, '2026-11-25').behindBy, 0);
+  assert.deepEqual(k.lastAyah, { surahNumber: 2, ayahNumber: 40 });
+  assert.equal(khatmaStatus(k, '2026-11-25').streak, 1);
+  assert.equal(khatmaStatus(k, '2026-11-25').last7[6].pages, 20);
+  k = parseKhatma(serializeKhatma(k));
+  assert.deepEqual(k.lastAyah, { surahNumber: 2, ayahNumber: 40 });
+  assert.equal(k.log['2026-11-25'], 20);
+  assert.equal(juzOfPage(1), 1);
+  assert.equal(juzOfPage(604), 30);
+});
+
 test('khatma rolls the day and reports behind and ahead of plan', () => {
   const k = markReached(startKhatma('2026-11-01', 30), 40, '2026-11-01').khatma;
   assert.equal(khatmaStatus(k, '2026-11-02').todayDone, 0);
@@ -133,4 +152,21 @@ test('azkar sets have unique ids and respect morning/evening-only items', () => 
   const evening = AZKAR_SETS[1].items.map((i) => i.id);
   assert.ok(morning.includes('adadkhalqihi') && !evening.includes('adadkhalqihi'));
   assert.ok(evening.includes('kalimat') && !morning.includes('kalimat'));
+});
+
+test('every azkar set has unique ids, counts and sourced text', () => {
+  assert.ok(AZKAR_SETS.length >= 9);
+  for (const set of AZKAR_SETS) {
+    const ids = new Set(set.items.map((item) => item.id));
+    assert.equal(ids.size, set.items.length, `duplicate ids in ${set.id}`);
+    for (const item of set.items) {
+      assert.ok(item.text.trim().length > 0, `${set.id}/${item.id} empty`);
+      assert.ok(Number.isInteger(item.count) && item.count >= 1, `${set.id}/${item.id} count`);
+    }
+  }
+  const extra = ['sleep', 'wakeUp', 'daily', 'hardship', 'beforeSalam', 'virtue'];
+  for (const id of extra) {
+    const set = AZKAR_SETS.find((entry) => entry.id === id);
+    assert.ok(set && set.items.every((item) => item.source), `${id} items need a source`);
+  }
 });

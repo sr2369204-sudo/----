@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
 import {
-  IslamicStar,
+  ConcentricRings,
   KHATMA_GOLD,
   KHATMA_GOLD_LIGHT,
   KhatmaRing,
@@ -101,7 +101,7 @@ export function KhatmaReachedToast({ event, onDone }: { event: KhatmaReachedEven
       ]}
     >
       <View style={styles.card}>
-        <IslamicStar size={130} opacity={0.09} style={styles.watermark} />
+        <ConcentricRings size={170} opacity={0.1} style={styles.watermark} />
         <View style={styles.row}>
           <Animated.View
             style={{
@@ -112,13 +112,14 @@ export function KhatmaReachedToast({ event, onDone }: { event: KhatmaReachedEven
           >
             <KhatmaRing progress={ring} size={92} thickness={8}>
               <Animated.View
-                style={{
-                  opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.12, 0.45] }),
-                  position: 'absolute',
-                }}
-              >
-                <IslamicStar size={62} filled color={finished ? KHATMA_GOLD_LIGHT : KHATMA_GOLD} />
-              </Animated.View>
+                style={[
+                  styles.glow,
+                  {
+                    backgroundColor: finished ? KHATMA_GOLD_LIGHT : KHATMA_GOLD,
+                    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.08, 0.3] }),
+                  },
+                ]}
+              />
               <Text style={styles.percent}>{toArabicNumbers(percentText)}٪</Text>
             </KhatmaRing>
           </Animated.View>
@@ -157,7 +158,8 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     overflow: 'hidden',
   },
-  watermark: { position: 'absolute', left: -30, top: -30 },
+  watermark: { position: 'absolute', left: -60, top: -70 },
+  glow: { position: 'absolute', width: 64, height: 64, borderRadius: 32 },
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16 },
   copy: { flex: 1, alignItems: 'flex-end', gap: 4 },
   headline: { fontSize: TypeScale.body, fontWeight: '900', color: '#FFF9EA', textAlign: 'right' },

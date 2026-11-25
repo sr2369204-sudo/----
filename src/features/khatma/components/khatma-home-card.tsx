@@ -6,13 +6,14 @@ import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
 import {
-  IslamicStar,
+  ConcentricRings,
+  IslamicArch,
   KHATMA_GOLD,
   KHATMA_GOLD_LIGHT,
   KhatmaPercentRing,
 } from '@/features/khatma/components/khatma-ring';
 import { KHATMA_KIND_TEXT, khatmaStatus, type Khatma } from '@/features/khatma/services/khatma';
-import { khatmaRangeLabel } from '@/features/khatma/utils/khatma-labels';
+import { khatmaRangeLabel, surahLabel } from '@/features/khatma/utils/khatma-labels';
 
 type Props = {
   khatma: Khatma | null;
@@ -32,8 +33,8 @@ export function KhatmaHomeCard({ khatma, loading, today }: Props) {
     >
       <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.body}>
         <View pointerEvents="none" style={styles.glow} />
-        <IslamicStar size={150} opacity={0.1} style={styles.watermark} />
-        <IslamicStar size={96} opacity={0.08} style={styles.watermarkSmall} />
+        <ConcentricRings size={190} opacity={0.1} style={styles.watermark} />
+        <IslamicArch width={70} opacity={0.12} style={styles.watermarkSmall} />
 
         {status && khatma ? (
           <>
@@ -49,6 +50,12 @@ export function KhatmaHomeCard({ khatma, loading, today }: Props) {
                   {' من '}
                   <Text style={styles.statStrong}>{toArabicNumbers(status.total)}</Text>
                 </Text>
+                {khatma.lastAyah ? (
+                  <Text style={styles.subtitle}>
+                    وقفت عند {surahLabel(khatma.lastAyah.surahNumber)}، آية{' '}
+                    {toArabicNumbers(khatma.lastAyah.ayahNumber)}
+                  </Text>
+                ) : null}
                 <Text style={styles.subtitle}>
                   اليوم {toArabicNumbers(status.daysElapsed + 1)} من {toArabicNumbers(khatma.targetDays)}
                 </Text>
@@ -72,7 +79,7 @@ export function KhatmaHomeCard({ khatma, loading, today }: Props) {
         ) : (
           <View style={styles.main}>
             <View style={styles.emptyStar}>
-              <IslamicStar size={64} color={KHATMA_GOLD_LIGHT} />
+              <IslamicArch width={44} color={KHATMA_GOLD_LIGHT} opacity={0.9} />
             </View>
             <View style={styles.copy}>
               <Text style={styles.kicker}>بسم الله الرحمن الرحيم</Text>
@@ -100,8 +107,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: 'rgba(42, 133, 99, 0.2)',
   },
-  watermark: { position: 'absolute', left: -34, bottom: -40 },
-  watermarkSmall: { position: 'absolute', right: -20, top: -24 },
+  watermark: { position: 'absolute', left: -70, bottom: -90 },
+  watermarkSmall: { position: 'absolute', right: 8, top: -30 },
   main: { flexDirection: 'row-reverse', alignItems: 'center', gap: 16 },
   copy: { flex: 1, alignItems: 'flex-end', gap: 3 },
   kicker: { fontSize: TypeScale.micro, color: KHATMA_GOLD, letterSpacing: 0.3 },

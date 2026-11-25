@@ -62,9 +62,25 @@ export type Khatma = {
   todayBase: number;
   /** Finished khatmas so far. */
   completed: number;
+  /** The ayah the reader last marked, so the khatma can say exactly where they stopped. */
+  lastAyah: KhatmaAyah | null;
+  /** Pages done per day (YYYY-MM-DD), the last 90 days. Feeds the week chart and the streak. */
+  log: Record<string, number>;
 };
 
+export type KhatmaAyah = { surahNumber: number; ayahNumber: number };
+
 export type KhatmaStatus = {
+  /** Pages per day for the 7 days ending today, oldest first. */
+  last7: { date: string; pages: number }[];
+  /** Days in a row (ending today, or yesterday if today is still empty) with at least one page. */
+  streak: number;
+  /** Day the khatma finishes at the current pace, or null when it can't be told yet. */
+  projectedFinish: string | null;
+  /** True when the current pace finishes on or before the goal day. */
+  onPace: boolean;
+  /** Juz (1..30) of the last page reached. */
+  juz: number | null;
   /** Pages in this khatma. */
   total: number;
   done: number;
@@ -139,6 +155,47 @@ export function juzRange(juz: number): { startPage: number; endPage: number } {
   return { startPage, endPage: next === undefined ? MUSHAF_PAGES : next - 1 };
 }
 
+function parseAyah(value: unknown): KhatmaAyah | null {
+  const v = value as Partial<KhatmaAyah> | null | undefined;
+  return v &&
+    Number.isInteger(v.surahNumber) &&
+    Number.isInteger(v.ayahNumber) &&
+    (v.surahNumber as number) >= 1 &&
+    (v.surahNumber as number) <= 114 &&
+    (v.ayahNumber as number) >= 1
+    ? { surahNumber: v.surahNumber as number, ayahNumber: v.ayahNumber as number }
+    : null;
+}
+
+function parseLog(value: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (value && typeof value === 'object') {
+    for (const [key, pages] of Object.entries(value as Record<string, unknown>)) {
+      if (isDateKey(key) && typeof pages === 'number' && pages > 0) {
+        out[key] = Math.round(pages);
+      }
+    }
+  }
+  return out;
+}
+
+/** `key` moved by `days` (negative for earlier). */
+export function addDays(key: string, days: number): string {
+  const date = new Date((dayNumber(key) + days) * 86_400_000);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Juz (1..30) a Mushaf page falls in. */
+export function juzOfPage(page: number): number {
+  let juz = 1;
+  for (let i = 0; i < JUZ_START_PAGES.length; i += 1) {
+    if (page >= JUZ_START_PAGES[i]) {
+      juz = i + 1;
+    }
+  }
+  return juz;
+}
+
 export function startKhatma(
   today: string,
   targetDays: number,
@@ -163,6 +220,8 @@ export function startKhatma(
     todayDate: today,
     todayBase: done,
     completed: options.completed ?? 0,
+    lastAyah: null,
+    log: {},
   };
 }
 
@@ -192,6 +251,8 @@ export function parseKhatma(value: string | null): Khatma | null {
       todayDate: isDateKey(p.todayDate) ? p.todayDate : p.startDate,
       todayBase: Number.isInteger(p.todayBase) ? Math.min(clampDone(p.todayBase as number), done) : 0,
       completed: Number.isInteger(p.completed) && (p.completed as number) >= 0 ? (p.completed as number) : 0,
+      lastAyah: parseAyah(p.lastAyah),
+      log: parseLog(p.log),
     };
   } catch {
     return null;
@@ -199,10 +260,15 @@ export function parseKhatma(value: string | null): Khatma | null {
 }
 
 export function serializeKhatma(khatma: Khatma): string {
-  return JSON.stringify({ format: FORMAT, version: 4, ...khatma });
+  return JSON.stringify({ format: FORMAT, version: 5, ...khatma });
 }
 
 /** Rolls the "start of today" marker forward when a new day began. */
+function pruneLog(log: Record<string, number>, today: string): Record<string, number> {
+  const cutoff = addDays(today, -90);
+  return Object.fromEntries(Object.entries(log).filter(([key]) => key >= cutoff));
+}
+
 function rollDay(khatma: Khatma, today: string): Khatma {
   return khatma.todayDate === today ? khatma : { ...khatma, todayDate: today, todayBase: khatma.done };
 }
@@ -218,7 +284,12 @@ export type ReachResult =
  * accident, and neither does a page outside the khatma's range. `from` and
  * `to` are page counts, `page` is the Mushaf page now reached.
  */
-export function markReached(khatma: Khatma, pageNumber: number, today: string): ReachResult {
+export function markReached(
+  khatma: Khatma,
+  pageNumber: number,
+  today: string,
+  ayah: KhatmaAyah | null = null,
+): ReachResult {
   const rolled = rollDay(khatma, today);
   const target = pageToDone(rolled.startPage, clampPage(pageNumber));
   if (target > khatmaTotal(rolled)) {
@@ -227,7 +298,12 @@ export function markReached(khatma: Khatma, pageNumber: number, today: string): 
   if (target > rolled.done) {
     return {
       kind: 'advanced',
-      khatma: { ...rolled, done: target },
+      khatma: {
+        ...rolled,
+        done: target,
+        lastAyah: ayah,
+        log: pruneLog({ ...rolled.log, [today]: (rolled.log[today] ?? 0) + (target - rolled.done) }, today),
+      },
       from: rolled.done,
       to: target,
       page: clampPage(pageNumber),
@@ -247,10 +323,35 @@ export function khatmaStatus(khatma: Khatma, today: string): KhatmaStatus {
   const todayDone = Math.max(0, done - rolled.todayBase);
   // Today's share: what was left this morning spread over the days left.
   const perDay = Math.ceil((remaining + todayDone) / daysLeft);
-  const expectedByToday = Math.min(
+  // Lateness only counts once a day has ended: what the plan wanted by the end of
+  // yesterday is the baseline, and today's own share is shown separately.
+  const expectedBeforeToday = Math.min(
+    total,
+    Math.ceil((total * Math.min(khatma.targetDays, daysElapsed)) / khatma.targetDays),
+  );
+  const expectedByEndOfToday = Math.min(
     total,
     Math.ceil((total * Math.min(khatma.targetDays, daysElapsed + 1)) / khatma.targetDays),
   );
+  const behindBy =
+    done < expectedBeforeToday
+      ? expectedBeforeToday - done
+      : done > expectedByEndOfToday
+        ? expectedByEndOfToday - done
+        : 0;
+  const log = rolled.log;
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const date = addDays(today, i - 6);
+    return { date, pages: log[date] ?? 0 };
+  });
+  let streak = 0;
+  for (let i = log[today] ? 0 : 1; i < 90 && log[addDays(today, -i)]; i += 1) {
+    streak += 1;
+  }
+  const pace = done / (daysElapsed + 1);
+  const projectedDays = remaining === 0 ? 0 : pace > 0 ? Math.ceil(remaining / pace) : null;
+  const projectedFinish = projectedDays === null ? null : addDays(today, projectedDays);
+  const goalDay = addDays(khatma.startDate, khatma.targetDays - 1);
   return {
     total,
     done,
@@ -261,7 +362,12 @@ export function khatmaStatus(khatma: Khatma, today: string): KhatmaStatus {
     perDay,
     todayDone,
     todayLeft: Math.max(0, perDay - todayDone),
-    behindBy: expectedByToday - done,
+    behindBy,
+    last7,
+    streak,
+    projectedFinish,
+    onPace: projectedFinish !== null && projectedFinish <= goalDay,
+    juz: done > 0 ? juzOfPage(doneToPage(rolled.startPage, done)) : null,
     finished: remaining === 0,
     nextPage: doneToPage(rolled.startPage, Math.min(total, done + 1)),
     reachedPage: done > 0 ? doneToPage(rolled.startPage, done) : null,
@@ -295,12 +401,13 @@ export async function markKhatmaReached(
   database: SQLiteDatabase,
   pageNumber: number,
   today: string,
+  ayah: KhatmaAyah | null = null,
 ): Promise<ReachResult | null> {
   const current = await loadKhatma(database);
   if (current === null) {
     return null;
   }
-  const result = markReached(current, pageNumber, today);
+  const result = markReached(current, pageNumber, today, ayah);
   await saveKhatma(database, result.khatma);
   return result;
 }

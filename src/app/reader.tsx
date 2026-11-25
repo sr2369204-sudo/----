@@ -681,7 +681,19 @@ export default function ReaderScreen() {
       return 'تعذر تحديد الصفحة.';
     }
     const today = toDateKey(new Date());
-    const result = await markKhatmaReached(database, pageToMark, today);
+    // The last selected ayah is where the reader stopped.
+    const current = useReaderSelectionStore.getState().selection;
+    const stoppedAt =
+      current === null
+        ? null
+        : {
+            surahNumber: current.surahNumber,
+            ayahNumber:
+              current.type === 'range'
+                ? Math.max(...current.ayahs.map((ayah) => ayah.ayahNumber))
+                : current.ayah.ayahNumber,
+          };
+    const result = await markKhatmaReached(database, pageToMark, today, stoppedAt);
     if (result === null) {
       return 'ابدأ ختمة من الشاشة الرئيسية أولاً.';
     }
