@@ -7,6 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { confirmDelete } from '@/components/confirm-delete';
+import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { toArabicNumbers } from '@/features/home/utils/format';
 import {
@@ -61,8 +62,12 @@ export default function KhatmaScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topRow}>
-          <Pressable accessibilityRole="button" accessibilityLabel="رجوع" onPress={() => router.back()}>
-            <Ionicons name="chevron-forward" size={24} color={colors.text} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+            onPress={() => router.back()}
+            style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="chevron-forward" size={20} color={colors.text} />
           </Pressable>
           <View style={styles.titleGroup}>
             <Text style={[styles.title, { color: colors.text }]}>متتبع الختمة</Text>
@@ -109,19 +114,27 @@ export default function KhatmaScreen() {
           </View>
         ) : (
           <>
-            <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.bigPercent, { color: colors.primary }]}>
-                {toArabicNumbers(status.percent)}٪
-              </Text>
-              <View style={[styles.track, { backgroundColor: colors.backgroundSelected }]}>
-                <View
-                  style={[styles.fill, { width: `${(status.done / 604) * 100}%`, backgroundColor: colors.accent }]}
-                />
+            <GlassSurface variant="emerald" radius={Radius.xl} contentStyle={styles.hero}>
+              <View pointerEvents="none" style={styles.heroGlow} />
+              <View style={styles.heroTop}>
+                <View style={styles.heroIcon}>
+                  <Ionicons name="book-outline" size={22} color="#E8C77F" />
+                </View>
+                <View style={styles.heroCopy}>
+                  <Text style={styles.heroTitle}>ختمتك</Text>
+                  <Text style={styles.heroSubtitle}>
+                    {toArabicNumbers(khatma.targetDays)} يوم · اليوم {toArabicNumbers(status.daysElapsed + 1)}
+                  </Text>
+                </View>
+                <Text style={styles.heroPercent}>{toArabicNumbers(status.percent)}٪</Text>
               </View>
-              <Text style={[styles.note, { color: colors.textSecondary }]}>
+              <View style={styles.heroTrack}>
+                <View style={[styles.heroFill, { width: `${(status.done / 604) * 100}%` }]} />
+              </View>
+              <Text style={styles.heroFoot}>
                 {toArabicNumbers(status.done)} من ٦٠٤ صفحة · باقي {toArabicNumbers(status.remaining)}
               </Text>
-            </View>
+            </GlassSurface>
 
             {status.finished ? (
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.accent }]}>
@@ -203,6 +216,48 @@ const styles = StyleSheet.create({
   titleGroup: { flex: 1, alignItems: 'flex-end', gap: 2 },
   title: { fontSize: TypeScale.display, fontWeight: '900' },
   caption: { fontSize: TypeScale.caption },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hero: { padding: Spacing.three, gap: 12 },
+  heroGlow: {
+    position: 'absolute',
+    top: -80,
+    left: -40,
+    width: 200,
+    height: 200,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(216, 181, 109, 0.16)',
+  },
+  heroTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 11 },
+  heroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(216, 181, 109, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(216, 181, 109, 0.45)',
+  },
+  heroCopy: { flex: 1, alignItems: 'flex-end', gap: 2 },
+  heroTitle: { fontSize: TypeScale.title, fontWeight: '900', color: '#FFF9EA' },
+  heroSubtitle: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.7)' },
+  heroPercent: { fontSize: 30, fontWeight: '900', color: '#F3D28C' },
+  heroTrack: {
+    height: 10,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    flexDirection: 'row-reverse',
+  },
+  heroFill: { height: '100%', borderRadius: Radius.pill, backgroundColor: '#D8B56D' },
+  heroFoot: { fontSize: TypeScale.caption, color: 'rgba(239, 248, 243, 0.8)', textAlign: 'right' },
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.three, gap: 12 },
   heading: { fontSize: TypeScale.title, fontWeight: '800', textAlign: 'right' },
   note: { fontSize: TypeScale.label, textAlign: 'right', lineHeight: 22 },

@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import {
   markDailyDhikrShown,
@@ -11,11 +12,9 @@ import {
   wasDailyDhikrShown,
 } from '@/features/daily-dhikr/daily-dhikr';
 import { toDateKey } from '@/features/memorization/services/review-schedule';
-import { useTheme } from '@/hooks/use-theme';
 
 /** A short dhikr or dua, shown once a day the first time the app opens. */
 export function DailyDhikrModal({ enabled }: { enabled: boolean }) {
-  const colors = useTheme();
   const database = useSQLiteContext();
   const [visible, setVisible] = useState(false);
   const today = toDateKey(new Date());
@@ -45,13 +44,15 @@ export function DailyDhikrModal({ enabled }: { enabled: boolean }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.accent }]}>
-          <Ionicons name="sparkles-outline" size={26} color={colors.accent} />
-          <Text style={[styles.label, { color: colors.accent }]}>
-            {dhikr.kind === 'dua' ? 'دعاء اليوم' : 'ذكر اليوم'}
-          </Text>
-          <Text style={[styles.text, { color: colors.text }]}>{dhikr.text}</Text>
-          <Text style={[styles.source, { color: colors.textSecondary }]}>{dhikr.source}</Text>
+        <GlassSurface variant="emerald" radius={Radius.xl} style={styles.cardShell} contentStyle={styles.card}>
+          <View pointerEvents="none" style={styles.glow} />
+          <View style={styles.iconRing}>
+            <Ionicons name="sparkles-outline" size={22} color="#E8C77F" />
+          </View>
+          <Text style={styles.label}>{dhikr.kind === 'dua' ? 'دعاء اليوم' : 'ذكر اليوم'}</Text>
+          <View style={styles.divider} />
+          <Text style={styles.text}>{dhikr.text}</Text>
+          <Text style={styles.source}>{dhikr.source}</Text>
           <View style={styles.buttons}>
             <Pressable
               accessibilityRole="button"
@@ -59,17 +60,17 @@ export function DailyDhikrModal({ enabled }: { enabled: boolean }) {
                 close();
                 router.push('/azkar');
               }}
-              style={[styles.secondary, { borderColor: colors.border }]}>
-              <Text style={[styles.secondaryText, { color: colors.text }]}>الأذكار</Text>
+              style={styles.secondary}>
+              <Text style={styles.secondaryText}>الأذكار</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={close}
-              style={[styles.primary, { backgroundColor: colors.primary }]}>
+              style={styles.primary}>
               <Text style={styles.primaryText}>آمين</Text>
             </Pressable>
           </View>
-        </View>
+        </GlassSurface>
       </View>
     </Modal>
   );
@@ -83,21 +84,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.four,
   },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    padding: Spacing.four,
-    alignItems: 'center',
-    gap: 12,
+  cardShell: { width: '100%', maxWidth: 420 },
+  card: { padding: Spacing.four, alignItems: 'center', gap: 12 },
+  glow: {
+    position: 'absolute',
+    top: -90,
+    right: -50,
+    width: 220,
+    height: 220,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(216, 181, 109, 0.16)',
   },
-  label: { fontSize: TypeScale.label, fontWeight: '800' },
-  text: { fontSize: TypeScale.display, lineHeight: 38, textAlign: 'center', fontWeight: '600' },
-  source: { fontSize: TypeScale.caption, textAlign: 'center' },
+  iconRing: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(216, 181, 109, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(216, 181, 109, 0.5)',
+  },
+  label: { fontSize: TypeScale.label, fontWeight: '800', color: '#E8C77F' },
+  divider: { width: 48, height: 2, borderRadius: 2, backgroundColor: 'rgba(216, 181, 109, 0.6)' },
+  text: { fontSize: TypeScale.display, lineHeight: 40, textAlign: 'center', fontWeight: '600', color: '#FFF9EA' },
+  source: { fontSize: TypeScale.caption, textAlign: 'center', color: 'rgba(239, 248, 243, 0.7)' },
   buttons: { flexDirection: 'row-reverse', gap: Spacing.two, marginTop: 6 },
-  primary: { paddingVertical: 11, paddingHorizontal: 30, borderRadius: Radius.pill },
-  primaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: TypeScale.body },
-  secondary: { paddingVertical: 11, paddingHorizontal: 22, borderRadius: Radius.pill, borderWidth: 1 },
-  secondaryText: { fontWeight: '700', fontSize: TypeScale.body },
+  primary: { paddingVertical: 11, paddingHorizontal: 30, borderRadius: Radius.pill, backgroundColor: '#D8B56D' },
+  primaryText: { color: '#0B3B2C', fontWeight: '800', fontSize: TypeScale.body },
+  secondary: { paddingVertical: 11, paddingHorizontal: 22, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
+  secondaryText: { color: '#FFF9EA', fontWeight: '700', fontSize: TypeScale.body },
 });

@@ -62,3 +62,15 @@ test('daily dhikr is stable within a day and varies across days', () => {
   const seen = new Set(Array.from({ length: DAILY_DHIKR.length }, (_, i) => pickDailyDhikr(`2026-12-${String(i + 1).padStart(2, '0')}`).text));
   assert.equal(seen.size, DAILY_DHIKR.length);
 });
+
+test('azkar sets have unique ids and respect morning/evening-only items', () => {
+  for (const set of AZKAR_SETS) {
+    const ids = set.items.map((item) => item.id);
+    assert.equal(new Set(ids).size, ids.length, set.id);
+    assert.ok(set.items.every((item) => item.count >= 1 && item.text.length > 0));
+  }
+  const morning = AZKAR_SETS[0].items.map((i) => i.id);
+  const evening = AZKAR_SETS[1].items.map((i) => i.id);
+  assert.ok(morning.includes('adadkhalqihi') && !evening.includes('adadkhalqihi'));
+  assert.ok(evening.includes('kalimat') && !morning.includes('kalimat'));
+});
