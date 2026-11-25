@@ -155,7 +155,9 @@ export function getMushafPageCenteringOffset(page: MushafPage, totalRows: number
   const firstRow = Math.min(...occupiedRows);
   const lastRow = Math.max(...occupiedRows);
   const occupiedHeight = lastRow - firstRow + 1;
-  return Math.max(0, Math.floor((totalRows - occupiedHeight) / 2) - (firstRow - 1));
+  // The source can place a short page at the bottom of the grid (rows 8 to 15),
+  // so the shift may be negative: it moves the block up to the middle as well.
+  return Math.floor((totalRows - occupiedHeight) / 2) - (firstRow - 1);
 }
 
 function escapeHtml(text: string): string {

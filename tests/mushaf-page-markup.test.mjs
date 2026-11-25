@@ -203,3 +203,30 @@ test('ignores highlights that belong to another ayah', () => {
 
   assert.deepEqual(elements, {});
 });
+
+test('moves a short page that the source places at the bottom up to the middle', () => {
+  const word = (line) => ({
+    id: `1:${line}:1`,
+    surahNumber: 1,
+    ayahNumber: 1,
+    position: 1,
+    pageNumber: 1,
+    lineNumber: line,
+    charType: 'word',
+    textUthmani: 'SYNTHETIC',
+    codeV2: 'SYNTHETIC_GLYPH',
+  });
+  const page = {
+    pageNumber: 1,
+    mushafId: 19,
+    juzNumber: 1,
+    hizbNumber: 1,
+    basmalaWords: null,
+    surahs: [{ surahNumber: 1, nameArabic: 'اسم اختباري', ayahCount: 7, revelationPlace: 'makkah' }],
+    lines: [9, 10, 11, 12, 13, 14, 15].map((line) => ({ lineNumber: line, words: [word(line)] })),
+    ayahs: [{ surahNumber: 1, ayahNumber: 1, words: [word(9)] }],
+  };
+
+  // Rows 8 (surah title) to 15 are occupied; centred in 15 rows they sit on rows 4 to 11.
+  assert.equal(getMushafPageCenteringOffset(page, 15), -4);
+});
