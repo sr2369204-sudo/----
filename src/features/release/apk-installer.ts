@@ -1,5 +1,21 @@
 import { File, Paths } from 'expo-file-system';
-import { startActivityAsync } from 'expo-intent-launcher';
+
+type StartActivity = typeof import('expo-intent-launcher').startActivityAsync;
+
+/**
+ * Loaded only when an update is installed, and inside try/catch so Metro treats
+ * it as optional. A dev setup or an older binary without `expo-intent-launcher`
+ * then still starts; the caller falls back to the download page on the error.
+ */
+function loadStartActivity(): StartActivity {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const launcher = require('expo-intent-launcher') as typeof import('expo-intent-launcher');
+    return launcher.startActivityAsync;
+  } catch {
+    throw new Error('expo-intent-launcher is not available in this build.');
+  }
+}
 
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const ACTION_VIEW = 'android.intent.action.VIEW';
@@ -21,6 +37,7 @@ export async function downloadAndInstallApk(
   apkUrl: string,
   onProgress: (fraction: number | null) => void,
 ): Promise<void> {
+  const startActivityAsync = loadStartActivity();
   const destination = new File(Paths.cache, 'mushaf-update.apk');
   if (destination.exists) {
     destination.delete();
