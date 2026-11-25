@@ -8,6 +8,20 @@ const FIRST_DELAY_MS = 1400;
 const EVERY_MS = 45_000;
 const SHOWN_MS = 4200;
 
+/** The streak in correct Arabic: one, the dual, 3 to 10 as plural, 11 and up as a singular noun. */
+export function streakPhrase(streak: number): string {
+  if (streak === 1) {
+    return 'يوم متتالٍ';
+  }
+  if (streak === 2) {
+    return 'يومان متتاليان';
+  }
+  if (streak <= 10) {
+    return `${toArabicNumbers(streak)} أيام متتالية`;
+  }
+  return `${toArabicNumbers(streak)} يومًا متتاليًا`;
+}
+
 /**
  * Drives the streak moment in the home header. Returns a 0..1 value that is 1
  * while the flame badge is showing. It plays shortly after opening and then

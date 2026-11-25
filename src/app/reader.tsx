@@ -469,20 +469,50 @@ export default function ReaderScreen() {
     queryFn: () => new MushafPageCache(database).getPage(nextPageNumber!),
   });
 
-  // The page after the next one is fetched but never mounted: its mushaf font
-  // is the slow part, and without this a reader who turns two pages in a row
-  // reaches a page whose download had not even started, so the strip has to
-  // refuse that turn and holds the reader on the same page.
-  const warmNextPageNumber =
-    neighbourBaseNumber && neighbourBaseNumber <= 602 ? neighbourBaseNumber + 2 : null;
-  useQuery({
-    queryKey: ['quran', 'mushaf-page', 19, warmNextPageNumber],
-    enabled: warmNextPageNumber !== null,
+  // One more page on each side. The strip mounts them quietly once the nearer
+  // pages are painted, so a second quick turn lands on a page that is ready.
+  const prev2PageNumber =
+    neighbourBaseNumber && neighbourBaseNumber > 2 ? neighbourBaseNumber - 2 : null;
+  const prev2PageQuery = useQuery({
+    queryKey: ['quran', 'mushaf-page', 19, prev2PageNumber],
+    enabled: prev2PageNumber !== null,
     staleTime: 24 * 60 * 60 * 1000,
     retry: retryPageQuery,
     retryDelay: pageQueryRetryDelay,
-    queryFn: () => new MushafPageCache(database).getPage(warmNextPageNumber!),
+    queryFn: () => new MushafPageCache(database).getPage(prev2PageNumber!),
   });
+  const next2PageNumber =
+    neighbourBaseNumber && neighbourBaseNumber <= 602 ? neighbourBaseNumber + 2 : null;
+  const next2PageQuery = useQuery({
+    queryKey: ['quran', 'mushaf-page', 19, next2PageNumber],
+    enabled: next2PageNumber !== null,
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: retryPageQuery,
+    retryDelay: pageQueryRetryDelay,
+    queryFn: () => new MushafPageCache(database).getPage(next2PageNumber!),
+  });
+
+  // Further pages are only read into memory (data and font, no view), so they
+  // are ready the moment the window reaches them.
+  useEffect(() => {
+    if (!neighbourBaseNumber) {
+      return undefined;
+    }
+    const handle = setTimeout(() => {
+      for (const offset of [3, -3, 4]) {
+        const target = neighbourBaseNumber + offset;
+        if (target < 1 || target > 604) {
+          continue;
+        }
+        void queryClient.prefetchQuery({
+          queryKey: ['quran', 'mushaf-page', 19, target],
+          staleTime: 24 * 60 * 60 * 1000,
+          queryFn: () => new MushafPageCache(database).getPage(target),
+        });
+      }
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [database, neighbourBaseNumber, queryClient]);
 
   const directoryQuery = useQuery({
     queryKey: ['quran', 'surah-directory'],
@@ -1831,6 +1861,8 @@ export default function ReaderScreen() {
           currentPage={pageQuery.data}
           prevPage={prevPageQuery.data ?? null}
           nextPage={nextPageQuery.data ?? null}
+          prev2Page={prev2PageQuery.data ?? null}
+          next2Page={next2PageQuery.data ?? null}
           fontSize={MUSHAF_FONT_SIZE}
           markerScale={displayPreferencesQuery.data?.markerScale ?? 1.1}
           showTajweed={showTajweed}

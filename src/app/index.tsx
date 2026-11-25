@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppUpdateBanner } from '@/components/app-update-banner';
 import { IntroAnimationContext } from '@/components/brand-intro';
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
+import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
 import { SqliteAnnotationRepository } from '@/features/annotations/repositories/sqlite-annotation-repository';
 import { DailyDhikrModal } from '@/features/daily-dhikr/daily-dhikr-modal';
 import { ContinueReadingCard } from '@/features/home/components/continue-reading-card';
@@ -124,6 +125,30 @@ export default function HomeScreen() {
     queryKey: ['reading', 'last-position'],
     queryFn: () => loadLastReadingPosition(database),
   });
+
+  // The page the reader will most likely open is read into memory while the
+  // home screen settles, so the reader finds its text and font ready instead of
+  // starting from nothing.
+  const queryClient = useQueryClient();
+  const lastPageToWarm = lastReadingPositionQuery.data?.pageNumber ?? null;
+  useEffect(() => {
+    if (lastPageToWarm === null) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      for (const target of [lastPageToWarm, lastPageToWarm + 1, lastPageToWarm - 1]) {
+        if (target < 1 || target > 604) {
+          continue;
+        }
+        void queryClient.prefetchQuery({
+          queryKey: ['quran', 'mushaf-page', 19, target],
+          staleTime: 24 * 60 * 60 * 1000,
+          queryFn: () => new MushafPageCache(database).getPage(target),
+        });
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [database, lastPageToWarm, queryClient]);
 
   // Normalising all 114 names on every keystroke showed up as typing latency,
   // so the directory's names are normalised once when they arrive instead.

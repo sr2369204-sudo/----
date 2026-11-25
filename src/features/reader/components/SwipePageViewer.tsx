@@ -27,6 +27,9 @@ export type SwipePageViewerProps = {
   currentPage: CachedMushafPage;
   prevPage: CachedMushafPage | null;
   nextPage: CachedMushafPage | null;
+  /** Two pages back and two ahead, mounted quietly once the nearer pages are painted. */
+  prev2Page?: CachedMushafPage | null;
+  next2Page?: CachedMushafPage | null;
   fontSize: number;
   markerScale?: number;
   showTajweed: boolean;
@@ -73,16 +76,19 @@ const SWIPE_DISTANCE_RATIO = 0.18;
 const ANIMATION_DURATION_MS = 220;
 const CANCEL_DURATION_MS = 180;
 /**
- * Upper bound on the number of mounted mushaf pages. The window is always the
- * current page plus its two direct neighbours, so a swipe in either direction
- * always lands on an already prepared page.
+ * The mounted window is the current page, its two direct neighbours and, once
+ * those are painted, one more page on each side. A turn lands on an already
+ * painted page, and after it the next page is usually painted too, so flipping
+ * several pages quickly does not wait for a new page to be built each time.
  */
-const MAX_MOUNTED_PAGES = 3;
+const WINDOW_RADIUS = 2;
 
 export function SwipePageViewer({
   currentPage,
   prevPage,
   nextPage,
+  prev2Page = null,
+  next2Page = null,
   fontSize,
   markerScale = 1,
   showTajweed,
@@ -90,7 +96,7 @@ export function SwipePageViewer({
   highlights,
   selectedElementIds,
   topicBands = NO_TOPIC_BANDS,
-  hiddenAyahIds = [],
+  hiddenAyahIds = NO_HIDDEN_AYAHS,
   activeAyahId,
   activeWordId,
   recitationFocus,
@@ -256,7 +262,10 @@ export function SwipePageViewer({
     })(currentPageNumber);
     // Keep the readiness window bounded to the mounted neighbours.
     setReadyPages((previous) => {
-      const window = new Set([currentPageNumber - 1, currentPageNumber, currentPageNumber + 1]);
+      const window = new Set<number>();
+      for (let offset = -WINDOW_RADIUS; offset <= WINDOW_RADIUS; offset += 1) {
+        window.add(currentPageNumber + offset);
+      }
       const next = new Set<number>();
       for (const pageNumber of previous) {
         if (window.has(pageNumber)) {
@@ -267,17 +276,52 @@ export function SwipePageViewer({
     });
   }, [currentPageNumber, isTransitioning, pull, rowIndex]);
 
+  // Pages that have been allowed to mount. The outer pair is only started once
+  // the current page and its neighbours are painted, so opening the reader is
+  // not slowed by building five pages at once; after that a page stays mounted
+  // while it is inside the window, so fast flipping never tears one down mid-load.
+  const startedRef = useRef<Set<number>>(new Set());
   const pages = useMemo(() => {
+    const started = startedRef.current;
+    const nearReady =
+      readyPages.has(currentPageNumber) &&
+      (!hasPrevNeighbour || readyPages.has(currentPageNumber - 1)) &&
+      (!hasNextNeighbour || readyPages.has(currentPageNumber + 1));
+    const candidates: [CachedMushafPage | null, number][] = [
+      [prev2Page, currentPageNumber - 2],
+      [hasPrevNeighbour ? prevPage : null, currentPageNumber - 1],
+      [currentPage, currentPageNumber],
+      [hasNextNeighbour ? nextPage : null, currentPageNumber + 1],
+      [next2Page, currentPageNumber + 2],
+    ];
     const window: CachedMushafPage[] = [];
-    if (hasPrevNeighbour && prevPage) {
-      window.push(prevPage);
+    for (const [entry, pageNumber] of candidates) {
+      if (!entry || entry.page.pageNumber !== pageNumber) {
+        continue;
+      }
+      const near = Math.abs(pageNumber - currentPageNumber) <= 1;
+      if (near || nearReady || started.has(pageNumber) || readyPages.has(pageNumber)) {
+        started.add(pageNumber);
+        window.push(entry);
+      }
     }
-    window.push(currentPage);
-    if (hasNextNeighbour && nextPage) {
-      window.push(nextPage);
+    for (const pageNumber of [...started]) {
+      if (Math.abs(pageNumber - currentPageNumber) > WINDOW_RADIUS) {
+        started.delete(pageNumber);
+      }
     }
-    return window.slice(-MAX_MOUNTED_PAGES);
-  }, [currentPage, hasNextNeighbour, hasPrevNeighbour, nextPage, prevPage]);
+    return window;
+  }, [
+    currentPage,
+    currentPageNumber,
+    hasNextNeighbour,
+    hasPrevNeighbour,
+    next2Page,
+    nextPage,
+    prev2Page,
+    prevPage,
+    readyPages,
+  ]);
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
@@ -505,6 +549,7 @@ const PageSlot = memo(function PageSlot({
 });
 
 const NO_HIGHLIGHTS: Highlight[] = [];
+const NO_HIDDEN_AYAHS: string[] = [];
 const NO_TOPIC_BANDS: TopicBand[] = [];
 
 const styles = StyleSheet.create({

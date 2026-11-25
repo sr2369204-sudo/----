@@ -28,12 +28,37 @@ type MushafCacheRow = {
   basmala_font_sha256: string | null;
 };
 
+/**
+ * Pages already read and verified in this session. A page is hashed, parsed and
+ * base64-encoded once; flipping back to it, or reopening the reader, skips that
+ * work. Bounded so the fonts do not pile up in memory.
+ */
+const VERIFIED_PAGE_LIMIT = 24;
+const verifiedPages = new Map<number, CachedMushafPage>();
+
+function rememberVerifiedPage(entry: CachedMushafPage): void {
+  verifiedPages.delete(entry.page.pageNumber);
+  verifiedPages.set(entry.page.pageNumber, entry);
+  while (verifiedPages.size > VERIFIED_PAGE_LIMIT) {
+    const oldest = verifiedPages.keys().next();
+    if (oldest.done) {
+      break;
+    }
+    verifiedPages.delete(oldest.value);
+  }
+}
+
 export class MushafPageCache {
   constructor(private readonly database: SQLiteDatabase) {}
 
   async getPage(pageNumber: number): Promise<CachedMushafPage> {
     if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
       throw new RangeError('Mushaf page number must be between 1 and 604.');
+    }
+
+    const remembered = verifiedPages.get(pageNumber);
+    if (remembered) {
+      return remembered;
     }
 
     let cached: CachedMushafPage | null = null;
@@ -44,6 +69,7 @@ export class MushafPageCache {
       await this.deleteCachedPage(pageNumber);
     }
     if (cached) {
+      rememberVerifiedPage(cached);
       return cached;
     }
 
@@ -75,11 +101,13 @@ export class MushafPageCache {
       new Date().toISOString(),
     );
 
-    return {
+    const stored: CachedMushafPage = {
       page,
       fontBase64: bytesToBase64(fontBytes),
       basmalaFontBase64: basmalaFontBytes ? bytesToBase64(basmalaFontBytes) : null,
     };
+    rememberVerifiedPage(stored);
+    return stored;
   }
 
   private async readCachedPage(pageNumber: number): Promise<CachedMushafPage | null> {
@@ -196,6 +224,19 @@ function isWoff2Font(bytes: Uint8Array): boolean {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
+  // The engine's own encoder is far quicker than building the string a
+  // character at a time; the loop below is the fallback where it is missing.
+  if (typeof btoa === 'function') {
+    const chunk = 0x8000;
+    let binary = '';
+    for (let index = 0; index < bytes.length; index += chunk) {
+      binary += String.fromCharCode.apply(
+        null,
+        bytes.subarray(index, index + chunk) as unknown as number[],
+      );
+    }
+    return btoa(binary);
+  }
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   let base64 = '';
   for (let index = 0; index < bytes.length; index += 3) {

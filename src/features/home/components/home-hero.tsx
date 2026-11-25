@@ -7,7 +7,6 @@ import {
   Animated as RNAnimated,
   Pressable,
   StyleSheet,
-  Text,
   TextInput,
   View,
   type LayoutChangeEvent,
@@ -17,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Radius, Spacing, TypeScale } from '@/constants/theme';
 import { useAmbientLoop } from '@/hooks/use-ambient-loop';
-import { StreakBrandMark, useStreakMoment } from '@/features/home/components/streak-brand-mark';
+import { StreakBrandMark, streakPhrase, useStreakMoment } from '@/features/home/components/streak-brand-mark';
 import type { SearchAnchor } from '@/features/home/components/home-search-results';
 
 const GRAIN_SOURCE = require('../../../../assets/images/glass-grain.png');
@@ -148,7 +147,26 @@ export function HomeHero({
                 ]}>
                 مصحف
               </RNAnimated.Text>
-              <Text style={styles.subtitle}>اقرأ القرآن وتدبّر آياته</Text>
+              <View>
+                <RNAnimated.Text
+                  style={[
+                    styles.subtitle,
+                    { opacity: streakShow.interpolate({ inputRange: [0, 0.6], outputRange: [1, 0], extrapolate: 'clamp' }) },
+                  ]}>
+                  اقرأ القرآن وتدبّر آياته
+                </RNAnimated.Text>
+                {streak > 0 ? (
+                  <RNAnimated.Text
+                    numberOfLines={1}
+                    style={[
+                      styles.subtitle,
+                      styles.streakSubtitle,
+                      { opacity: streakShow.interpolate({ inputRange: [0.4, 1], outputRange: [0, 1], extrapolate: 'clamp' }) },
+                    ]}>
+                    {streakPhrase(streak)}
+                  </RNAnimated.Text>
+                ) : null}
+              </View>
             </View>
           </View>
 
@@ -265,6 +283,13 @@ const styles = StyleSheet.create({
     fontSize: TypeScale.caption,
     color: 'rgba(255,255,255,0.82)',
     textAlign: 'right',
+  },
+  streakSubtitle: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    color: '#F3D28C',
+    fontWeight: '800',
   },
   settingsButton: {
     width: 44,
