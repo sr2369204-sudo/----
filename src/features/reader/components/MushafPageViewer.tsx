@@ -51,8 +51,6 @@ type Props = {
    */
   fonts: Pick<CachedMushafPage, 'fontUri' | 'basmalaFontUri' | 'fontBase64' | 'basmalaFontBase64'>;
   fontSize: number;
-  /** Reader zoom: 1 fits the page to the screen, above 1 the page is larger than the screen and is dragged around. */
-  pageScale?: number;
   markerScale?: number;
   showTajweed: boolean;
   isDark: boolean;
@@ -153,7 +151,6 @@ export const MushafPageViewer = memo(function MushafPageViewer({
   page,
   fonts,
   fontSize,
-  pageScale = 1,
   markerScale = 1,
   showTajweed,
   isDark,
@@ -199,12 +196,11 @@ export const MushafPageViewer = memo(function MushafPageViewer({
         : basmalaUrl ?? `data:font/woff2;base64,${fonts.basmalaFontBase64 ?? ''}`,
       fontsFromFile,
       fontSize,
-      pageScale,
       markerScale,
       showTajweed,
       isDark,
     );
-  }, [fonts, fontsFromFile, fontSize, isDark, markerScale, page, pageScale, showTajweed]);
+  }, [fonts, fontsFromFile, fontSize, isDark, markerScale, page, showTajweed]);
   // A stable source object prevents react-native-webview from reloading the
   // document on unrelated parent re-renders, which would flash and re-fit.
   const source = useMemo(
@@ -515,7 +511,6 @@ function createMushafHtml(
   basmalaFontSrc: string | null,
   fontsFromFile: boolean,
   fontSize: number,
-  pageScale: number,
   markerScale: number,
   showTajweed: boolean,
   isDark: boolean,
@@ -531,7 +526,6 @@ function createMushafHtml(
     .join('');
   const linesHtml = renderMushafLinesHtml(page, rowOffset, nameArtSurahs);
   const baseFontSize = Math.min(Math.round(fontSize * 1.5), 120);
-  const zoom = Number.isFinite(pageScale) ? Math.min(1.6, Math.max(0.7, pageScale)) : 1;
 
   const surahName = page.surahs && page.surahs.length > 0 ? page.surahs[0].nameArabic : '';
   const surahHeaderLabel = surahName ? `سورة ${surahName}` : '';
@@ -583,22 +577,20 @@ body {
   background: ${isDark ? '#191309' : '#fffdf7'};
 }
 /* The gold mushaf frame is drawn by the app around this page. The page itself
-   only carries the text; --zoom makes it smaller or larger than the screen
-   and --pan-x/--pan-y move it when it is larger. */
+   only carries the text. */
 .page {
-  --zoom: ${zoom};
   --quran-font-size: ${baseFontSize}px;
   position: absolute;
   left: 50%;
   top: 50%;
   display: flex;
   flex-direction: column;
-  width: calc(100% * var(--zoom));
-  height: calc(100% * var(--zoom));
-  max-width: calc(640px * var(--zoom));
+  width: 100%;
+  height: 100%;
+  max-width: 640px;
   margin: 0;
   padding: 4px 6px;
-  transform: translate(calc(-50% + var(--pan-x, 0px)), calc(-50% + var(--pan-y, 0px)));
+  transform: translate(-50%, -50%);
   container-type: size;
   color: ${isDark ? '#f2ead8' : '#1e3026'};
   background: ${isDark ? '#191309' : '#fffdf7'};
@@ -613,7 +605,7 @@ body {
   .page {
     --line-row-height: calc((100cqb - 24px) / ${sourceLineCount});
     --quran-font-size: min(
-      ${Math.round(baseFontSize * zoom)}px,
+      ${baseFontSize}px,
       calc(var(--line-row-height) * 1.02),
       17cqi
     );
@@ -1458,41 +1450,6 @@ let swallowClick = false;
 // dropped: only a meaningful horizontal change is relayed to the host.
 const PAN_UPDATE_THRESHOLD_PX = 2;
 
-// Reader zoom above 1 makes the page larger than the screen. One finger then
-// drags the page around, and only a drag that pushes past its edge turns the
-// page, so zooming never takes the swipe away.
-const ZOOM = ${zoom};
-let panX = 0;
-let panY = 0;
-let lastPointerX = 0;
-let lastPointerY = 0;
-let edgeOverflowX = 0;
-
-function panLimits() {
-  if (ZOOM <= 1.001) return { x: 0, y: 0 };
-  return {
-    x: Math.max(0, (pageElement.offsetWidth - window.innerWidth) / 2),
-    y: Math.max(0, (pageElement.offsetHeight - window.innerHeight) / 2),
-  };
-}
-
-function applyPan() {
-  pageElement.style.setProperty("--pan-x", panX + "px");
-  pageElement.style.setProperty("--pan-y", panY + "px");
-}
-
-/** Moves the zoomed page by one pointer step and returns the horizontal part that went past the edge. */
-function dragZoomedPage(stepX, stepY) {
-  const limits = panLimits();
-  const nextX = Math.min(limits.x, Math.max(-limits.x, panX + stepX));
-  const nextY = Math.min(limits.y, Math.max(-limits.y, panY + stepY));
-  const overflow = stepX - (nextX - panX);
-  panX = nextX;
-  panY = nextY;
-  applyPan();
-  return overflow;
-}
-
 document.body.addEventListener("pointerdown", (event) => {
   swallowClick = false;
   gestureTravel = 0;
@@ -1513,9 +1470,6 @@ document.body.addEventListener("pointerdown", (event) => {
   pointerStart = { x: event.clientX, y: event.clientY, time: Date.now() };
   isPanning = false;
   lastPostedDx = 0;
-  lastPointerX = event.clientX;
-  lastPointerY = event.clientY;
-  edgeOverflowX = 0;
 });
 
 document.body.addEventListener("pointermove", (event) => {
@@ -1526,25 +1480,6 @@ document.body.addEventListener("pointermove", (event) => {
   if (gestureTravel > TAP_SLOP_PX && longPressTimer !== null) {
     window.clearTimeout(longPressTimer);
     longPressTimer = null;
-  }
-  const stepX = event.clientX - lastPointerX;
-  const stepY = event.clientY - lastPointerY;
-  lastPointerX = event.clientX;
-  lastPointerY = event.clientY;
-  const limits = panLimits();
-  if (!isPanning && (limits.x > 0 || limits.y > 0)) {
-    if (gestureTravel <= TAP_SLOP_PX) return;
-    const overflow = dragZoomedPage(stepX, stepY);
-    edgeOverflowX = overflow === 0 && stepX !== 0 ? 0 : edgeOverflowX + overflow;
-    if (Math.abs(edgeOverflowX) > 14 && Math.abs(edgeOverflowX) > Math.abs(dy) * 0.6) {
-      // Past the edge of the zoomed page: from here the drag turns the page.
-      isPanning = true;
-      pointerStart.x = event.clientX - edgeOverflowX;
-      lastPostedDx = edgeOverflowX;
-      postPageMessage({ type: "pan-start", x: event.clientX, y: event.clientY });
-      postPageMessage({ type: "pan-update", dx: edgeOverflowX, dy: 0 });
-    }
-    return;
   }
   if (!isPanning && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) {
     isPanning = true;

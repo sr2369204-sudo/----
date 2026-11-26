@@ -37,8 +37,6 @@ export type SwipePageViewerProps = {
   prev2Page?: CachedMushafPage | null;
   next2Page?: CachedMushafPage | null;
   fontSize: number;
-  /** Reader zoom, 1 = page fits the screen. */
-  pageScale?: number;
   markerScale?: number;
   showTajweed: boolean;
   isDark: boolean;
@@ -98,7 +96,6 @@ export function SwipePageViewer({
   prev2Page = null,
   next2Page = null,
   fontSize,
-  pageScale = 1,
   markerScale = 1,
   showTajweed,
   isDark,
@@ -407,7 +404,6 @@ export function SwipePageViewer({
                     rowIndex={rowIndex}
                     pull={pull}
                     fontSize={fontSize}
-                    pageScale={pageScale}
                     markerScale={markerScale}
                     showTajweed={showTajweed}
                     isDark={isDark}
@@ -454,7 +450,6 @@ type PageSlotProps = {
   rowIndex: SharedValue<number>;
   pull: SharedValue<number>;
   fontSize: number;
-  pageScale: number;
   markerScale: number;
   showTajweed: boolean;
   isDark: boolean;
@@ -503,7 +498,6 @@ const PageSlot = memo(function PageSlot({
   rowIndex,
   pull,
   fontSize,
-  pageScale,
   markerScale,
   showTajweed,
   isDark,
@@ -526,25 +520,57 @@ const PageSlot = memo(function PageSlot({
   onPanCancel,
 }: PageSlotProps) {
   const pageNumber = data.page.pageNumber;
-  // Page turn: the page slides as before, and also tilts around its vertical
-  // axis and shrinks a little while it moves, with a shadow that deepens as it
-  // leaves, so the turn reads as a page and not a flat slide.
+  // Page turn, like a printed book. The spine is on the right edge (Arabic
+  // book). Going forward, the current page swings about the spine, narrowing to
+  // an edge while the next page lies still underneath and is uncovered. Going
+  // back, the previous page swings back in over the current one. Only
+  // transform and opacity change, so it stays smooth on weak phones.
+  // t is the turn progress: +1 forward, -1 back, 0 at rest.
   const slotStyle = useAnimatedStyle(() => {
-    const offset = (rowIndex.value - pageNumber) * width + pull.value;
-    const progress = Math.max(-1, Math.min(1, offset / Math.max(1, width)));
-    const distance = Math.abs(progress);
+    const t = Math.max(-1, Math.min(1, pull.value / Math.max(1, width)));
+    const d = pageNumber - rowIndex.value;
+    let angle = 0;
+    let visible = false;
+    let z = 0;
+    if (d === 0) {
+      visible = true;
+      angle = t > 0 ? t * 90 : 0;
+      z = t > 0 ? 2 : 1;
+    } else if (d === 1) {
+      // Next page: underneath, uncovered while the current page turns away.
+      visible = t > 0;
+      z = 0;
+    } else if (d === -1) {
+      // Previous page: arrives from the spine on top of the current one.
+      visible = t < 0;
+      angle = 90 * (1 + t);
+      z = 3;
+    }
     return {
+      zIndex: z,
       transform: [
-        { perspective: 1400 },
-        { translateX: offset },
-        { rotateY: `${progress * -24}deg` },
-        { scale: 1 - distance * 0.05 },
+        { translateX: visible ? 0 : -width * 2 },
+        { perspective: 1300 },
+        { translateX: width / 2 },
+        { rotateY: `${angle}deg` },
+        { translateX: -width / 2 },
       ],
     };
   });
+  // Light and shade: the turning page darkens as it lifts, and the page under
+  // it is shaded by the turning page and brightens as it is uncovered.
   const shadowStyle = useAnimatedStyle(() => {
-    const offset = (rowIndex.value - pageNumber) * width + pull.value;
-    return { opacity: Math.min(1, Math.abs(offset) / Math.max(1, width)) * 0.32 };
+    const t = Math.max(-1, Math.min(1, pull.value / Math.max(1, width)));
+    const d = pageNumber - rowIndex.value;
+    let opacity = 0;
+    if (d === 0) {
+      opacity = t > 0 ? t * 0.45 : -t * 0.4;
+    } else if (d === 1) {
+      opacity = t > 0 ? (1 - t) * 0.4 : 0;
+    } else if (d === -1) {
+      opacity = t < 0 ? (1 + t) * 0.45 : 0;
+    }
+    return { opacity };
   });
   const handleReady = useCallback(() => {
     onReady(pageNumber);
@@ -568,7 +594,6 @@ const PageSlot = memo(function PageSlot({
         page={data.page}
         fonts={data}
         fontSize={fontSize}
-        pageScale={pageScale}
         markerScale={markerScale}
         showTajweed={showTajweed}
         isDark={isDark}
