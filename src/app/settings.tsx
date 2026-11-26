@@ -459,6 +459,9 @@ export default function SettingsScreen() {
         <Text style={[styles.version, { color: colors.textSecondary }]}>
           ملفات تلاوة ياسر الدوسري وإبراهيم الدوسري وبندر بليلة وإسلام صبحي وماهر المعيقلي، وتوقيتات الآيات المستخدمة لتتبع الآية أثناء التلاوة، من موقع mp3quran.net.
         </Text>
+        <Text style={[styles.version, { color: colors.textSecondary }]}>
+          صور القرّاء من ويكيميديا كومنز بعد قصّها مربعة: أحمد العجمي (أحمد زين، CC BY-SA 3.0)، سعد الغامدي (هيثم الدخين، CC BY-SA 4.0)، صلاح البدير (Salah Al Budair، CC BY-SA 4.0)، أحمد نعينع (NeinaaQari، CC BY-SA 4.0)، عبدالمحسن القاسم (شيخ شريف، CC BY 4.0).
+        </Text>
       </ScrollView>
 
       <SurahDownloadPicker

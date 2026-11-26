@@ -58,6 +58,17 @@ export function isFullSurahReciter(reciterId: number): boolean {
   return reciterId < 0 && Math.abs(reciterId) !== MAHER_MP3QURAN_RECITER_ID;
 }
 
+/** True when a whole-surah reciter has ayah timings, so playback can start at any ayah. */
+export function hasAyahTimings(reciterId: number): boolean {
+  if (!isFullSurahReciter(reciterId)) {
+    return false;
+  }
+  const absoluteId = Math.abs(reciterId);
+  return (
+    absoluteId > TIMED_RECITER_ID_OFFSET || MP3QURAN_TIMING_READ_IDS[absoluteId] !== undefined
+  );
+}
+
 export class ContentUnavailableError extends Error {
   readonly reason: ContentUnavailableReason;
 

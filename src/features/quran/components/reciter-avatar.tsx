@@ -22,6 +22,11 @@ const portraitImages: Record<ReciterPortraitImageKey, ImageSourcePropType> = {
   'saud-shuraim': require('../../../../assets/images/reciters/shuraim.png'),
   sudais: require('../../../../assets/images/reciters/sudais.jpg'),
   'yasser-al-dosari': require('../../../../assets/images/reciters/yasser-al-dosari.jpg'),
+  'ahmad-ajmi': require('../../../../assets/images/reciters/ahmad-ajmi.jpg'),
+  'saad-ghamdi': require('../../../../assets/images/reciters/saad-ghamdi.jpg'),
+  'salah-budair': require('../../../../assets/images/reciters/salah-budair.jpg'),
+  'ahmad-naina': require('../../../../assets/images/reciters/ahmad-naina.jpg'),
+  'abdulmohsen-qasim': require('../../../../assets/images/reciters/abdulmohsen-qasim.jpg'),
 };
 
 type Props = {

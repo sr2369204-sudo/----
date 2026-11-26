@@ -12,7 +12,12 @@ export type ReciterPortraitImageKey =
   | 'mishary-rashid'
   | 'saud-shuraim'
   | 'sudais'
-  | 'yasser-al-dosari';
+  | 'yasser-al-dosari'
+  | 'ahmad-ajmi'
+  | 'saad-ghamdi'
+  | 'salah-budair'
+  | 'ahmad-naina'
+  | 'abdulmohsen-qasim';
 
 export type ReciterPortrait = {
   imageKey: ReciterPortraitImageKey;
@@ -22,6 +27,36 @@ export type ReciterPortrait = {
 };
 
 const portraits: Record<number, ReciterPortrait> = {
+  [-(100000 + 5)]: {
+    imageKey: 'ahmad-ajmi',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Ahmad_bin_Ali_Al-Ajmi.png',
+    credit: 'أحمد زين (Wikimedia Commons)',
+    license: 'CC BY-SA 3.0, cropped',
+  },
+  [-(100000 + 30)]: {
+    imageKey: 'saad-ghamdi',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Saad_al_Ghamdi.jpg',
+    credit: 'الشيخ هيثم الدخين (Wikimedia Commons)',
+    license: 'CC BY-SA 4.0, cropped',
+  },
+  [-(100000 + 43)]: {
+    imageKey: 'salah-budair',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Salah_Ibn_Mohammed_Al_Budair.jpg',
+    credit: 'Salah Al Budair (Wikimedia Commons)',
+    license: 'CC BY-SA 4.0, cropped',
+  },
+  [-(100000 + 9)]: {
+    imageKey: 'ahmad-naina',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:DrAhmedNeinaa.jpg',
+    credit: 'NeinaaQari (Wikimedia Commons)',
+    license: 'CC BY-SA 4.0, cropped',
+  },
+  [-(100000 + 67)]: {
+    imageKey: 'abdulmohsen-qasim',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Abdul_Mohsin_Al-Qasim.jpg',
+    credit: 'শেখ শরীফ (Wikimedia Commons)',
+    license: 'CC BY 4.0, cropped',
+  },
   1: {
     imageKey: 'abdul-basit',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Abdul_Basit_%27Abd_us-Samad_with_King_Faisal.jpg',

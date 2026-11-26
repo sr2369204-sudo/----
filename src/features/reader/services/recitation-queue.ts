@@ -2,6 +2,7 @@ import {
   ContentUnavailableError,
   isFullSurahReciter,
   quranContentProvider,
+  type AyahTimeSpan,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
 import { BUNDLED_SURAH_DIRECTORY } from '@/features/quran/data/bundled-surah-directory';
@@ -23,7 +24,32 @@ export type RecitationQueue = {
   /** Short Arabic description of the range, shown in the mini player. */
   label: string;
   tracks: RecitationTrack[];
+  /**
+   * Set when the queue plays a slice of one whole-surah file: the player jumps
+   * to `startMs` and stops at `endMs` (the end of the chosen ayah or ayahs).
+   */
+  seek?: { startMs: number; endMs: number };
 };
+
+/**
+ * The part of a whole-surah recording that holds ayahs `fromAyah..toAyah`, or
+ * null when the timings do not cover them.
+ */
+export function seekWindowFor(
+  spans: AyahTimeSpan[] | null,
+  fromAyah: number,
+  toAyah: number,
+): { startMs: number; endMs: number } | null {
+  if (!spans) {
+    return null;
+  }
+  const first = spans.find((span) => span.ayahNumber === fromAyah);
+  const last = spans.find((span) => span.ayahNumber === toAyah);
+  if (!first || !last || last.endMs <= first.startMs) {
+    return null;
+  }
+  return { startMs: first.startMs, endMs: last.endMs };
+}
 
 export const AYAH_REPEAT_COUNTS = [1, 2, 3, 5, 10] as const;
 export const MAX_REPEATED_PLAYLIST_TRACKS = 4096;

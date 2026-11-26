@@ -631,6 +631,7 @@ type ScopeDialogProps = {
   onTasmi3: (scope: RecitationScope) => void;
   onClose: () => void;
   chapterOnly: boolean;
+  ayahSeek?: boolean;
 };
 
 export function RecitationScopeDialog({
@@ -650,6 +651,7 @@ export function RecitationScopeDialog({
   onTasmi3,
   onClose,
   chapterOnly,
+  ayahSeek = false,
 }: ScopeDialogProps) {
   const [mode, setMode] = useState<Mode>(() => (chapterOnly ? 'surah' : 'current'));
   const [surahValue, setSurahValue] = useState(String(currentSurahNumber));
@@ -817,7 +819,9 @@ export function RecitationScopeDialog({
               <View style={[styles.chapterOnlyNotice, { backgroundColor: colors.backgroundSelected }]}>
                 <Ionicons name="information-circle-outline" size={19} color={colors.primary} />
                 <Text style={[styles.chapterOnlyNoticeText, { color: colors.text }]}>
-                  هذا القارئ متاح بتسجيل السورة كاملة فقط. اختر السورة من بدايتها، ولا يدعم التشغيل آية بآية أو من منتصف الصفحة.
+                  {ayahSeek
+                    ? 'هذا القارئ متاح بتسجيل السورة كاملة. اختر السورة من بدايتها، أو اضغط على أي آية في المصحف لتبدأ التلاوة منها.'
+                    : 'هذا القارئ متاح بتسجيل السورة كاملة فقط. اختر السورة من بدايتها، ولا يدعم التشغيل آية بآية أو من منتصف الصفحة.'}
                 </Text>
               </View>
             )}

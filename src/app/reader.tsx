@@ -46,6 +46,7 @@ import { SqliteAnnotationRepository } from '@/features/annotations/repositories/
 import type { Highlight, SavedWord } from '@/features/annotations/types';
 import {
   ContentUnavailableError,
+  hasAyahTimings,
   isFullSurahReciter,
   quranContentProvider,
   type AyahWordTiming,
@@ -75,6 +76,8 @@ import { Tasmi3Panel } from '@/features/reader/components/Tasmi3Panel';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
 import {
   buildRecitationQueue,
+  describeRecitationScope,
+  seekWindowFor,
   getAvailableAyahRepeatCounts,
   resolveAyahRepeatCount,
   type RecitationQueue,
@@ -177,6 +180,8 @@ export default function ReaderScreen() {
   const [savedWords, setSavedWords] = useState<SavedWord[]>([]);
   const [savedWordRevision, setSavedWordRevision] = useState(0);
   const [recitationQueue, setRecitationQueue] = useState<RecitationQueue | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
+  const seekArmedRef = useRef(false);
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [recitationBusy, setRecitationBusy] = useState(false);
   const [recitationError, setRecitationError] = useState<string | null>(null);
@@ -1174,6 +1179,13 @@ export default function ReaderScreen() {
     if (resumeTrackIndex >= 0) {
       recitationPlaylist.skipTo(resumeTrackIndex * repeatCount);
     }
+    if (queue.seek) {
+      // The jump waits until the file has loaded; the effect below plays.
+      pendingSeekRef.current = queue.seek.startMs;
+      seekArmedRef.current = false;
+      return;
+    }
+    pendingSeekRef.current = null;
     if (shouldPlay) {
       recitationPlaylist.play();
     }
@@ -1249,7 +1261,32 @@ export default function ReaderScreen() {
   const runRecitation = useCallback(async (scope: RecitationScope) => {
     audioRequest.current += 1;
     player.pause();
-    const queue = await buildRecitationQueue(reciterId, scope, { pageVerseKeys });
+    let queue: RecitationQueue;
+    if (
+      isFullSurahReciter(reciterId) &&
+      (scope.type === 'ayah' || scope.type === 'ayahRange')
+    ) {
+      // One file holds the whole surah: play that file from the start of the
+      // chosen ayah, using the ayah timings, and stop where the ayahs end.
+      const fromAyah = scope.type === 'ayah' ? scope.ayahNumber : scope.fromAyah;
+      const toAyah = scope.type === 'ayah' ? scope.ayahNumber : scope.toAyah;
+      const seek = seekWindowFor(
+        await loadFullSurahAyahTimings(reciterId, scope.surahNumber),
+        fromAyah,
+        toAyah,
+      );
+      if (!seek) {
+        throw new Error('هذا القارئ لا يدعم التشغيل من منتصف السورة.');
+      }
+      const surahQueue = await buildRecitationQueue(
+        reciterId,
+        { type: 'surah', surahNumber: scope.surahNumber },
+        { pageVerseKeys },
+      );
+      queue = { ...surahQueue, scope, label: describeRecitationScope(scope), seek };
+    } else {
+      queue = await buildRecitationQueue(reciterId, scope, { pageVerseKeys });
+    }
     queue.tracks = resolveOfflineTracks(reciterId, queue.tracks);
     loadRecitationQueue(queue, null);
   }, [loadRecitationQueue, pageVerseKeys, player, reciterId]);
@@ -1502,7 +1539,12 @@ export default function ReaderScreen() {
     setRecitationBusy(true);
     setRecitationError(null);
     try {
-      if (isFullSurahReciter(reciterId) && scope.type !== 'surah') {
+      if (
+        isFullSurahReciter(reciterId) &&
+        scope.type !== 'surah' &&
+        scope.type !== 'ayah' &&
+        scope.type !== 'ayahRange'
+      ) {
         setRecitationError(
           'هذا القارئ يدعم تشغيل السورة كاملة من بدايتها فقط، ولا يدعم التشغيل آية بآية.',
         );
@@ -1523,6 +1565,8 @@ export default function ReaderScreen() {
   }, [reciterId, runRecitation]);
 
   const closeRecitation = useCallback(() => {
+    pendingSeekRef.current = null;
+    seekArmedRef.current = false;
     recitationPlaylist.pause();
     recitationPlaylist.clear();
     setRecitationQueue(null);
@@ -1536,6 +1580,46 @@ export default function ReaderScreen() {
   // watched as an edge: reading it as a steady flag would tear down a freshly
   // loaded queue while the previous flag was still set.
   const recitationEndedRef = useRef(false);
+
+  // Slice of a whole-surah file (one ayah or a run of ayahs): jump to its start
+  // once the file is loaded, then stop, or loop when repeat is on, at its end.
+  useEffect(() => {
+    const startMs = pendingSeekRef.current;
+    if (startMs === null || !recitationStatus.isLoaded) {
+      return;
+    }
+    pendingSeekRef.current = null;
+    void recitationPlaylist
+      .seekTo(startMs / 1000)
+      .catch(() => undefined)
+      .then(() => {
+        seekArmedRef.current = true;
+        recitationPlaylist.play();
+      });
+  }, [recitationPlaylist, recitationStatus.isLoaded]);
+  useEffect(() => {
+    const seek = recitationQueue?.seek;
+    if (!seek || !seekArmedRef.current || !recitationStatus.playing) {
+      return;
+    }
+    if (recitationStatus.currentTime * 1000 < seek.endMs) {
+      return;
+    }
+    if (repeatMode === 'all') {
+      void recitationPlaylist.seekTo(seek.startMs / 1000).catch(() => undefined);
+      return;
+    }
+    seekArmedRef.current = false;
+    recitationPlaylist.pause();
+    setTimeout(closeRecitation, 0);
+  }, [
+    closeRecitation,
+    recitationPlaylist,
+    recitationQueue,
+    recitationStatus.currentTime,
+    recitationStatus.playing,
+    repeatMode,
+  ]);
   useEffect(() => {
     if (!recitationStatus.didJustFinish) {
       recitationEndedRef.current = false;
@@ -2161,6 +2245,7 @@ export default function ReaderScreen() {
           onConfirm={(scope) => void startRecitation(scope)}
           onTasmi3={startTasmi3}
           chapterOnly={isFullSurahReciter(reciterId)}
+          ayahSeek={hasAyahTimings(reciterId)}
           onClose={() => {
             setScopeDialogOpen(false);
             setRecitationError(null);
