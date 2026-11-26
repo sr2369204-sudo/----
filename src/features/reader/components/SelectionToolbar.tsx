@@ -697,7 +697,9 @@ function Toolbar({
 
   return (
     <>
-      <View style={styles.overlay} pointerEvents="box-none">
+      <View
+        style={[styles.overlay, panel === 'meaning' && styles.hidden]}
+        pointerEvents={panel === 'meaning' ? 'none' : 'box-none'}>
         <View
           style={styles.ring}
           pointerEvents="box-none">
@@ -1486,6 +1488,7 @@ function normalizeWord(value: string): string {
 }
 
 const styles = StyleSheet.create({
+  hidden: { opacity: 0 },
   overlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 120,

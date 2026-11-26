@@ -204,18 +204,25 @@ export function WordMeaningSheet({ surahNumber, ayah, selectedWordId, normalizeW
                 </Text>
               )}
             </Animated.View>
+            {total > 1 ? (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="الكلمة التالية"
+                  onPress={() => go(1)}
+                  style={[styles.zone, styles.zoneRight]}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="الكلمة السابقة"
+                  onPress={() => go(-1)}
+                  style={[styles.zone, styles.zoneLeft]}
+                />
+              </>
+            ) : null}
           </View>
 
           <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="الكلمة التالية"
-              disabled={index >= total - 1}
-              onPress={() => go(1)}
-              style={[styles.round, index >= total - 1 && styles.off]}
-            >
-              <Ionicons name="chevron-back" size={20} color={GOLD_LIGHT} />
-            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="نسخ المعنى"
@@ -226,16 +233,10 @@ export function WordMeaningSheet({ surahNumber, ayah, selectedWordId, normalizeW
               <Ionicons name="copy-outline" size={17} color={GOLD_LIGHT} />
               <Text style={styles.pillText}>{copied ?? 'نسخ'}</Text>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="الكلمة السابقة"
-              disabled={index <= 0}
-              onPress={() => go(-1)}
-              style={[styles.round, index <= 0 && styles.off]}
-            >
-              <Ionicons name="chevron-forward" size={20} color={GOLD_LIGHT} />
-            </Pressable>
           </View>
+          {total > 1 ? (
+            <Text style={styles.hint}>اضغط على اليمين للتالي، واليسار للسابق، أو اسحب</Text>
+          ) : null}
           <Text style={styles.source}>المصدر: السراج في بيان غريب القرآن</Text>
         </View>
       </View>
@@ -305,22 +306,7 @@ const styles = StyleSheet.create({
   dividerDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: GOLD },
   meaning: { fontSize: 19, lineHeight: 32, textAlign: 'center', color: '#FFF9EA' },
   error: { fontSize: TypeScale.body, textAlign: 'center', color: '#FFB4A9' },
-  actions: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  round: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: GOLD,
-    backgroundColor: 'rgba(216,181,109,0.14)',
-  },
+  actions: { alignItems: 'center', marginTop: 6 },
   pill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -334,5 +320,9 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: TypeScale.label, fontWeight: '800', color: GOLD_LIGHT },
   off: { opacity: 0.4 },
+  zone: { position: 'absolute', top: 0, bottom: 0, width: '25%' },
+  zoneRight: { right: 0 },
+  zoneLeft: { left: 0 },
+  hint: { marginTop: 8, textAlign: 'center', fontSize: TypeScale.micro, color: 'rgba(239,248,243,0.5)' },
   source: { marginTop: 10, textAlign: 'center', fontSize: TypeScale.micro, color: 'rgba(239,248,243,0.5)' },
 });
