@@ -27,6 +27,20 @@ const portraitImages: Record<ReciterPortraitImageKey, ImageSourcePropType> = {
   'salah-budair': require('../../../../assets/images/reciters/salah-budair.jpg'),
   'ahmad-naina': require('../../../../assets/images/reciters/ahmad-naina.jpg'),
   'abdulmohsen-qasim': require('../../../../assets/images/reciters/abdulmohsen-qasim.jpg'),
+  'khalid-qahtani': require('../../../../assets/images/reciters/khalid-qahtani.jpg'),
+  'abdullah-basfar': require('../../../../assets/images/reciters/abdullah-basfar.jpg'),
+  'abdulbari-thubaity': require('../../../../assets/images/reciters/abdulbari-thubaity.jpg'),
+  'ahmad-masarawi': require('../../../../assets/images/reciters/ahmad-masarawi.jpg'),
+  'ali-jaber': require('../../../../assets/images/reciters/ali-jaber.jpg'),
+  'fares-abbad': require('../../../../assets/images/reciters/fares-abbad.jpg'),
+  'abdullah-khayyat': require('../../../../assets/images/reciters/abdullah-khayyat.jpg'),
+  'abdullah-matrood': require('../../../../assets/images/reciters/abdullah-matrood.jpg'),
+  'abdulmohsen-harthi': require('../../../../assets/images/reciters/abdulmohsen-harthi.jpg'),
+  'nasser-qatami': require('../../../../assets/images/reciters/nasser-qatami.jpg'),
+  'idris-abkar': require('../../../../assets/images/reciters/idris-abkar.jpg'),
+  'abdullah-juhani': require('../../../../assets/images/reciters/abdullah-juhani.jpg'),
+  'muhammad-ayyub': require('../../../../assets/images/reciters/muhammad-ayyub.jpg'),
+  'abdulmohsen-obaikan': require('../../../../assets/images/reciters/abdulmohsen-obaikan.jpg'),
 };
 
 type Props = {

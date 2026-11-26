@@ -17,7 +17,21 @@ export type ReciterPortraitImageKey =
   | 'saad-ghamdi'
   | 'salah-budair'
   | 'ahmad-naina'
-  | 'abdulmohsen-qasim';
+  | 'abdulmohsen-qasim'
+  | 'khalid-qahtani'
+  | 'abdullah-basfar'
+  | 'abdulbari-thubaity'
+  | 'ahmad-masarawi'
+  | 'ali-jaber'
+  | 'fares-abbad'
+  | 'abdullah-khayyat'
+  | 'abdullah-matrood'
+  | 'abdulmohsen-harthi'
+  | 'nasser-qatami'
+  | 'idris-abkar'
+  | 'abdullah-juhani'
+  | 'muhammad-ayyub'
+  | 'abdulmohsen-obaikan';
 
 export type ReciterPortrait = {
   imageKey: ReciterPortraitImageKey;
@@ -27,6 +41,90 @@ export type ReciterPortrait = {
 };
 
 const portraits: Record<number, ReciterPortrait> = {
+  [-(100000 + 21)]: {
+    imageKey: 'khalid-qahtani',
+    sourceUrl: 'https://www.assabile.com/khalid-al-qahtani',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 60)]: {
+    imageKey: 'abdullah-basfar',
+    sourceUrl: 'https://www.assabile.com/abdullah-ibn-ali-basfar',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 49)]: {
+    imageKey: 'abdulbari-thubaity',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Abdulbari_ath-Thubaity_delivering_sermon_at_Prophet%27s_Mosque_Medina.jpg',
+    credit: 'Wikimedia Commons (copied from peopleofmadina.com, author unknown)',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 289)]: {
+    imageKey: 'ahmad-masarawi',
+    sourceUrl: 'https://ar.wikipedia.org/wiki/%D8%A3%D8%AD%D9%85%D8%AF_%D8%B9%D9%8A%D8%B3%D9%89_%D8%A7%D9%84%D9%85%D8%B9%D8%B5%D8%B1%D8%A7%D9%88%D9%8A',
+    credit: 'Arabic Wikipedia',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 76)]: {
+    imageKey: 'ali-jaber',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Ali_Abdullah_Jaber.jpg',
+    credit: 'Wikimedia Commons (copied from alijaber.net, author unknown)',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 81)]: {
+    imageKey: 'fares-abbad',
+    sourceUrl: 'https://www.assabile.com/fares-abbad',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 61)]: {
+    imageKey: 'abdullah-khayyat',
+    sourceUrl: 'https://www.assabile.com/abdullah-al-khayat-21',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 59)]: {
+    imageKey: 'abdullah-matrood',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Abdullah_Al_Matroud.jpg',
+    credit: 'Wikimedia Commons',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 66)]: {
+    imageKey: 'abdulmohsen-harthi',
+    sourceUrl: 'https://www.assabile.com/abdulmohsen-al-harthy',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 86)]: {
+    imageKey: 'nasser-qatami',
+    sourceUrl: 'https://ar.wikipedia.org/wiki/%D9%86%D8%A7%D8%B5%D8%B1_%D8%A7%D9%84%D9%82%D8%B7%D8%A7%D9%85%D9%8A',
+    credit: 'Arabic Wikipedia / Commons',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 12)]: {
+    imageKey: 'idris-abkar',
+    sourceUrl: 'https://www.assabile.com/idris-abkar',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 62)]: {
+    imageKey: 'abdullah-juhani',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Abdullah_Al_Juhany_(Cropped).png',
+    credit: 'Wikimedia Commons',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 109)]: {
+    imageKey: 'muhammad-ayyub',
+    sourceUrl: 'https://www.assabile.com/muhammad-ayyub',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
+  [-(100000 + 69)]: {
+    imageKey: 'abdulmohsen-obaikan',
+    sourceUrl: 'https://fr.assabile.com/abdel-mohsen-al-obeikan',
+    credit: 'Assabile',
+    license: 'Unverified; added at the owner\'s decision',
+  },
   [-(100000 + 5)]: {
     imageKey: 'ahmad-ajmi',
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Ahmad_bin_Ali_Al-Ajmi.png',
