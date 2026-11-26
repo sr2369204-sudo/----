@@ -460,7 +460,7 @@ test('resolves source-backed ayah audio URLs and reciter metadata', async (t) =>
 
   const provider = new QuranComContentProvider();
   const audioUrl = await provider.getAyahAudioUrl(7, 1, 1);
-  const reciters = await provider.getReciters();
+  const reciters = (await provider.getReciters()).filter((reciter) => reciter.id > 0);
 
   assert.equal(audioUrl, 'https://verses.quran.com/Alafasy/mp3/001001.mp3');
   assert.deepEqual(reciters, [{
@@ -520,7 +520,7 @@ test('omits reciters whose source has no playable ayah audio', async (t) => {
         });
   });
 
-  const reciters = await new QuranComContentProvider().getReciters();
+  const reciters = (await new QuranComContentProvider().getReciters()).filter((reciter) => reciter.id > 0);
 
   assert.deepEqual(reciters, [{
     id: 7,
@@ -779,4 +779,23 @@ test('reads ayah timings of a whole-surah reciter and refuses unordered or missi
 
   body = [{ ayah: 2, start_time: 0, end_time: 100 }];
   await assert.rejects(provider.getFullSurahAyahTimings(-92, 1), ContentUnavailableError);
+});
+
+test('timed mp3quran reciters play their own surah file and read timings by their own id', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify([{ ayah: 1, start_time: 0, end_time: 1000 }]), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+  const provider = new QuranComContentProvider();
+
+  const tracks = await provider.getChapterRecitation(-100005, 12);
+  assert.deepEqual(tracks, [
+    { surahNumber: 12, ayahNumber: 0, url: 'https://cdn.mp3quran.net/audio/ahmad-ajmi/r1/012.mp3' },
+  ]);
+  await provider.getFullSurahAyahTimings(-100005, 12);
+  assert.ok(requestedUrls[0].endsWith('/ayat_timing?surah=12&read=5'));
 });

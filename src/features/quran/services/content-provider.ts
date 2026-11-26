@@ -16,6 +16,44 @@ export type AyahWordMeaning = {
   meaning: string;
 };
 
+/**
+ * Famous Hafs reciters from mp3quran.net that also have ayah timings there.
+ * The audio is the file in `folder`, the same recording the timings were made
+ * on. Each was checked: the recitation and its ayah boundaries line up (the
+ * boundaries fall on pauses in the audio). Ids are timing-list ids.
+ */
+export type TimedReciter = { timingId: number; name: string; folder: string };
+
+export const TIMED_RECITERS: TimedReciter[] = [
+  { timingId: 5, name: 'أحمد بن علي العجمي', folder: 'https://cdn.mp3quran.net/audio/ahmad-ajmi/r1' },
+  { timingId: 30, name: 'سعد الغامدي', folder: 'https://cdn.mp3quran.net/audio/saad-ghamdi/r1' },
+  { timingId: 43, name: 'صلاح البدير', folder: 'https://cdn.mp3quran.net/audio/salah-budair/r1' },
+  { timingId: 21, name: 'خالد القحطاني', folder: 'https://cdn.mp3quran.net/audio/khalid-qahtani/r1' },
+  { timingId: 60, name: 'عبدالله بصفر', folder: 'https://cdn.mp3quran.net/audio/abdullah-basfar/r1' },
+  { timingId: 49, name: 'عبدالبارئ الثبيتي', folder: 'https://cdn.mp3quran.net/audio/abdulbari-thubaiti/r1' },
+  { timingId: 289, name: 'أحمد عيسى المعصراوي', folder: 'https://cdn.mp3quran.net/audio/ahmad-masarawi/r1' },
+  { timingId: 76, name: 'علي جابر', folder: 'https://cdn.mp3quran.net/audio/ali-jaber/r1' },
+  { timingId: 9, name: 'أحمد نعينع', folder: 'https://cdn.mp3quran.net/audio/ahmad-naina/r1' },
+  { timingId: 67, name: 'عبدالمحسن القاسم', folder: 'https://cdn.mp3quran.net/audio/abdulmohsen-qasim/r1' },
+  { timingId: 81, name: 'فارس عباد', folder: 'https://cdn.mp3quran.net/audio/fares-abbad/r1' },
+  { timingId: 61, name: 'عبدالله خياط', folder: 'https://cdn.mp3quran.net/audio/abdullah-khayyat/r1' },
+  { timingId: 59, name: 'عبدالله المطرود', folder: 'https://cdn.mp3quran.net/audio/abdullah-matrood/r1' },
+  { timingId: 66, name: 'عبدالمحسن الحارثي', folder: 'https://cdn.mp3quran.net/audio/abdulmohsen-harthi/r1' },
+  { timingId: 86, name: 'ناصر القطامي', folder: 'https://cdn.mp3quran.net/audio/nasser-qatami/r1' },
+  { timingId: 12, name: 'إدريس أبكر', folder: 'https://cdn.mp3quran.net/audio/idrees-abkar/r1' },
+  { timingId: 62, name: 'عبدالله عواد الجهني', folder: 'https://cdn.mp3quran.net/audio/abdullah-juhani/r1' },
+  { timingId: 109, name: 'محمد أيوب', folder: 'https://cdn.mp3quran.net/audio/muhammad-ayyub/r1' },
+  { timingId: 56, name: 'عبدالعزيز الزهراني', folder: 'https://cdn.mp3quran.net/audio/abdulaziz-zahrani/r1' },
+  {
+    timingId: 69,
+    name: 'عبدالمحسن العبيكان',
+    folder: 'https://cdn.mp3quran.net/audio/abdulmohsen-obaikan/r1',
+  },
+];
+
+/** Reciters taken from the mp3quran timing list get ids `-(offset + timing id)`. */
+const TIMED_RECITER_ID_OFFSET = 100000;
+
 export function isFullSurahReciter(reciterId: number): boolean {
   return reciterId < 0 && Math.abs(reciterId) !== MAHER_MP3QURAN_RECITER_ID;
 }
@@ -539,6 +577,11 @@ export class QuranComContentProvider implements QuranContentProvider {
         name: reciter.name,
         style: 'تلاوة السورة كاملة',
       })),
+      ...TIMED_RECITERS.map((reciter) => ({
+        id: -(TIMED_RECITER_ID_OFFSET + reciter.timingId),
+        name: reciter.name,
+        style: 'تلاوة السورة كاملة',
+      })),
     ];
   }
 
@@ -558,6 +601,19 @@ export class QuranComContentProvider implements QuranContentProvider {
           url: this.getMaherAyahAudioUrl(surahNumber, ayahNumber),
         };
       });
+    }
+    const timed = TIMED_RECITERS.find(
+      (candidate) => TIMED_RECITER_ID_OFFSET + candidate.timingId === Math.abs(reciterId),
+    );
+    if (isFullSurahReciter(reciterId) && timed) {
+      if (!Number.isInteger(surahNumber) || surahNumber < 1 || surahNumber > 114) {
+        throw new ContentUnavailableError('invalid-data', 'لا تتوفر هذه السورة للقارئ المختار.');
+      }
+      return [{
+        surahNumber,
+        ayahNumber: 0,
+        url: `${timed.folder}/${String(surahNumber).padStart(3, '0')}.mp3`,
+      }];
     }
     if (isFullSurahReciter(reciterId)) {
       const reciter = (await this.getMp3QuranReciters()).find(
@@ -713,7 +769,11 @@ export class QuranComContentProvider implements QuranContentProvider {
     reciterId: number,
     surahNumber: number,
   ): Promise<AyahTimeSpan[] | null> {
-    const readId = MP3QURAN_TIMING_READ_IDS[Math.abs(reciterId)];
+    const absoluteId = Math.abs(reciterId);
+    const readId =
+      absoluteId > TIMED_RECITER_ID_OFFSET
+        ? absoluteId - TIMED_RECITER_ID_OFFSET
+        : MP3QURAN_TIMING_READ_IDS[absoluteId];
     if (!isFullSurahReciter(reciterId) || readId === undefined) {
       return null;
     }
