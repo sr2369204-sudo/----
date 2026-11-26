@@ -2,12 +2,23 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, Modal, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TypeScale } from '@/constants/theme';
 import { friendlyError } from '@/features/errors/friendly-error';
 import { toArabicNumbers } from '@/features/home/utils/format';
+import { getTafsirCenterWordMeanings } from '@/features/offline-data';
 import { ConcentricRings } from '@/features/khatma/components/khatma-ring';
 import type { AyahWordMeaning } from '@/features/quran/services/content-provider';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
@@ -107,7 +118,18 @@ export function WordMeaningSheet({ surahNumber, ayah, selectedWordId, normalizeW
   const word = ayah.words[Math.min(index, total - 1)];
   const wordText = word?.textUthmani ?? '';
   const own = normalizeWord(wordText);
-  const matched = state?.meanings.find((item) => normalizeWord(item.word) === own) ?? null;
+  // Main source: one meaning per word, matched by position. It is only used
+  // when its word count equals the ayah's, so a different split never shows
+  // the meaning of another word. The old source stays as the fallback.
+  const centerList = useMemo(
+    () => getTafsirCenterWordMeanings(surahNumber, ayah.ayahNumber),
+    [ayah.ayahNumber, surahNumber],
+  );
+  const centerMeaning =
+    centerList && centerList.length === total ? (centerList[Math.min(index, total - 1)] ?? '') : '';
+  const fallback = state?.meanings.find((item) => normalizeWord(item.word) === own) ?? null;
+  const matched = centerMeaning ? { word: wordText, meaning: centerMeaning } : fallback;
+  const fromCenter = Boolean(centerMeaning);
   const others = (state?.meanings ?? []).filter((item) => item !== matched);
 
   async function copy(): Promise<void> {
@@ -183,7 +205,15 @@ export function WordMeaningSheet({ surahNumber, ayah, selectedWordId, normalizeW
                 </View>
                 <View style={styles.dividerLine} />
               </View>
-              {loading ? (
+              {matched ? (
+                <ScrollView
+                  style={styles.meaningScroll}
+                  contentContainerStyle={styles.meaningContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <Text style={styles.meaning}>{matched.meaning}</Text>
+                </ScrollView>
+              ) : loading ? (
                 <Text style={styles.sub}>جارٍ تحميل المعنى…</Text>
               ) : state?.error ? (
                 <>
@@ -194,8 +224,6 @@ export function WordMeaningSheet({ surahNumber, ayah, selectedWordId, normalizeW
                     <Text style={styles.pillText}>إعادة المحاولة</Text>
                   </Pressable>
                 </>
-              ) : matched ? (
-                <Text style={styles.meaning}>{matched.meaning}</Text>
               ) : (
                 <Text style={styles.sub}>
                   {others.length > 0
@@ -237,7 +265,9 @@ export function WordMeaningSheet({ surahNumber, ayah, selectedWordId, normalizeW
           {total > 1 ? (
             <Text style={styles.hint}>اضغط على اليمين للتالي، واليسار للسابق، أو اسحب</Text>
           ) : null}
-          <Text style={styles.source}>المصدر: السراج في بيان غريب القرآن</Text>
+          <Text style={styles.source}>
+            {fromCenter ? 'المصدر: مركز تفسير للدراسات القرآنية' : 'المصدر: السراج في بيان غريب القرآن'}
+          </Text>
         </View>
       </View>
     </Modal>
@@ -304,6 +334,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dividerDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: GOLD },
+  meaningScroll: { maxHeight: 190, alignSelf: 'stretch' },
+  meaningContent: { flexGrow: 1, justifyContent: 'center' },
   meaning: { fontSize: 19, lineHeight: 32, textAlign: 'center', color: '#FFF9EA' },
   error: { fontSize: TypeScale.body, textAlign: 'center', color: '#FFB4A9' },
   actions: { alignItems: 'center', marginTop: 6 },

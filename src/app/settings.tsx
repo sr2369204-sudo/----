@@ -453,6 +453,9 @@ export default function SettingsScreen() {
           زخرفة رأس السورة مأخوذة من مصحف المدينة النبوية (الطبعة العادية) الصادر عن مجمع الملك فهد
           لطباعة المصحف الشريف، ومرسومة بالمتجهات عبر مشروع quran-ws/quran-assets. أسماء السور بالخط المصحفي من مكتبة QUL (ترخيص CC BY 4.0)، وسورة الفاتحة من عمل RNRCTG على ويكيميديا كومنز (ترخيص CC BY-SA 4.0).
         </Text>
+        <Text style={[styles.version, { color: colors.textSecondary }]}>
+          معاني الكلمات القرآنية من مركز تفسير للدراسات القرآنية (Tafsir Center for Quranic Studies, https://tafsir.net)، بترخيص CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). جرى اختيار المعنى الخاص بكل كلمة وضبط ترتيبها مع نص المصحف في التطبيق دون تغيير في نص المعنى سوى حذف علامات التنسيق غير المرئية.
+        </Text>
       </ScrollView>
 
       <SurahDownloadPicker

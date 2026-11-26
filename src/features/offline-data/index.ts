@@ -124,6 +124,25 @@ export function getBundledTafsir(surahNumber: number, ayahNumber: number): strin
   return text && text.length > 0 ? text : null;
 }
 
+let tafsirCenterMeanings: string[][] | null = null;
+
+/**
+ * One meaning per printed word of the ayah, in word order, from the Tafsir
+ * Center for Quranic Studies (CC BY 4.0). Null when the ayah is unknown.
+ */
+export function getTafsirCenterWordMeanings(surahNumber: number, ayahNumber: number): string[] | null {
+  const data = load();
+  const index = flatIndex(data, surahNumber, ayahNumber);
+  if (index === null) {
+    return null;
+  }
+  if (!tafsirCenterMeanings) {
+    // Required lazily: the file is large and only the word sheet needs it.
+    tafsirCenterMeanings = require('./word-meanings-tafsir.json') as string[][];
+  }
+  return tafsirCenterMeanings[index] ?? null;
+}
+
 /** Meanings of one ayah, or an empty list when all its words are clear. */
 export function getBundledWordMeanings(
   surahNumber: number,
