@@ -122,6 +122,24 @@ const MAHER_MP3QURAN_RECITER_ID = 102;
 
 const VERSE_KEY_PAGE_SIZE = 300;
 
+/** Where one ayah sits inside a whole-surah recording. */
+export type AyahTimeSpan = {
+  ayahNumber: number;
+  startMs: number;
+  endMs: number;
+};
+
+const MP3QURAN_TIMING_BASE_URL = 'https://www.mp3quran.net/api/v3';
+
+/**
+ * Whole-surah reciters that have ayah timings at mp3quran.net, keyed by the
+ * reciter id of the audio list. The timing list uses its own ids; for these
+ * three the timed recording is the same file the app plays (same size and
+ * length, checked per reciter). Any reciter missing here plays with no ayah
+ * highlight, as before.
+ */
+const MP3QURAN_TIMING_READ_IDS: Record<number, number> = { 92: 92, 217: 217, 178: 232 };
+
 export class QuranComContentProvider implements QuranContentProvider {
   private surahDirectoryPromise: Promise<QuranSurahDirectory> | null = null;
   private basmalaWordsPromise: Promise<{ codeV2: string; textUthmani: string }[]> | null = null;
@@ -684,6 +702,56 @@ export class QuranComContentProvider implements QuranContentProvider {
       }
     }
     return timings;
+  }
+
+  /**
+   * Start and end of every ayah inside a whole-surah recording, or null when
+   * the reciter has no timing data. The basmala before the first ayah is not an
+   * ayah and is left out.
+   */
+  async getFullSurahAyahTimings(
+    reciterId: number,
+    surahNumber: number,
+  ): Promise<AyahTimeSpan[] | null> {
+    const readId = MP3QURAN_TIMING_READ_IDS[Math.abs(reciterId)];
+    if (!isFullSurahReciter(reciterId) || readId === undefined) {
+      return null;
+    }
+    if (!Number.isInteger(surahNumber) || surahNumber < 1 || surahNumber > 114) {
+      throw new RangeError('Surah number must be between 1 and 114.');
+    }
+    const payload = await this.requestJson(
+      `/ayat_timing?surah=${surahNumber}&read=${readId}`,
+      MP3QURAN_TIMING_BASE_URL,
+    );
+    if (!Array.isArray(payload)) {
+      throw new ContentUnavailableError('invalid-data', 'Ayah timing response is invalid.');
+    }
+    const spans: AyahTimeSpan[] = [];
+    for (const item of payload) {
+      if (
+        !isRecord(item) ||
+        typeof item.ayah !== 'number' ||
+        !Number.isInteger(item.ayah) ||
+        typeof item.start_time !== 'number' ||
+        typeof item.end_time !== 'number' ||
+        !Number.isFinite(item.start_time) ||
+        !Number.isFinite(item.end_time)
+      ) {
+        continue;
+      }
+      if (item.ayah >= 1 && item.end_time > item.start_time) {
+        spans.push({ ayahNumber: item.ayah, startMs: item.start_time, endMs: item.end_time });
+      }
+    }
+    spans.sort((left, right) => left.startMs - right.startMs);
+    // Timings that do not run in ayah order would highlight the wrong ayah, so
+    // they are refused rather than guessed at.
+    const ordered = spans.every((span, index) => span.ayahNumber === index + 1);
+    if (spans.length === 0 || !ordered) {
+      throw new ContentUnavailableError('invalid-data', 'Ayah timing data is incomplete.');
+    }
+    return spans;
   }
 
   private getMaherAyahAudioUrl(surahNumber: number, ayahNumber: number): string {

@@ -1,7 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { friendlyError, NETWORK_ERROR_MESSAGE } from '@/features/errors/friendly-error';
-import type { RecitationTrack } from '@/features/quran/services/content-provider';
+import type { AyahTimeSpan, RecitationTrack } from '@/features/quran/services/content-provider';
 import {
   isFullSurahReciter,
   quranContentProvider,
@@ -38,6 +38,55 @@ export function getOfflineTrackFile(reciterId: number, track: RecitationTrack): 
 export function getOfflineTrackUri(reciterId: number, track: RecitationTrack): string | null {
   const file = getOfflineTrackFile(reciterId, track);
   return file.exists ? file.uri : null;
+}
+
+function getTimingFile(reciterId: number, surahNumber: number): File {
+  return new File(getDirectory(reciterId), `${surahNumber}-0.timing.json`);
+}
+
+function readStoredAyahTimings(reciterId: number, surahNumber: number): AyahTimeSpan[] | null {
+  try {
+    const file = getTimingFile(reciterId, surahNumber);
+    if (!file.exists) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(file.textSync());
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as AyahTimeSpan[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeAyahTimings(reciterId: number, surahNumber: number, spans: AyahTimeSpan[]): void {
+  try {
+    const file = getTimingFile(reciterId, surahNumber);
+    if (!file.exists) {
+      file.create();
+    }
+    file.write(JSON.stringify(spans));
+  } catch {
+    // The timings are re-fetched next time; nothing else depends on the copy.
+  }
+}
+
+/**
+ * Ayah spans of a whole-surah recording: the copy stored next to a downloaded
+ * surah first, so the highlight works offline, then the source. Null when the
+ * reciter has no timing data.
+ */
+export async function loadFullSurahAyahTimings(
+  reciterId: number,
+  surahNumber: number,
+): Promise<AyahTimeSpan[] | null> {
+  const stored = readStoredAyahTimings(reciterId, surahNumber);
+  if (stored) {
+    return stored;
+  }
+  const spans = await quranContentProvider.getFullSurahAyahTimings(reciterId, surahNumber);
+  if (spans && getOfflineTrackFile(reciterId, { surahNumber, ayahNumber: 0, url: '' }).exists) {
+    storeAyahTimings(reciterId, surahNumber, spans);
+  }
+  return spans;
 }
 
 /** Tracks are fetched this many at a time: faster, without flooding the source. */
@@ -143,6 +192,10 @@ export async function downloadRecitationSurahs(
       }
       try {
         await downloadTrack(reciterId, tracks[index]);
+        if (isFullSurahReciter(reciterId)) {
+          // Keep the ayah timings with the file so the highlight works offline.
+          await loadFullSurahAyahTimings(reciterId, tracks[index].surahNumber).catch(() => null);
+        }
         done += 1;
         surahStates[tracks[index].surahNumber].done += 1;
         options.onProgress?.({ done, total });

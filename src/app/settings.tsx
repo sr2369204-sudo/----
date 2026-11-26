@@ -456,6 +456,9 @@ export default function SettingsScreen() {
         <Text style={[styles.version, { color: colors.textSecondary }]}>
           معاني الكلمات القرآنية من مركز تفسير للدراسات القرآنية (Tafsir Center for Quranic Studies, https://tafsir.net)، بترخيص CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). جرى اختيار المعنى الخاص بكل كلمة وضبط ترتيبها مع نص المصحف في التطبيق دون تغيير في نص المعنى سوى حذف علامات التنسيق غير المرئية.
         </Text>
+        <Text style={[styles.version, { color: colors.textSecondary }]}>
+          ملفات تلاوة ياسر الدوسري وإبراهيم الدوسري وبندر بليلة وإسلام صبحي وماهر المعيقلي، وتوقيتات الآيات المستخدمة لتتبع الآية أثناء التلاوة، من موقع mp3quran.net.
+        </Text>
       </ScrollView>
 
       <SurahDownloadPicker

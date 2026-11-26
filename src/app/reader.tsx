@@ -51,7 +51,10 @@ import {
   type AyahWordTiming,
   type RecitationTrack,
 } from '@/features/quran/services/content-provider';
-import { resolveOfflineTracks } from '@/features/reader/services/recitation-offline';
+import {
+  loadFullSurahAyahTimings,
+  resolveOfflineTracks,
+} from '@/features/reader/services/recitation-offline';
 import { getOfflineWordUri } from '@/features/reader/services/word-audio-offline';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import type { MushafPage, QuranSurahDirectory } from '@/features/quran/types';
@@ -559,9 +562,47 @@ export default function ReaderScreen() {
   // The ayah the reciter is on right now. It drives the frame drawn around the
   // ayah on the page as well as the automatic page turn that keeps the reader
   // in step with the recitation.
-  const activeTrack = recitationQueue?.tracks[
+  const queueTrack = recitationQueue?.tracks[
     Math.floor(recitationStatus.currentIndex / ayahRepeatCount)
   ] ?? null;
+
+  // A whole-surah reciter plays one file for the surah. When the source has the
+  // start of every ayah inside that file, the player position tells which ayah
+  // is being recited, and the highlight and page turn follow it ayah by ayah.
+  const fullSurahTimingsQuery = useQuery({
+    queryKey: ['quran', 'full-surah-ayah-timings', reciterId, queueTrack?.surahNumber ?? 0],
+    enabled: queueTrack !== null && queueTrack.ayahNumber === 0 && isFullSurahReciter(reciterId),
+    staleTime: Infinity,
+    retry: false,
+    queryFn: () => {
+      if (!queueTrack) {
+        throw new Error('لا توجد سورة جارية.');
+      }
+      return loadFullSurahAyahTimings(reciterId, queueTrack.surahNumber);
+    },
+  });
+  const fullSurahTimings = fullSurahTimingsQuery.data ?? null;
+  const fullSurahPositionMs = recitationStatus.currentTime * 1000;
+  // Before the first ayah (the basmala) the first ayah stays marked.
+  const timedAyahNumber = useMemo(() => {
+    if (!queueTrack || queueTrack.ayahNumber !== 0 || !fullSurahTimings) {
+      return 0;
+    }
+    let ayahNumber = 1;
+    for (const span of fullSurahTimings) {
+      if (span.startMs > fullSurahPositionMs) {
+        break;
+      }
+      ayahNumber = span.ayahNumber;
+    }
+    return ayahNumber;
+  }, [fullSurahPositionMs, fullSurahTimings, queueTrack]);
+  // Rebuilt only when the ayah changes, so the effects that follow the active
+  // ayah do not run on every tick of the player position.
+  const activeTrack = useMemo<RecitationTrack | null>(
+    () => (queueTrack && timedAyahNumber > 0 ? { ...queueTrack, ayahNumber: timedAyahNumber } : queueTrack),
+    [queueTrack, timedAyahNumber],
+  );
   const activeAyahId = activeTrack
     ? `ayah-${activeTrack.surahNumber}-${activeTrack.ayahNumber}`
     : null;

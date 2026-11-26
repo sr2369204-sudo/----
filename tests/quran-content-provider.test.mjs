@@ -748,3 +748,35 @@ test('rejects incomplete verse key responses', async (t) => {
     return true;
   });
 });
+
+test('reads ayah timings of a whole-surah reciter and refuses unordered or missing data', async (t) => {
+  const requestedUrls = [];
+  let body = [
+    { ayah: 0, start_time: 0, end_time: 300 },
+    { ayah: 2, start_time: 3240, end_time: 9280 },
+    { ayah: 1, start_time: 300, end_time: 3240 },
+  ];
+  mockFetch(t, async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+  const provider = new QuranComContentProvider();
+
+  const spans = await provider.getFullSurahAyahTimings(-178, 1);
+  assert.deepEqual(spans, [
+    { ayahNumber: 1, startMs: 300, endMs: 3240 },
+    { ayahNumber: 2, startMs: 3240, endMs: 9280 },
+  ]);
+  assert.ok(requestedUrls[0].endsWith('/ayat_timing?surah=1&read=232'));
+
+  // No timing data for this reciter, a verse-by-verse reciter, a bad surah.
+  assert.equal(await provider.getFullSurahAyahTimings(-253, 1), null);
+  assert.equal(await provider.getFullSurahAyahTimings(7, 1), null);
+  await assert.rejects(provider.getFullSurahAyahTimings(-92, 115), RangeError);
+
+  body = [{ ayah: 2, start_time: 0, end_time: 100 }];
+  await assert.rejects(provider.getFullSurahAyahTimings(-92, 1), ContentUnavailableError);
+});
