@@ -121,7 +121,7 @@ export default function SettingsScreen() {
     queryKey: ['settings', 'display-preferences'],
     queryFn: async () => {
       const rows = await database.getAllAsync<{ key: string; value: string }>(
-        `SELECT key, value FROM app_settings WHERE key IN ('reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale')`,
+        `SELECT key, value FROM app_settings WHERE key IN ('reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale', 'reader.pageScale')`,
       );
       const values = new Map(rows.map((row) => [row.key, row.value]));
       const savedShape = values.get('reader.toolbarShape') ?? DEFAULT_READER_TOOLBAR_SHAPE;
@@ -129,6 +129,7 @@ export default function SettingsScreen() {
         toolbarSize: Math.min(56, Math.max(32, Number(values.get('reader.toolbarSize') ?? DISPLAY_DEFAULT_TOOLBAR_SIZE) || DISPLAY_DEFAULT_TOOLBAR_SIZE)),
         toolbarShape: isReaderToolbarShape(savedShape) ? savedShape : DEFAULT_READER_TOOLBAR_SHAPE,
         markerScale: Math.min(1.8, Math.max(0.8, Number(values.get('reader.markerScale') ?? DISPLAY_DEFAULT_MARKER_SCALE) || DISPLAY_DEFAULT_MARKER_SCALE)),
+        pageScale: Math.min(1.5, Math.max(0.8, Number(values.get('reader.pageScale') ?? 1) || 1)),
       };
     },
     staleTime: Infinity,
@@ -144,7 +145,7 @@ export default function SettingsScreen() {
     );
   }
 
-  async function savePreference(key: 'theme' | 'reciterId' | 'reader.toolbarSize' | 'reader.toolbarShape' | 'reader.markerScale', value: string): Promise<void> {
+  async function savePreference(key: 'theme' | 'reciterId' | 'reader.toolbarSize' | 'reader.toolbarShape' | 'reader.markerScale' | 'reader.pageScale', value: string): Promise<void> {
     setSaving(true);
     setPreferenceError(null);
     try {
@@ -175,6 +176,7 @@ export default function SettingsScreen() {
       await writeSetting('reader.toolbarSize', String(DISPLAY_DEFAULT_TOOLBAR_SIZE));
       await writeSetting('reader.toolbarShape', DEFAULT_READER_TOOLBAR_SHAPE);
       await writeSetting('reader.markerScale', String(DISPLAY_DEFAULT_MARKER_SCALE));
+      await writeSetting('reader.pageScale', '1');
       await readerDisplayQuery.refetch();
     } catch (error) {
       setPreferenceError(
@@ -295,6 +297,16 @@ export default function SettingsScreen() {
             colors={colors}
             disabled={saving}
             onChange={(value) => void savePreference('reader.toolbarSize', String(value))}
+          />
+          <DisplaySizeControl
+            label="حجم خط المصحف"
+            value={Math.round((readerDisplayQuery.data?.pageScale ?? 1) * 100)}
+            minimum={80}
+            maximum={150}
+            step={10}
+            colors={colors}
+            disabled={saving}
+            onChange={(value) => void savePreference('reader.pageScale', String(value / 100))}
           />
           <DisplaySizeControl
             label="حجم أرقام الآيات وعلامات الأرباع"

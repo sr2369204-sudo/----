@@ -1,11 +1,13 @@
-import { createElement, memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { createElement, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { Paths } from 'expo-file-system';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { SURAH_NAME_ART } from '@/features/reader/assets/surah-name-art';
 import { SURAH_HEADER_ART_URI } from '@/features/reader/assets/surah-header-art';
 import type { Highlight } from '@/features/annotations/types';
 import type { MushafPage } from '@/features/quran/types';
+import type { CachedMushafPage } from '@/features/reader/services/mushaf-page-cache';
 import {
   buildHighlightElements,
   getMushafPageCenteringOffset,
@@ -42,9 +44,15 @@ export type TopicBand = {
 
 type Props = {
   page: MushafPage;
-  fontBase64: string;
-  basmalaFontBase64: string | null;
+  /**
+   * The cached page whose fonts are used. The fonts are loaded from files in
+   * the app cache; the base64 copy is only read when file loading is not
+   * possible on this phone.
+   */
+  fonts: Pick<CachedMushafPage, 'fontUri' | 'basmalaFontUri' | 'fontBase64' | 'basmalaFontBase64'>;
   fontSize: number;
+  /** Reader zoom: 1 fits the page to the screen, above 1 the page is larger than the screen and is dragged around. */
+  pageScale?: number;
   markerScale?: number;
   showTajweed: boolean;
   isDark: boolean;
@@ -129,16 +137,23 @@ type PageMessage =
     }
   | { type: 'background' }
   | { type: 'ready' }
+  | { type: 'font-failed' }
   | { type: 'pan-start'; x: number; y: number }
   | { type: 'pan-update'; dx: number; dy: number }
   | { type: 'pan-end'; dx: number; vx: number }
   | { type: 'pan-cancel' };
 
+/**
+ * Set once a WebView on this phone fails to load a font from a file. From then
+ * on every page is built with the font inside its HTML, as before.
+ */
+let fileFontsUnavailable = false;
+
 export const MushafPageViewer = memo(function MushafPageViewer({
   page,
-  fontBase64,
-  basmalaFontBase64,
+  fonts,
   fontSize,
+  pageScale = 1,
   markerScale = 1,
   showTajweed,
   isDark,
@@ -169,14 +184,33 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     () => buildHighlightElements(page, highlights),
     [highlights, page],
   );
-  const html = useMemo(
-    () =>
-      createMushafHtml(page, fontBase64, basmalaFontBase64, fontSize, markerScale, showTajweed, isDark),
-    [basmalaFontBase64, fontBase64, fontSize, isDark, markerScale, page, showTajweed],
-  );
+  const [fontFilesFailed, setFontFilesFailed] = useState(fileFontsUnavailable);
+  const fontsFromFile =
+    !fontFilesFailed && Platform.OS !== 'web' && fonts.fontUri !== null &&
+    (fonts.basmalaFontUri !== null || page.basmalaWords === null);
+  const html = useMemo(() => {
+    const fontUrl = fontsFromFile && fonts.fontUri ? fonts.fontUri : null;
+    const basmalaUrl = fontsFromFile ? fonts.basmalaFontUri : null;
+    return createMushafHtml(
+      page,
+      fontUrl ?? `data:font/woff2;base64,${fonts.fontBase64}`,
+      page.basmalaWords === null
+        ? null
+        : basmalaUrl ?? `data:font/woff2;base64,${fonts.basmalaFontBase64 ?? ''}`,
+      fontsFromFile,
+      fontSize,
+      pageScale,
+      markerScale,
+      showTajweed,
+      isDark,
+    );
+  }, [fonts, fontsFromFile, fontSize, isDark, markerScale, page, pageScale, showTajweed]);
   // A stable source object prevents react-native-webview from reloading the
   // document on unrelated parent re-renders, which would flash and re-fit.
-  const source = useMemo(() => ({ html }), [html]);
+  const source = useMemo(
+    () => (fontsFromFile ? { html, baseUrl: Paths.cache.uri } : { html }),
+    [fontsFromFile, html],
+  );
 
   const handleReady = useCallback((): void => {
     if (readyRef.current) {
@@ -190,6 +224,13 @@ export const MushafPageViewer = memo(function MushafPageViewer({
     (message: PageMessage): void => {
       if (message.type === 'ready') {
         handleReady();
+        return;
+      }
+      if (message.type === 'font-failed') {
+        // The phone's WebView would not read the font file: rebuild this page
+        // (and every later one) with the font inside the HTML.
+        fileFontsUnavailable = true;
+        setFontFilesFailed(true);
         return;
       }
       if (message.type === 'pan-start') {
@@ -452,6 +493,12 @@ export const MushafPageViewer = memo(function MushafPageViewer({
         accessibilityLabel={`صفحة ${page.pageNumber} من المصحف`}
         originWhitelist={['*']}
         source={source}
+        // The font files live in the app cache. The page is given a file base
+        // address so the WebView may read them; nothing else is exposed.
+        allowFileAccess
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
+        allowingReadAccessToURL={Paths.cache.uri}
         onLoad={syncOverlays}
         onMessage={onNativeMessage}
         javaScriptEnabled
@@ -464,9 +511,11 @@ export const MushafPageViewer = memo(function MushafPageViewer({
 
 function createMushafHtml(
   page: MushafPage,
-  fontBase64: string,
-  basmalaFontBase64: string | null,
+  fontSrc: string,
+  basmalaFontSrc: string | null,
+  fontsFromFile: boolean,
   fontSize: number,
+  pageScale: number,
   markerScale: number,
   showTajweed: boolean,
   isDark: boolean,
@@ -482,6 +531,7 @@ function createMushafHtml(
     .join('');
   const linesHtml = renderMushafLinesHtml(page, rowOffset, nameArtSurahs);
   const baseFontSize = Math.min(Math.round(fontSize * 1.5), 120);
+  const zoom = Number.isFinite(pageScale) ? Math.min(1.6, Math.max(0.7, pageScale)) : 1;
 
   const surahName = page.surahs && page.surahs.length > 0 ? page.surahs[0].nameArabic : '';
   const surahHeaderLabel = surahName ? `سورة ${surahName}` : '';
@@ -496,12 +546,12 @@ function createMushafHtml(
 <style>
 @font-face {
   font-family: "QcfTajweedPage";
-  src: url(data:font/woff2;base64,${fontBase64}) format("woff2");
+  src: url("${fontSrc}") format("woff2");
   font-display: block;
 }
-${basmalaFontBase64 ? `@font-face {
+${basmalaFontSrc ? `@font-face {
   font-family: "QcfBasmala";
-  src: url(data:font/woff2;base64,${basmalaFontBase64}) format("woff2");
+  src: url("${basmalaFontSrc}") format("woff2");
   font-display: block;
 }` : ''}
 @font-palette-values --QcfLight {
@@ -528,32 +578,30 @@ ${basmalaFontBase64 ? `@font-face {
 }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body {
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  padding: 0;
-  background: ${isDark ? '#100d08' : '#ece7dc'};
-}
-.page {
-  --quran-font-size: ${baseFontSize}px;
   position: relative;
+  touch-action: manipulation;
+  background: ${isDark ? '#191309' : '#fffdf7'};
+}
+/* The gold mushaf frame is drawn by the app around this page. The page itself
+   only carries the text; --zoom makes it smaller or larger than the screen
+   and --pan-x/--pan-y move it when it is larger. */
+.page {
+  --zoom: ${zoom};
+  --quran-font-size: ${baseFontSize}px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  height: 100%;
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 5px 7px;
+  width: calc(100% * var(--zoom));
+  height: calc(100% * var(--zoom));
+  max-width: calc(640px * var(--zoom));
+  margin: 0;
+  padding: 4px 6px;
+  transform: translate(calc(-50% + var(--pan-x, 0px)), calc(-50% + var(--pan-y, 0px)));
   container-type: size;
-  border: 1px solid ${isDark ? 'rgba(158, 128, 70, 0.6)' : 'rgba(197, 163, 99, 0.62)'};
-  border-radius: 16px;
   color: ${isDark ? '#f2ead8' : '#1e3026'};
-  background: ${isDark
-    ? 'linear-gradient(180deg, #1d1710 0%, #191309 55%, #140f07 100%)'
-    : 'radial-gradient(ellipse at 50% 28%, #fffefb 0%, #fffdf7 65%, #fbf5e9 100%)'};
-  box-shadow: ${isDark
-    ? '0 10px 34px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.45)'
-    : '0 10px 30px rgba(45, 35, 18, 0.14), 0 1px 4px rgba(45, 35, 18, 0.06)'};
+  background: ${isDark ? '#191309' : '#fffdf7'};
   isolation: isolate;
   opacity: 0;
   touch-action: manipulation;
@@ -561,20 +609,11 @@ body {
 .page.is-ready {
   opacity: 1;
 }
-.page::before {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border-radius: 12px;
-  border: 1px solid ${isDark ? 'rgba(197, 163, 99, 0.26)' : 'rgba(197, 163, 99, 0.4)'};
-  pointer-events: none;
-  z-index: -1;
-}
 @supports (width: 1cqi) {
   .page {
     --line-row-height: calc((100cqb - 24px) / ${sourceLineCount});
     --quran-font-size: min(
-      ${baseFontSize}px,
+      ${Math.round(baseFontSize * zoom)}px,
       calc(var(--line-row-height) * 1.02),
       17cqi
     );
@@ -1348,11 +1387,38 @@ function preparePage() {
   signalPageReady();
 }
 
+const FONTS_FROM_FILE = ${fontsFromFile ? 'true' : 'false'};
+
+/** True when a font face of this page could not be loaded. */
+function fontFaceFailed() {
+  let failed = false;
+  if (document.fonts && document.fonts.forEach) {
+    document.fonts.forEach((face) => {
+      if (face.status === "error") failed = true;
+    });
+  }
+  return failed;
+}
+
+/**
+ * Fonts are read from files in the app cache. If this phone's WebView refuses
+ * that, the host rebuilds the page with the font inside the HTML instead.
+ */
+function reportFontFileFailure() {
+  if (FONTS_FROM_FILE) postPageMessage({ type: "font-failed" });
+}
+
 if (document.fonts && document.fonts.ready) {
-  document.fonts.ready.then(preparePage);
+  document.fonts.ready.then(() => {
+    if (fontFaceFailed()) reportFontFileFailure();
+    preparePage();
+  });
   // Font loading can stall; the page must never stay hidden.
   setTimeout(() => {
-    if (!pageReadySignalled) preparePage();
+    if (!pageReadySignalled) {
+      reportFontFileFailure();
+      preparePage();
+    }
   }, 1200);
 } else {
   preparePage();
@@ -1392,7 +1458,42 @@ let swallowClick = false;
 // dropped: only a meaningful horizontal change is relayed to the host.
 const PAN_UPDATE_THRESHOLD_PX = 2;
 
-pageElement.addEventListener("pointerdown", (event) => {
+// Reader zoom above 1 makes the page larger than the screen. One finger then
+// drags the page around, and only a drag that pushes past its edge turns the
+// page, so zooming never takes the swipe away.
+const ZOOM = ${zoom};
+let panX = 0;
+let panY = 0;
+let lastPointerX = 0;
+let lastPointerY = 0;
+let edgeOverflowX = 0;
+
+function panLimits() {
+  if (ZOOM <= 1.001) return { x: 0, y: 0 };
+  return {
+    x: Math.max(0, (pageElement.offsetWidth - window.innerWidth) / 2),
+    y: Math.max(0, (pageElement.offsetHeight - window.innerHeight) / 2),
+  };
+}
+
+function applyPan() {
+  pageElement.style.setProperty("--pan-x", panX + "px");
+  pageElement.style.setProperty("--pan-y", panY + "px");
+}
+
+/** Moves the zoomed page by one pointer step and returns the horizontal part that went past the edge. */
+function dragZoomedPage(stepX, stepY) {
+  const limits = panLimits();
+  const nextX = Math.min(limits.x, Math.max(-limits.x, panX + stepX));
+  const nextY = Math.min(limits.y, Math.max(-limits.y, panY + stepY));
+  const overflow = stepX - (nextX - panX);
+  panX = nextX;
+  panY = nextY;
+  applyPan();
+  return overflow;
+}
+
+document.body.addEventListener("pointerdown", (event) => {
   swallowClick = false;
   gestureTravel = 0;
   const button = event.target.closest("button[data-kind]");
@@ -1408,13 +1509,16 @@ pageElement.addEventListener("pointerdown", (event) => {
       emitSelection(button, "longPress");
     }, 500);
   }
-  pageElement.setPointerCapture(event.pointerId);
+  document.body.setPointerCapture(event.pointerId);
   pointerStart = { x: event.clientX, y: event.clientY, time: Date.now() };
   isPanning = false;
   lastPostedDx = 0;
+  lastPointerX = event.clientX;
+  lastPointerY = event.clientY;
+  edgeOverflowX = 0;
 });
 
-pageElement.addEventListener("pointermove", (event) => {
+document.body.addEventListener("pointermove", (event) => {
   if (!pointerStart) return;
   const dx = event.clientX - pointerStart.x;
   const dy = event.clientY - pointerStart.y;
@@ -1422,6 +1526,25 @@ pageElement.addEventListener("pointermove", (event) => {
   if (gestureTravel > TAP_SLOP_PX && longPressTimer !== null) {
     window.clearTimeout(longPressTimer);
     longPressTimer = null;
+  }
+  const stepX = event.clientX - lastPointerX;
+  const stepY = event.clientY - lastPointerY;
+  lastPointerX = event.clientX;
+  lastPointerY = event.clientY;
+  const limits = panLimits();
+  if (!isPanning && (limits.x > 0 || limits.y > 0)) {
+    if (gestureTravel <= TAP_SLOP_PX) return;
+    const overflow = dragZoomedPage(stepX, stepY);
+    edgeOverflowX = overflow === 0 && stepX !== 0 ? 0 : edgeOverflowX + overflow;
+    if (Math.abs(edgeOverflowX) > 14 && Math.abs(edgeOverflowX) > Math.abs(dy) * 0.6) {
+      // Past the edge of the zoomed page: from here the drag turns the page.
+      isPanning = true;
+      pointerStart.x = event.clientX - edgeOverflowX;
+      lastPostedDx = edgeOverflowX;
+      postPageMessage({ type: "pan-start", x: event.clientX, y: event.clientY });
+      postPageMessage({ type: "pan-update", dx: edgeOverflowX, dy: 0 });
+    }
+    return;
   }
   if (!isPanning && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.1) {
     isPanning = true;
@@ -1436,7 +1559,7 @@ pageElement.addEventListener("pointermove", (event) => {
   }
 });
 
-pageElement.addEventListener("pointerup", (event) => {
+document.body.addEventListener("pointerup", (event) => {
   if (!pointerStart) return;
   const dx = event.clientX - pointerStart.x;
   const dy = event.clientY - pointerStart.y;
@@ -1455,7 +1578,7 @@ pageElement.addEventListener("pointerup", (event) => {
   }
 });
 
-pageElement.addEventListener("pointercancel", () => {
+document.body.addEventListener("pointercancel", () => {
   if (longPressTimer !== null) {
     window.clearTimeout(longPressTimer);
     longPressTimer = null;
@@ -1555,7 +1678,7 @@ function isPageMessage(value: unknown): value is PageMessage {
   if (value.type === 'pan-cancel') {
     return true;
   }
-  if (value.type === 'ready') {
+  if (value.type === 'ready' || value.type === 'font-failed') {
     return true;
   }
   if (value.type === 'background') {

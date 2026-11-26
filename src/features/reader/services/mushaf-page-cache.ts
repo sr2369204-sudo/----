@@ -1,4 +1,5 @@
 import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
+import { Directory, File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { MushafPage } from '@/features/quran/types';
@@ -15,9 +16,67 @@ const FONT_REQUEST_TIMEOUT_MS = 15_000;
 
 export type CachedMushafPage = {
   page: MushafPage;
-  fontBase64: string;
-  basmalaFontBase64: string | null;
+  /**
+   * `file://` address of the page font in the app cache, or null when the file
+   * could not be written. The page loads the font from here, so the HTML stays
+   * small instead of carrying the font as a long text string.
+   */
+  readonly fontUri: string | null;
+  readonly basmalaFontUri: string | null;
+  /** Built on first use only: it is the fallback when file loading is not possible. */
+  readonly fontBase64: string;
+  readonly basmalaFontBase64: string | null;
 };
+
+const FONT_DIRECTORY_NAME = 'mushaf-fonts';
+
+/** Writes (once) the font into the cache folder and returns its file address. */
+function ensureFontFile(name: string, bytes: Uint8Array): string | null {
+  try {
+    const directory = new Directory(Paths.cache, FONT_DIRECTORY_NAME);
+    if (!directory.exists) {
+      directory.create({ intermediates: true, idempotent: true });
+    }
+    const file = new File(directory, name);
+    if (!file.exists || file.size !== bytes.byteLength) {
+      file.create({ overwrite: true, intermediates: true });
+      file.write(bytes);
+    }
+    return file.uri;
+  } catch {
+    return null;
+  }
+}
+
+function buildCachedPage(
+  page: MushafPage,
+  fontBytes: Uint8Array,
+  fontHash: string,
+  basmalaFontBytes: Uint8Array | null,
+  basmalaFontHash: string | null,
+): CachedMushafPage {
+  let fontBase64: string | null = null;
+  let basmalaBase64: string | null = null;
+  return {
+    page,
+    fontUri: ensureFontFile(`p${page.pageNumber}-${fontHash.slice(0, 12)}.woff2`, fontBytes),
+    basmalaFontUri:
+      basmalaFontBytes && basmalaFontHash
+        ? ensureFontFile(`basmala-${basmalaFontHash.slice(0, 12)}.woff2`, basmalaFontBytes)
+        : null,
+    get fontBase64() {
+      fontBase64 ??= bytesToBase64(fontBytes);
+      return fontBase64;
+    },
+    get basmalaFontBase64() {
+      if (!basmalaFontBytes) {
+        return null;
+      }
+      basmalaBase64 ??= bytesToBase64(basmalaFontBytes);
+      return basmalaBase64;
+    },
+  };
+}
 
 type MushafCacheRow = {
   page_json: string;
@@ -101,11 +160,7 @@ export class MushafPageCache {
       new Date().toISOString(),
     );
 
-    const stored: CachedMushafPage = {
-      page,
-      fontBase64: bytesToBase64(fontBytes),
-      basmalaFontBase64: basmalaFontBytes ? bytesToBase64(basmalaFontBytes) : null,
-    };
+    const stored = buildCachedPage(page, fontBytes, fontHash, basmalaFontBytes, basmalaFontHash);
     rememberVerifiedPage(stored);
     return stored;
   }
@@ -152,13 +207,13 @@ export class MushafPageCache {
       throw new Error('النسخة المحلية من خط البسملة لا تطابق بيانات صفحة المصحف.');
     }
 
-    return {
+    return buildCachedPage(
       page,
-      fontBase64: bytesToBase64(row.font_data),
-      basmalaFontBase64: row.basmala_font_data
-        ? bytesToBase64(row.basmala_font_data)
-        : null,
-    };
+      row.font_data,
+      row.font_sha256,
+      row.basmala_font_data,
+      row.basmala_font_sha256,
+    );
   }
 
   private async deleteCachedPage(pageNumber: number): Promise<void> {

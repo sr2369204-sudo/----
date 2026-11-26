@@ -74,6 +74,7 @@ import { SwipePageViewer } from '@/features/reader/components/SwipePageViewer';
 import { SelectionToolbar } from '@/features/reader/components/SelectionToolbar';
 import { Tasmi3Panel } from '@/features/reader/components/Tasmi3Panel';
 import { MushafPageCache } from '@/features/reader/services/mushaf-page-cache';
+import { perfStart } from '@/features/reader/services/reader-perf';
 import {
   buildRecitationQueue,
   describeRecitationScope,
@@ -111,6 +112,11 @@ type BookmarkedAyah = { surahNumber: number; ayahNumber: number };
 const PAGE_QUERY_RETRY_COUNT = 2;
 /** The page text is fitted to its column, so the reader always uses one natural size. */
 const MUSHAF_FONT_SIZE = 44;
+/** Reader zoom, set from the A- / A+ buttons and the settings screen. 1 = fits the screen. */
+const PAGE_SCALE_MIN = 0.8;
+const PAGE_SCALE_MAX = 1.5;
+const PAGE_SCALE_STEP = 0.1;
+const PAGE_SCALE_KEY = 'reader.pageScale';
 /** Gap between the floating recitation player and the bottom safe area. */
 const RECITATION_PLAYER_BOTTOM_GAP = 10;
 /**
@@ -159,6 +165,11 @@ export default function ReaderScreen() {
   const insets = useSafeAreaInsets();
   const database = useSQLiteContext();
   const queryClient = useQueryClient();
+  // Timing log: the clock for "reader open to first page painted" starts here.
+  useState(() => {
+    perfStart('reader-open');
+    return null;
+  });
   // Resolves surah, juz, and ayah references from the on-device index so the
   // reader can navigate without a connection once the pages are saved.
   const quranCache = useMemo(() => new LocalQuranCache(database), [database]);
@@ -369,7 +380,7 @@ export default function ReaderScreen() {
     queryFn: async () => {
       const rows = await database.getAllAsync<{ key: string; value: string }>(
         `SELECT key, value FROM app_settings
-         WHERE key IN ('reader.showTajweed', 'reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale')`,
+         WHERE key IN ('reader.showTajweed', 'reader.toolbarSize', 'reader.toolbarShape', 'reader.markerScale', 'reader.pageScale')`,
       );
       const preferences = new Map(rows.map((row) => [row.key, row.value]));
       const savedTajweed = preferences.get('reader.showTajweed');
@@ -382,6 +393,11 @@ export default function ReaderScreen() {
         Number.isInteger(rawToolbarSize) && rawToolbarSize >= 32 && rawToolbarSize <= 56 ? rawToolbarSize : 44;
       const savedMarkerScale =
         Number.isFinite(rawMarkerScale) && rawMarkerScale >= 0.8 && rawMarkerScale <= 1.8 ? rawMarkerScale : 1.1;
+      const rawPageScale = Number(preferences.get(PAGE_SCALE_KEY) ?? 1);
+      const savedPageScale =
+        Number.isFinite(rawPageScale) && rawPageScale >= PAGE_SCALE_MIN - 0.001 && rawPageScale <= PAGE_SCALE_MAX + 0.001
+          ? Math.round(rawPageScale * 100) / 100
+          : 1;
       const toolbarShape = isReaderToolbarShape(savedToolbarShape)
         ? savedToolbarShape
         : DEFAULT_READER_TOOLBAR_SHAPE;
@@ -390,6 +406,7 @@ export default function ReaderScreen() {
         toolbarSize: savedToolbarSize,
         toolbarShape,
         markerScale: savedMarkerScale,
+        pageScale: savedPageScale,
       };
     },
     staleTime: Infinity,
@@ -415,6 +432,32 @@ export default function ReaderScreen() {
       showTajweed: !preferences.showTajweed,
     });
   }, [displayPreferencesQuery.data, queryClient]);
+  const pageScale = displayPreferencesQuery.data?.pageScale ?? 1;
+  const changePageScale = useCallback(
+    (direction: 1 | -1) => {
+      const preferences = displayPreferencesQuery.data;
+      if (!preferences) {
+        return;
+      }
+      const next = Math.round(
+        Math.min(PAGE_SCALE_MAX, Math.max(PAGE_SCALE_MIN, preferences.pageScale + direction * PAGE_SCALE_STEP)) * 100,
+      ) / 100;
+      if (next === preferences.pageScale) {
+        return;
+      }
+      queryClient.setQueryData(['reader', 'display-preferences'], { ...preferences, pageScale: next });
+      void database
+        .runAsync(
+          `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+          PAGE_SCALE_KEY,
+          String(next),
+          new Date().toISOString(),
+        )
+        .catch(() => undefined);
+    },
+    [database, displayPreferencesQuery.data, queryClient],
+  );
   const displayPreferencesError =
     displaySaveError ??
     (displayPreferencesQuery.error instanceof Error
@@ -1952,6 +1995,27 @@ export default function ReaderScreen() {
         </Pressable>
 
         <View style={styles.navLeftActions}>
+          <View style={[styles.navScalePill, { backgroundColor: colors.backgroundSelected, borderColor: colors.border }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="تصغير الخط"
+              onPress={() => changePageScale(-1)}
+              hitSlop={4}
+              style={({ pressed }) => [styles.navScaleHalf, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[styles.navScaleSmall, { color: pageScale <= PAGE_SCALE_MIN + 0.001 ? colors.textSecondary : colors.text }]}>أ</Text>
+            </Pressable>
+            <View style={[styles.navScaleDivider, { backgroundColor: colors.border }]} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="تكبير الخط"
+              onPress={() => changePageScale(1)}
+              hitSlop={4}
+              style={({ pressed }) => [styles.navScaleHalf, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[styles.navScaleBig, { color: pageScale >= PAGE_SCALE_MAX - 0.001 ? colors.textSecondary : colors.text }]}>أ</Text>
+            </Pressable>
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="التفصيل الموضوعي للسورة"
@@ -2034,6 +2098,7 @@ export default function ReaderScreen() {
           prev2Page={prev2PageQuery.data ?? null}
           next2Page={next2PageQuery.data ?? null}
           fontSize={MUSHAF_FONT_SIZE}
+          pageScale={pageScale}
           markerScale={displayPreferencesQuery.data?.markerScale ?? 1.1}
           showTajweed={showTajweed}
           isDark={isNightTheme}
@@ -2634,6 +2699,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  navScalePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  navScaleHalf: {
+    width: 30,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navScaleDivider: { width: 1, height: 18 },
+  navScaleSmall: { fontSize: 13, fontWeight: '700' },
+  navScaleBig: { fontSize: 19, fontWeight: '800' },
   navIconBtn: {
     width: 36,
     height: 36,

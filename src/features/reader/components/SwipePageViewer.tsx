@@ -16,6 +16,12 @@ import Animated, {
 import type { Highlight } from '@/features/annotations/types';
 import type { CachedMushafPage } from '@/features/reader/services/mushaf-page-cache';
 import { resolvePagePull, resolvePageTurnIntent } from '@/features/reader/services/page-turn';
+import { perfEnd, perfStart } from '@/features/reader/services/reader-perf';
+import {
+  MUSHAF_FRAME_INSET_X,
+  MUSHAF_FRAME_INSET_Y,
+  MushafFrame,
+} from './MushafFrame';
 import {
   MushafPageViewer,
   type ElementRect,
@@ -31,6 +37,8 @@ export type SwipePageViewerProps = {
   prev2Page?: CachedMushafPage | null;
   next2Page?: CachedMushafPage | null;
   fontSize: number;
+  /** Reader zoom, 1 = page fits the screen. */
+  pageScale?: number;
   markerScale?: number;
   showTajweed: boolean;
   isDark: boolean;
@@ -73,7 +81,7 @@ export type SwipePageViewerProps = {
 };
 
 const SWIPE_DISTANCE_RATIO = 0.18;
-const ANIMATION_DURATION_MS = 220;
+const ANIMATION_DURATION_MS = 300;
 const CANCEL_DURATION_MS = 180;
 /**
  * The mounted window is the current page, its two direct neighbours and, once
@@ -90,6 +98,7 @@ export function SwipePageViewer({
   prev2Page = null,
   next2Page = null,
   fontSize,
+  pageScale = 1,
   markerScale = 1,
   showTajweed,
   isDark,
@@ -141,6 +150,7 @@ export function SwipePageViewer({
   onPageTurnRef.current = onPageTurn;
 
   const commitTurn = useCallback((pageNumber: number) => {
+    perfEnd('page-turn', 'page-turn animation', `to page ${pageNumber}`);
     restingPageRef.current = pageNumber;
     onPageTurnRef.current(pageNumber);
   }, []);
@@ -155,6 +165,10 @@ export function SwipePageViewer({
   }, []);
 
   const markPageReady = useCallback((pageNumber: number) => {
+    perfEnd(`page-${pageNumber}`, 'page ready (mount to painted)', `page ${pageNumber}`);
+    if (pageNumber === committedPageRef.current) {
+      perfEnd('reader-open', 'reader open to first page painted', `page ${pageNumber}`);
+    }
     setReadyPages((previous) => {
       if (previous.has(pageNumber)) {
         return previous;
@@ -209,6 +223,7 @@ export function SwipePageViewer({
         return;
       }
 
+      perfStart('page-turn');
       isTransitioning.value = true;
       pull.value = withTiming(
         target.direction === 'next' ? width : -width,
@@ -392,6 +407,7 @@ export function SwipePageViewer({
                     rowIndex={rowIndex}
                     pull={pull}
                     fontSize={fontSize}
+                    pageScale={pageScale}
                     markerScale={markerScale}
                     showTajweed={showTajweed}
                     isDark={isDark}
@@ -438,6 +454,7 @@ type PageSlotProps = {
   rowIndex: SharedValue<number>;
   pull: SharedValue<number>;
   fontSize: number;
+  pageScale: number;
   markerScale: number;
   showTajweed: boolean;
   isDark: boolean;
@@ -486,6 +503,7 @@ const PageSlot = memo(function PageSlot({
   rowIndex,
   pull,
   fontSize,
+  pageScale,
   markerScale,
   showTajweed,
   isDark,
@@ -508,22 +526,49 @@ const PageSlot = memo(function PageSlot({
   onPanCancel,
 }: PageSlotProps) {
   const pageNumber = data.page.pageNumber;
-  const slotStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: (rowIndex.value - pageNumber) * width + pull.value }],
-  }));
+  // Page turn: the page slides as before, and also tilts around its vertical
+  // axis and shrinks a little while it moves, with a shadow that deepens as it
+  // leaves, so the turn reads as a page and not a flat slide.
+  const slotStyle = useAnimatedStyle(() => {
+    const offset = (rowIndex.value - pageNumber) * width + pull.value;
+    const progress = Math.max(-1, Math.min(1, offset / Math.max(1, width)));
+    const distance = Math.abs(progress);
+    return {
+      transform: [
+        { perspective: 1400 },
+        { translateX: offset },
+        { rotateY: `${progress * -24}deg` },
+        { scale: 1 - distance * 0.05 },
+      ],
+    };
+  });
+  const shadowStyle = useAnimatedStyle(() => {
+    const offset = (rowIndex.value - pageNumber) * width + pull.value;
+    return { opacity: Math.min(1, Math.abs(offset) / Math.max(1, width)) * 0.32 };
+  });
   const handleReady = useCallback(() => {
     onReady(pageNumber);
   }, [onReady, pageNumber]);
+  useEffect(() => {
+    perfStart(`page-${pageNumber}`);
+  }, [pageNumber]);
+  const [slotHeight, setSlotHeight] = useState(0);
+  const onSlotLayout = useCallback((event: LayoutChangeEvent) => {
+    setSlotHeight(Math.round(event.nativeEvent.layout.height));
+  }, []);
 
   return (
     <Animated.View
       style={[styles.slot, { width }, slotStyle]}
+      onLayout={onSlotLayout}
       pointerEvents={isInteractive ? 'auto' : 'none'}>
+      <MushafFrame width={width} height={slotHeight} isDark={isDark} />
+      <View style={styles.pageArea}>
       <MushafPageViewer
         page={data.page}
-        fontBase64={data.fontBase64}
-        basmalaFontBase64={data.basmalaFontBase64}
+        fonts={data}
         fontSize={fontSize}
+        pageScale={pageScale}
         markerScale={markerScale}
         showTajweed={showTajweed}
         isDark={isDark}
@@ -544,6 +589,8 @@ const PageSlot = memo(function PageSlot({
         onPanEnd={onPanEnd}
         onPanCancel={onPanCancel}
       />
+      </View>
+      <Animated.View pointerEvents="none" style={[styles.shadow, shadowStyle]} />
     </Animated.View>
   );
 });
@@ -570,6 +617,16 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     height: '100%',
+  },
+  pageArea: {
+    flex: 1,
+    marginHorizontal: MUSHAF_FRAME_INSET_X,
+    marginVertical: MUSHAF_FRAME_INSET_Y,
+    overflow: 'hidden',
+  },
+  shadow: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#000',
   },
   pending: {
     position: 'absolute',
