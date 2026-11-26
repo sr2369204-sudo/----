@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { KHATMA_KIND_TEXT, type KhatmaKind } from '@/features/khatma/services/khatma';
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -36,7 +35,7 @@ import type {
   Note,
   WordVoiceNote,
 } from '@/features/annotations/types';
-import type { AyahWordMeaning } from '@/features/quran/services/content-provider';
+import { WordMeaningSheet } from './WordMeaningSheet';
 import { LocalQuranCache } from '@/features/quran/services/local-quran-cache';
 import { normalizeSurahSearch } from '@/features/quran/services/surah-search';
 import type { AyahSearchResult, QuranAyah } from '@/features/quran/types';
@@ -775,8 +774,18 @@ function Toolbar({
         )}
       </View>
 
+      {panel === 'meaning' && isWord && (
+        <WordMeaningSheet
+          surahNumber={selection.surahNumber}
+          ayah={selection.ayah}
+          selectedWordId={selection.word.id}
+          normalizeWord={normalizeWord}
+          onClose={() => setPanel('toolbar')}
+        />
+      )}
+
       <Modal
-        visible={panel !== 'toolbar'}
+        visible={panel !== 'toolbar' && panel !== 'meaning'}
         transparent
         animationType="fade"
         onRequestClose={() => setPanel('toolbar')}>
@@ -814,14 +823,6 @@ function Toolbar({
               </Pressable>
             </View>
 
-            {panel === 'meaning' && isWord && (
-              <MeaningPanel
-                surahNumber={selection.surahNumber}
-                ayah={selection.ayah}
-                selectedWordId={selection.word.id}
-                palette={palette}
-              />
-            )}
 
             {panel === 'highlight' && (
               <ScrollView contentContainerStyle={styles.dialogBody} keyboardShouldPersistTaps="handled">
@@ -1287,227 +1288,6 @@ function clampWithin(value: number, low: number, high: number, fallback: number)
     return fallback;
   }
   return Math.min(Math.max(value, low), high);
-}
-
-function MeaningPanel({
-  surahNumber,
-  ayah,
-  selectedWordId,
-  palette,
-}: {
-  surahNumber: number;
-  ayah: QuranAyah;
-  selectedWordId: string;
-  palette: ReturnType<typeof useTheme>;
-}) {
-  const database = useSQLiteContext();
-  const initialWordIndex = Math.max(
-    0,
-    ayah.words.findIndex((word) => word.id === selectedWordId),
-  );
-  const [wordIndex, setWordIndex] = useState(initialWordIndex);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
-  const requestKey = `${surahNumber}:${ayah.ayahNumber}:${reloadKey}`;
-  const [state, setState] = useState<{
-    key: string;
-    meanings: AyahWordMeaning[];
-    error: string | null;
-  } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    new LocalQuranCache(database)
-      .getAyahWordMeanings(surahNumber, ayah.ayahNumber)
-      .then((meanings) => {
-        if (active) {
-          setState({ key: requestKey, meanings, error: null });
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setState({
-            key: requestKey,
-            meanings: [],
-            error: friendlyError(error, 'تعذر تحميل معنى الكلمة.'),
-          });
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [ayah.ayahNumber, database, requestKey, surahNumber]);
-
-  const loading = !state || state.key !== requestKey;
-  const currentWordIndex = Math.min(wordIndex, Math.max(0, ayah.words.length - 1));
-  const currentWord = ayah.words[currentWordIndex];
-  const wordText = currentWord?.textUthmani ?? '';
-  const own = normalizeWord(wordText);
-  const matched = state?.meanings.find((item) => normalizeWord(item.word) === own) ?? null;
-  const others = (state?.meanings ?? []).filter((item) => item !== matched);
-  const ayahText = ayah.words.map((word) => word.textUthmani).join(' ');
-
-  async function copyMeaning(): Promise<void> {
-    if (!matched?.meaning || loading) {
-      return;
-    }
-    try {
-      await Clipboard.setStringAsync(`${wordText}\n${matched.meaning}`);
-      setCopyStatus('تم نسخ المعنى');
-    } catch {
-      setCopyStatus('تعذر النسخ');
-    }
-  }
-
-  return (
-    <View style={styles.panelColumn}>
-      <ScrollView style={styles.panelScroll} contentContainerStyle={styles.dialogBody}>
-        <View
-          style={[
-            styles.ayahContextCard,
-            { backgroundColor: palette.backgroundSelected, borderColor: palette.border },
-          ]}>
-          <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
-            نص الآية · {toArabicNumbers(ayah.ayahNumber)}
-          </Text>
-          <Text style={[styles.ayahText, styles.panelAyahText, { color: palette.text }]}>
-            {ayahText}
-          </Text>
-        </View>
-
-        <View style={[styles.wordCard, { backgroundColor: palette.background, borderColor: palette.border }]}>
-          <Text style={[styles.wordCardText, { color: palette.text }]}>{wordText}</Text>
-        </View>
-
-        <View style={styles.panelActionsRow}>
-          <PanelActionButton
-            label="الكلمة السابقة"
-            icon="chevron-forward"
-            disabled={currentWordIndex <= 0}
-            palette={palette}
-            onPress={() => {
-              setWordIndex((index) => Math.max(0, index - 1));
-              setCopyStatus(null);
-            }}
-          />
-          <PanelActionButton
-            label="الكلمة التالية"
-            icon="chevron-back"
-            disabled={currentWordIndex >= ayah.words.length - 1}
-            palette={palette}
-            onPress={() => {
-              setWordIndex((index) => Math.min(ayah.words.length - 1, index + 1));
-              setCopyStatus(null);
-            }}
-          />
-          <PanelActionButton
-            label="نسخ المعنى"
-            icon="copy-outline"
-            disabled={loading || !matched?.meaning}
-            palette={palette}
-            onPress={() => void copyMeaning()}
-          />
-        </View>
-        {copyStatus && (
-          <Text style={[styles.copyStatus, { color: palette.primary }]}>{copyStatus}</Text>
-        )}
-
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color={palette.primary} />
-            <Text style={[styles.hintText, { color: palette.textSecondary }]}>جارٍ تحميل المعنى…</Text>
-          </View>
-        ) : state?.error ? (
-          <View style={styles.centered}>
-            <Text accessibilityRole="alert" style={styles.errorText}>{state.error}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setReloadKey((key) => key + 1)}
-              style={[styles.primaryButton, { backgroundColor: palette.primary }]}>
-              <Text style={[styles.primaryButtonText, { color: palette.background }]}>إعادة المحاولة</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <>
-            {matched ? (
-              <View
-                style={[
-                  styles.meaningCard,
-                  { backgroundColor: palette.backgroundSelected, borderColor: palette.primary },
-                ]}>
-                <Text style={[styles.meaningText, { color: palette.text }]}>{matched.meaning}</Text>
-              </View>
-            ) : (
-              <Text style={[styles.hintText, { color: palette.textSecondary }]}>
-                لا يتوفر معنى مفرد لهذه الكلمة؛ الكلمات التي بينها المصدر في هذه الآية:
-              </Text>
-            )}
-
-            {others.length > 0 && (
-              <>
-                <Text style={[styles.sectionLabel, { color: palette.textSecondary }]}>
-                  معاني كلمات هذه الآية
-                </Text>
-                {others.map((item) => (
-                  <View
-                    key={item.word}
-                    style={[
-                      styles.meaningRow,
-                      { backgroundColor: palette.background, borderColor: palette.border },
-                    ]}>
-                    <Text style={[styles.meaningRowWord, { color: palette.primary }]}>{item.word}</Text>
-                    <Text style={[styles.meaningRowText, { color: palette.text }]}>{item.meaning}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-
-            {state && state.meanings.length === 0 && (
-              <Text style={[styles.hintText, { color: palette.textSecondary }]}>
-                لا يتوفر معنى لهذه الكلمة من المصدر.
-              </Text>
-            )}
-
-            <Text style={[styles.sourceNote, { color: palette.textSecondary }]}>
-              المصدر: السراج في بيان غريب القرآن
-            </Text>
-          </>
-        )}
-      </ScrollView>
-    </View>
-  );
-}
-
-function PanelActionButton({
-  label,
-  icon,
-  disabled,
-  palette,
-  onPress,
-}: {
-  label: string;
-  icon: IconName;
-  disabled: boolean;
-  palette: ReturnType<typeof useTheme>;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.panelActionButton,
-        { backgroundColor: palette.background, borderColor: palette.border },
-        disabled && styles.disabled,
-        pressed && !disabled && styles.pressed,
-      ]}>
-      <Ionicons name={icon} size={15} color={palette.primary} />
-      <Text style={[styles.panelActionText, { color: palette.text }]}>{label}</Text>
-    </Pressable>
-  );
 }
 
 function SearchPanel({
