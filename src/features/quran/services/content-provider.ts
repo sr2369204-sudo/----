@@ -121,7 +121,14 @@ const WORD_AUDIO_BASE_URL = 'https://audio.qurancdn.com/';
  * translation in another language.
  */
 const WORD_MEANING_BASE_URL = 'https://quranenc.com/api/v1/translation/aya/arabic_seraj';
-const MP3QURAN_API_BASE_URL = 'https://api.mp3quran.net/api_2';
+/**
+ * The current mp3quran reciter list. The old `api.mp3quran.net/api_2` list
+ * went stale: its serverN hosts now reply with a 301 to the CDN (Wayback:
+ * server11 since early Nov 2026) instead of serving the file, and its surah
+ * lists lag behind (Islam Sobhi: 93 vs 109 surahs). The v3 list serves the
+ * final CDN URLs directly, with the current surah lists.
+ */
+const MP3QURAN_RECITERS_BASE_URL = 'https://www.mp3quran.net/api/v3';
 const SOURCE_ID = 'quran-com-api';
 const CONTENT_VERSION = 'api-v4';
 const API_REQUEST_TIMEOUT_MS = 15_000;
@@ -837,37 +844,42 @@ export class QuranComContentProvider implements QuranContentProvider {
   }
 
   private async loadMp3QuranReciters(): Promise<Mp3QuranRecitation[]> {
-    const payload = await this.requestJson('/reads?language=ar', MP3QURAN_API_BASE_URL);
-    if (!isRecord(payload) || !Array.isArray(payload.reads)) {
+    const payload = await this.requestJson('/reciters?language=ar', MP3QURAN_RECITERS_BASE_URL);
+    if (!isRecord(payload) || !Array.isArray(payload.reciters)) {
       throw new ContentUnavailableError('invalid-data', 'قائمة القراء الإضافية غير صالحة.');
     }
+    const playable = (
+      entry: Record<string, unknown>,
+    ): entry is Record<string, unknown> & { server: string; surah_list: string } =>
+      typeof entry.server === 'string' &&
+      entry.server.length > 0 &&
+      typeof entry.surah_list === 'string';
     const result: Mp3QuranRecitation[] = [];
-    for (const item of payload.reads) {
+    for (const item of payload.reciters) {
       if (!isRecord(item) || typeof item.id !== 'number' || typeof item.name !== 'string') {
         continue;
       }
-      const moshaf = Array.isArray(item.moshaf)
-        ? item.moshaf.find(
-            (entry) =>
-              isRecord(entry) &&
-              typeof entry.Server === 'string' &&
-              typeof entry.suras === 'string',
-          )
-        : null;
-      if (!isRecord(moshaf)) continue;
-      const serverValue = moshaf.Server;
-      const surahsValue = moshaf.suras;
-      if (typeof serverValue !== 'string' || typeof surahsValue !== 'string') continue;
-      const server = serverValue.replace(/\/+$/, '');
+      if (!FEATURED_MP3QURAN_RECITER_IDS.has(item.id)) {
+        continue;
+      }
+      const moshafs = Array.isArray(item.moshaf) ? item.moshaf.filter(isRecord) : [];
+      // The Hafs murtal moshaf (type 11) is the recording the ayah timings
+      // were made on; a reciter's first listed moshaf can be another riwaya
+      // (Ibrahim Al-Dosari lists Warsh alongside Hafs).
+      const hafsMurtal = (
+        entry: Record<string, unknown>,
+      ): entry is Record<string, unknown> & { server: string; surah_list: string } =>
+        entry.moshaf_type === 11 && playable(entry);
+      const moshaf = moshafs.find(hafsMurtal) ?? moshafs.find(playable);
+      if (!moshaf) continue;
+      const server = moshaf.server.replace(/\/+$/, '');
       const surahs = new Set(
-        surahsValue.split(',').map((value: string) => Number(value)).filter(
+        moshaf.surah_list.split(',').map((value: string) => Number(value)).filter(
           (value) => Number.isInteger(value) && value >= 1 && value <= 114,
         ),
       );
       if (server && surahs.size > 0) {
-        if (FEATURED_MP3QURAN_RECITER_IDS.has(item.id)) {
-          result.push({ id: item.id, name: item.name, server, surahs });
-        }
+        result.push({ id: item.id, name: item.name, server, surahs });
       }
     }
     return result;

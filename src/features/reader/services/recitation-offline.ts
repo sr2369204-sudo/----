@@ -3,6 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { friendlyError, NETWORK_ERROR_MESSAGE } from '@/features/errors/friendly-error';
 import type { AyahTimeSpan, RecitationTrack } from '@/features/quran/services/content-provider';
 import {
+  ContentUnavailableError,
   isFullSurahReciter,
   quranContentProvider,
 } from '@/features/quran/services/content-provider';
@@ -141,8 +142,9 @@ async function downloadTrack(reciterId: number, track: RecitationTrack): Promise
 /**
  * Stores the recitation of the given surahs. A track that keeps failing no
  * longer stops the whole download: the rest are still fetched and the failure
- * is reported at the end. Tracks that were stored stay stored, so running it
- * again only fetches what is missing.
+ * is reported at the end. Surahs the reciter never recorded are skipped and
+ * reported the same way instead of aborting the selection. Tracks that were
+ * stored stay stored, so running it again only fetches what is missing.
  */
 export async function downloadRecitationSurahs(
   reciterId: number,
@@ -152,17 +154,29 @@ export async function downloadRecitationSurahs(
   const options: RecitationDownloadOptions =
     typeof optionsOrProgress === 'function' ? { onProgress: optionsOrProgress } : optionsOrProgress ?? {};
   const tracks: RecitationTrack[] = [];
-  for (const surahNumber of surahNumbers) {
-    if (options.shouldCancel?.()) {
-      return { failed: 0, cancelled: true };
-    }
-    tracks.push(...(await quranContentProvider.getChapterRecitation(reciterId, surahNumber)));
-  }
-  const total = tracks.length;
   const surahStates: Record<number, SurahDownloadState> = {};
   for (const surahNumber of surahNumbers) {
     surahStates[surahNumber] = { done: 0, total: 0, failed: 0 };
   }
+  // A surah the reciter never recorded is skipped, not fatal: one missing
+  // surah must not stop the rest of the selection from downloading.
+  const unavailableSurahs: number[] = [];
+  for (const surahNumber of surahNumbers) {
+    if (options.shouldCancel?.()) {
+      return { failed: 0, cancelled: true };
+    }
+    try {
+      tracks.push(...(await quranContentProvider.getChapterRecitation(reciterId, surahNumber)));
+    } catch (error) {
+      if (error instanceof ContentUnavailableError && error.reason === 'invalid-data') {
+        unavailableSurahs.push(surahNumber);
+        surahStates[surahNumber] = { done: 0, total: 0, failed: 1 };
+      } else {
+        throw error;
+      }
+    }
+  }
+  const total = tracks.length;
   for (const track of tracks) {
     surahStates[track.surahNumber].total += 1;
   }
@@ -211,14 +225,25 @@ export async function downloadRecitationSurahs(
   await Promise.all(Array.from({ length: TRACK_CONCURRENCY }, worker));
 
   const cancelled = options.shouldCancel?.() ?? false;
-  if (failed > 0 && !cancelled) {
-    throw new Error(
-      friendlyError(firstError, '') === NETWORK_ERROR_MESSAGE
-        ? `${NETWORK_ERROR_MESSAGE} تعذر تحميل ${failed} مقطع، أعد المحاولة لاستكمال الباقي.`
-        : `تعذر تحميل ${failed} مقطع. أعد المحاولة لاستكمال الباقي.`,
-    );
+  if ((failed > 0 || unavailableSurahs.length > 0) && !cancelled) {
+    const problems: string[] = [];
+    if (failed > 0) {
+      problems.push(
+        friendlyError(firstError, '') === NETWORK_ERROR_MESSAGE
+          ? `${NETWORK_ERROR_MESSAGE} تعذر تحميل ${failed} مقطع، أعد المحاولة لاستكمال الباقي.`
+          : `تعذر تحميل ${failed} مقطع. أعد المحاولة لاستكمال الباقي.`,
+      );
+    }
+    if (unavailableSurahs.length > 0) {
+      problems.push(
+        unavailableSurahs.length === 1
+          ? 'سورة واحدة غير متوفرة بصوت هذا القارئ؛ اختر قارئًا آخر لتحميلها.'
+          : `${unavailableSurahs.length} سور غير متوفرة بصوت هذا القارئ؛ اختر قارئًا آخر لتحميلها.`,
+      );
+    }
+    throw new Error(problems.join(' '));
   }
-  return { failed, cancelled };
+  return { failed: failed + unavailableSurahs.length, cancelled };
 }
 
 function listStoredNames(reciterId: number): Set<string> {

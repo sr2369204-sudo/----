@@ -799,3 +799,74 @@ test('timed mp3quran reciters play their own surah file and read timings by thei
   await provider.getFullSurahAyahTimings(-100005, 12);
   assert.ok(requestedUrls[0].endsWith('/ayat_timing?surah=12&read=5'));
 });
+
+test('lists featured mp3quran reciters from the v3 CDN list and refuses surahs the reciter lacks', async (t) => {
+  const requestedUrls = [];
+  mockFetch(t, async (url) => {
+    const path = String(url);
+    requestedUrls.push(path);
+    if (path.includes('/api/v3/reciters')) {
+      return new Response(JSON.stringify({
+        reciters: [
+          {
+            id: 253,
+            name: 'إسلام صبحي',
+            moshaf: [
+              {
+                id: 999,
+                moshaf_type: 21,
+                name: 'ورش عن نافع - مرتل',
+                server: 'https://cdn.mp3quran.net/audio/islam-sobhi-warsh/r1/',
+                surah_total: 114,
+                surah_list: '1,2,3',
+              },
+              {
+                id: 253,
+                moshaf_type: 11,
+                name: 'حفص عن عاصم - مرتل',
+                server: 'https://cdn.mp3quran.net/audio/islam-sobhi/r1/',
+                surah_total: 2,
+                surah_list: '1,2',
+              },
+            ],
+          },
+          {
+            id: 5,
+            name: 'قارئ غير مختار',
+            moshaf: [{
+              id: 5,
+              moshaf_type: 11,
+              name: 'حفص عن عاصم - مرتل',
+              server: 'https://cdn.mp3quran.net/audio/other/r1/',
+              surah_total: 114,
+              surah_list: '1,2,3',
+            }],
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (path.endsWith('/resources/chapter_reciters?language=ar')) {
+      return new Response(JSON.stringify({
+        reciters: [{ id: 7, name: 'Playable reciter', style: { name: 'Murattal' } }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      audio_files: [{ verse_key: '1:1', url: 'Alafasy/mp3/001001.mp3' }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  const provider = new QuranComContentProvider();
+  const reciters = await provider.getReciters();
+  assert.ok(reciters.some((reciter) => reciter.id === -253 && reciter.name === 'إسلام صبحي'));
+  assert.ok(!reciters.some((reciter) => reciter.id === -5));
+
+  // The Hafs murtal moshaf (type 11) wins over the Warsh one listed first.
+  const tracks = await provider.getChapterRecitation(-253, 2);
+  assert.deepEqual(tracks, [
+    { surahNumber: 2, ayahNumber: 0, url: 'https://cdn.mp3quran.net/audio/islam-sobhi/r1/002.mp3' },
+  ]);
+
+  // A surah the reciter never recorded is refused, so the download skips it.
+  await assert.rejects(provider.getChapterRecitation(-253, 3), ContentUnavailableError);
+  assert.ok(requestedUrls.some((requested) => requested.endsWith('/api/v3/reciters?language=ar')));
+});
