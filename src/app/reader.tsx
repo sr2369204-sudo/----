@@ -283,6 +283,19 @@ export default function ReaderScreen() {
     showNavbar();
   }, [hideNavbar, showNavbar]);
 
+  // While a recitation is loaded, one tap tucks the floating player and the
+  // navbar away together and the next tap brings both back, for a single ayah
+  // as much as for a run of ayahs.
+  const togglePlayerChrome = useCallback(() => {
+    if (playerHidden) {
+      setPlayerHidden(false);
+      showNavbar();
+      return;
+    }
+    setPlayerHidden(true);
+    hideNavbar();
+  }, [hideNavbar, playerHidden, showNavbar]);
+
   const startLocationQuery = useQuery({
     queryKey: [
       'quran',
@@ -956,7 +969,9 @@ export default function ReaderScreen() {
     gesture: 'tap' | 'longPress',
   ) => {
     if (recitationQueue) {
-      setPlayerHidden((hidden) => !hidden);
+      if (gesture === 'tap') {
+        togglePlayerChrome();
+      }
       return;
     }
     const ayah = page?.ayahs.find(
@@ -1011,14 +1026,12 @@ export default function ReaderScreen() {
         .sort((first, second) => first.ayahNumber - second.ayahNumber);
       if (rangeAyahs.length > 1) {
         selectAyahRange(surahNumber, rangeAyahs, 'compact');
-        showNavbar();
         return;
       }
     }
 
     selectAyah(surahNumber, ayah, 'compact');
-    showNavbar();
-  }, [page, player, recitationQueue, rememberReadingPosition, selectAyah, selectAyahRange, showNavbar, toggleChrome]);
+  }, [page, player, recitationQueue, rememberReadingPosition, selectAyah, selectAyahRange, toggleChrome, togglePlayerChrome]);
 
   const onWordPress = useCallback((
     surahNumber: number,
@@ -1028,7 +1041,9 @@ export default function ReaderScreen() {
     gesture: 'tap' | 'longPress',
   ) => {
     if (recitationQueue) {
-      setPlayerHidden((hidden) => !hidden);
+      if (gesture === 'tap') {
+        togglePlayerChrome();
+      }
       return;
     }
     // While an ayah or a run of ayahs is already selected, a press on a word
@@ -1067,7 +1082,6 @@ export default function ReaderScreen() {
     setInteractionError(null);
     setSelectionAnchor(rect);
     selectWord(surahNumber, ayah, word, 'compact');
-    showNavbar();
   }, [
     onAyahPress,
     page,
@@ -1075,8 +1089,8 @@ export default function ReaderScreen() {
     recitationQueue,
     rememberReadingPosition,
     selectWord,
-    showNavbar,
     toggleChrome,
+    togglePlayerChrome,
   ]);
 
   /**
@@ -1500,12 +1514,13 @@ export default function ReaderScreen() {
   // page, a tap on another ayah is never read as a dismissal and can still
   // stretch the selection into a range.
   const handleBackgroundPress = useCallback(() => {
-    if (!useReaderSelectionStore.getState().selection && recitationQueue) {
-      setPlayerHidden((hidden) => !hidden);
+    if (recitationQueue) {
+      useReaderSelectionStore.getState().clearSelection();
+      togglePlayerChrome();
       return;
     }
     toggleChrome();
-  }, [recitationQueue, toggleChrome]);
+  }, [recitationQueue, toggleChrome, togglePlayerChrome]);
 
   const handlePageTurn = useCallback((targetPageNumber: number) => {
     // The strip only turns to a page that is mounted and painted, and it has
@@ -1563,6 +1578,19 @@ export default function ReaderScreen() {
       ayahIds,
     }));
   }, [page, topicOverlayOn]);
+
+  // The ayat on screen, as the pages the tafsir viewer swipes through.
+  const tafsirPageAyahs = useMemo(
+    () =>
+      (page?.ayahs ?? []).map((ayah) => ({
+        surahNumber: ayah.surahNumber,
+        surahName:
+          page?.surahs.find((surah) => surah.surahNumber === ayah.surahNumber)?.nameArabic ?? '',
+        ayahNumber: ayah.ayahNumber,
+        text: ayah.words.map((word) => word.textUthmani).join(' '),
+      })),
+    [page],
+  );
 
   const selectedAyahReferences = useMemo<AyahReference[]>(() => {
     if (!selection) {
@@ -1703,11 +1731,15 @@ export default function ReaderScreen() {
     }
   }, [navigateToPage, quranCache]);
 
+  // Playback takes the page over: the chrome slides away when playback starts,
+  // so the reciting ayah and the floating player stand alone. Only the start of
+  // playback does this, so a tap that brings the navbar back during playback
+  // is not undone straight away.
+  const wasPlayingAudioRef = useRef(false);
   useEffect(() => {
-    // Playback takes the page over: the chrome slides away on its own so the
-    // reciting ayah and the floating player stand alone. Everything else is
-    // driven by the tap handlers, which now toggle the chrome directly.
-    if (isPlayingAudio && navVisible) {
+    const started = isPlayingAudio && !wasPlayingAudioRef.current;
+    wasPlayingAudioRef.current = isPlayingAudio;
+    if (started && navVisible) {
       // Avoid calling setState synchronously during render/effect to satisfy
       // strict lint rules, especially since hideNavbar starts an animation.
       const task = requestAnimationFrame(() => {
@@ -2015,6 +2047,7 @@ export default function ReaderScreen() {
           onStopAudio={stopAudio}
           onOpenPlayMenu={openPlayMenu}
           onOpenAyah={openAyah}
+          pageAyahs={tafsirPageAyahs}
         />
       )}
       {khatmaEvent && (
